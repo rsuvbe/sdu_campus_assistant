@@ -1,0 +1,174 @@
+/* Sign-in page. Shares the palette in styles.css; everything below is only
+   used by auth.html. */
+.auth-body { background: var(--surface); }
+
+.auth {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ---------- left: brand and a fragment of the redrawn plan ---------- */
+.auth-aside {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 44px 44px 40px;
+  background:
+    radial-gradient(120% 90% at 12% 0%, #3a416e 0%, rgba(58, 65, 110, 0) 58%),
+    linear-gradient(160deg, #2f345c 0%, #1b1f38 100%);
+  color: #eef2f8;
+}
+.auth-aside::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+  background: linear-gradient(90deg, var(--alarm) 0%, var(--accent) 100%);
+  opacity: .9;
+}
+.aside-brand { display: flex; gap: 18px; align-items: center; position: relative; z-index: 1; }
+.aside-brand .logo-tile.lg { width: 86px; height: 86px; border-radius: 16px; padding: 9px; }
+.aside-brand h1 { margin: 0; font-size: 22px; font-weight: 800; font-stretch: 112%; letter-spacing: -.01em; }
+.aside-brand p { margin: 4px 0 0; font-size: 14px; color: #a9b7d0; max-width: 34ch; }
+
+.aside-plan { position: relative; flex: 1; min-height: 190px; display: grid; place-items: center; }
+.aside-plan svg { width: 100%; max-width: 430px; height: auto; }
+
+.aside-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; position: relative; z-index: 1; }
+.aside-points li {
+  position: relative; padding-left: 22px;
+  font-size: 14px; color: #b9c5da; line-height: 1.45;
+}
+.aside-points li::before {
+  content: ""; position: absolute; left: 0; top: 7px;
+  width: 8px; height: 8px; border-radius: 2px; background: var(--accent);
+}
+.aside-points b { color: #eef2f8; font-weight: 650; }
+
+/* ---------- right: the form ---------- */
+.auth-panel {
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  gap: 16px;
+  padding: 40px 28px calc(40px + env(safe-area-inset-bottom, 0px));
+}
+.auth-card {
+  width: 100%; max-width: 420px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 26px 26px 22px;
+  box-shadow: var(--shadow);
+}
+.auth-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+  padding: 3px; margin-bottom: 20px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
+}
+.auth-tabs button {
+  border: 0; background: none; border-radius: 6px;
+  padding: 8px 10px; font-size: 13.5px; color: var(--ink-2);
+}
+.auth-tabs button[aria-selected="true"] { background: var(--plate); color: var(--plate-ink); font-weight: 650; }
+
+.auth-card h2 { margin: 0; font-size: 23px; font-weight: 750; font-stretch: 108%; letter-spacing: -.01em; }
+.auth-lead { margin: 5px 0 20px; color: var(--ink-2); font-size: 14px; }
+
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 13px; font-weight: 650; margin-bottom: 6px; }
+.optional { font-weight: 400; color: var(--ink-3); }
+.field input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 16px;
+}
+.field input:focus { outline: none; border-color: var(--ink); background: var(--raised); }
+.field.bad input { border-color: var(--alarm); background: var(--alarm-soft); }
+.field.good input { border-color: var(--exit); }
+.hint { margin: 7px 0 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+.hint.bad { color: var(--alarm); }
+.hint b { color: var(--ink-2); font-weight: 650; }
+.hint.bad b { color: var(--alarm); }
+
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 62px; }
+.pw-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: 0; background: none; padding: 6px 8px;
+  font-size: 12.5px; font-weight: 650; color: var(--ink-2);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+
+.rules { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 5px; }
+.rules li {
+  position: relative; padding-left: 23px;
+  font-size: 12.5px; color: var(--ink-3); line-height: 1.4;
+}
+.rules li::before {
+  content: ""; position: absolute; left: 0; top: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--line);
+}
+.rules li.ok { color: var(--exit); }
+.rules li.ok::before {
+  border-color: var(--exit); background: var(--exit);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.2 2.2 4.8-4.8' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 11px 11px; background-position: center; background-repeat: no-repeat;
+}
+
+.form-error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--alarm);
+  background: var(--alarm-soft);
+  border-radius: 0 7px 7px 0;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.auth-submit {
+  width: 100%;
+  padding: 13px 16px;
+  border: 0; border-radius: 9px;
+  background: var(--plate); color: var(--plate-ink);
+  font-size: 15px; font-weight: 700; font-stretch: 110%;
+}
+.auth-submit:hover:not(:disabled) { background: var(--alarm); color: #fff; }
+.auth-submit:disabled { opacity: .55; cursor: progress; }
+
+.auth-switch { margin: 16px 0 0; text-align: center; font-size: 13.5px; color: var(--ink-2); }
+.auth-foot { margin: 0; max-width: 420px; text-align: center; font-size: 12px; color: var(--ink-3); }
+
+@media (max-width: 860px) {
+  .auth { grid-template-columns: 1fr; }
+  .auth-aside { padding: 26px 22px 24px; gap: 18px; }
+  .aside-plan, .aside-points li:nth-child(n+3) { display: none; }
+  .auth-panel { padding: 26px 18px calc(28px + env(safe-area-inset-bottom, 0px)); }
+  .auth-card { padding: 22px 20px 18px; border-radius: 12px; }
+}
+
+/* the small plan fragment drawn by auth.js */
+.aside-plan .spine { fill: #363c68; }
+.aside-plan .hall { fill: none; stroke: #4b5385; stroke-width: 2; stroke-dasharray: 6 7; }
+.aside-plan .r rect { fill: #3a4070; stroke: #5b639c; stroke-width: 1.6; }
+.aside-plan .r text {
+  fill: #a9b1da; font: 700 13px/1 var(--font); font-stretch: 112%;
+  text-anchor: middle; letter-spacing: .02em;
+}
+.aside-plan .r.on rect { fill: rgba(232, 154, 100, .24); stroke: var(--accent); }
+.aside-plan .r.on text { fill: #ffe3cd; }
+.aside-plan .dot { fill: var(--accent); }
+.aside-plan .ping {
+  fill: none; stroke: var(--accent); stroke-width: 2; opacity: .5;
+  transform-origin: 298px 95px;
+  animation: aside-ping 2.6s ease-out infinite;
+}
+@keyframes aside-ping {
+  0% { transform: scale(.45); opacity: .85; }
+  70%, 100% { transform: scale(1.15); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .aside-plan .ping { animation: none; opacity: .4; } }

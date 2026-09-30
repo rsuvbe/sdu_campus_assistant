@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in — SDU Campus Assistant</title>
+<meta name="description" content="Sign in with your SDU university account to use the campus assistant.">
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css?v=3">
+<link rel="stylesheet" href="/static/auth.css?v=3">
+</head>
+<body class="auth-body">
+<main class="auth">
+
+  <section class="auth-aside">
+    <div class="aside-brand">
+      <span class="logo-tile lg"><img src="/static/img/sdu-logo.png" alt="SDU University"></span>
+      <div>
+        <h1>SDU Campus Assistant</h1>
+        <p>Every room in blocks C to I, redrawn from the evacuation plans.</p>
+      </div>
+    </div>
+    <div class="aside-plan" id="aside-plan"></div>
+    <ul class="aside-points">
+      <li><b>237 rooms</b> on three floors, one continuous plan per floor</li>
+      <li><b>Step-by-step directions</b> counted door by door along the real wings</li>
+      <li><b>Services</b> with live open/closed status in Almaty time</li>
+    </ul>
+  </section>
+
+  <section class="auth-panel">
+    <div class="auth-card">
+      <div class="auth-tabs" role="tablist" aria-label="Account">
+        <button type="button" role="tab" id="tab-login" aria-selected="true" data-mode="login">Sign in</button>
+        <button type="button" role="tab" id="tab-register" aria-selected="false" data-mode="register">Create account</button>
+      </div>
+
+      <h2 id="auth-title">Welcome back</h2>
+      <p class="auth-lead" id="auth-lead">Sign in with your SDU account to open the campus map.</p>
+
+      <form id="auth-form" novalidate autocomplete="on">
+        <div class="field" id="field-name" hidden>
+          <label for="full_name">Full name <span class="optional">optional</span></label>
+          <input id="full_name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Aidana Serikova">
+        </div>
+
+        <div class="field">
+          <label for="email">University email</label>
+          <input id="email" name="email" type="email" inputmode="email" autocomplete="username"
+                 placeholder="240103048@sdu.edu.kz" spellcheck="false" required>
+          <p class="hint" id="email-hint">Nine digits and <b>@sdu.edu.kz</b> — the address printed on your student card.</p>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="pw-wrap">
+            <input id="password" name="password" type="password" autocomplete="current-password"
+                   maxlength="72" required>
+            <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password">Show</button>
+          </div>
+          <ul class="rules" id="rules" hidden>
+            <li data-rule="length">at least 8 characters</li>
+            <li data-rule="upper">an uppercase letter</li>
+            <li data-rule="lower">a lowercase letter</li>
+            <li data-rule="digit">a digit</li>
+            <li data-rule="special">a special character (!&nbsp;@&nbsp;#&nbsp;…)</li>
+            <li data-rule="notid">not your student ID, no spaces</li>
+          </ul>
+        </div>
+
+        <p class="form-error" id="form-error" role="alert" hidden></p>
+        <button type="submit" class="auth-submit" id="submit">Sign in</button>
+      </form>
+
+      <p class="auth-switch" id="auth-switch">
+        No account yet? <button type="button" class="linkish" data-mode="register">Create one</button>
+      </p>
+    </div>
+    <p class="auth-foot">Accounts are limited to SDU addresses. Passwords are stored as salted PBKDF2 hashes.</p>
+  </section>
+
+</main>
+<script src="/static/auth.js?v=3"></script>
+</body>
+</html>

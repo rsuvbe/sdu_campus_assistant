@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SDU Campus Assistant</title>
+<meta name="description" content="Ask where any room or service is at SDU University and see it on the floor plan.">
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css?v=3">
+</head>
+<body>
+<div class="app">
+
+  <section class="panel" aria-label="Ask the campus assistant">
+    <header class="brand">
+      <div class="brand-row">
+        <span class="logo-tile" aria-hidden="true"><img src="/static/img/sdu-mark.png" alt=""></span>
+        <div class="brand-text">
+          <h1>SDU Campus Assistant</h1>
+          <p class="brand-sub" id="stats-line">Ask for a room and it lights up on the floor plan.</p>
+        </div>
+        <div class="account" id="account" hidden>
+          <span class="who" id="account-who"></span>
+          <button type="button" id="signout">Sign out</button>
+        </div>
+      </div>
+      <ul class="services" id="services" aria-label="Campus services right now"></ul>
+    </header>
+
+    <div class="thread" id="thread" aria-live="polite">
+      <article class="welcome" id="welcome">
+        <h2>Where do you need to be?</h2>
+        <p>Type a room code the way it's written on the door, or ask in your own words, in English or Russian. You can also tap any room on the plan.</p>
+        <div class="examples" id="examples"></div>
+      </article>
+    </div>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <label class="visually-hidden" for="q">Your question</label>
+      <input id="q" name="q" type="text" placeholder="Where is D103?" maxlength="200" enterkeyhint="send">
+      <button type="submit">Ask</button>
+    </form>
+  </section>
+
+  <section class="map" aria-label="Floor plan">
+    <div class="map-bar">
+      <div class="seg" role="group" aria-label="Floor" id="floor-seg"></div>
+      <div class="seg blocks" role="group" aria-label="Jump to a block" id="block-seg"></div>
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" id="zoom-fit" class="fit">Whole floor</button>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="canvas" id="canvas"></div>
+      <div class="stage-msg" id="stage-msg" hidden></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="k k-target"></i>Your room</span>
+      <span><i class="k k-passed"></i>Doors you pass or see opposite</span>
+      <span><i class="k k-landmark"></i>Exit or stairs</span>
+      <span class="legend-note">Redrawn from the evacuation plans — front and back sheets merged into one floor.</span>
+    </div>
+  </section>
+
+</div>
+<script src="/static/app.js?v=4"></script>
+</body>
+</html>

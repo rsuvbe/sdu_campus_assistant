@@ -1,0 +1,21 @@
+# One-click deploy on Render: New > Blueprint > pick this repo.
+services:
+  - type: web
+    name: sdu-campus-assistant
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      # Render serves over HTTPS, so the session cookie can be Secure.
+      - key: CAMPUS_SECURE_COOKIES
+        value: "true"
+      # The free plan has no persistent disk, so accounts are wiped whenever the
+      # service restarts. Render asks for this value when you deploy and keeps
+      # it out of the repository; set it to "<email>:<password>" and that one
+      # account is recreated on every start.
+      - key: CAMPUS_SEED_ACCOUNT
+        sync: false
