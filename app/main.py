@@ -106,9 +106,12 @@ def stats(user: dict = Depends(current_user)):
 @app.get("/api/search", tags=["US1 search"])
 def search(q: str = Query(..., min_length=1, max_length=200,
                           description="Free-form question, e.g. 'Where is D103?'"),
+           context: str | None = Query(None, max_length=8,
+                                       description="The `context` of the previous answer, so a "
+                                                   "follow-up like 'Engineering' resolves '204'"),
            user: dict = Depends(current_user)):
-    """Answer a free-form question about a room or a campus service."""
-    return index.search(q)
+    """Answer a free-form question about a room, a block or a campus service."""
+    return index.search(q, context=context)
 
 
 @app.get("/api/map", tags=["map"])

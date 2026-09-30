@@ -79,7 +79,7 @@ sdu-campus-assistant/
 │   ├── styles.css, auth.css
 │   ├── img/           # the SDU mark, the full lockup and the favicon
 │   └── plans/         # the six original sheets, kept for reference
-├── tests/             # 94 tests: the data, US1 acceptance, accounts, the map
+├── tests/             # 126 tests: US1 clause by clause, the data, accounts, the map
 ├── requirements.txt
 ├── render.yaml        # one-click deploy on Render
 └── Dockerfile         # Railway or any Docker host
@@ -145,17 +145,29 @@ conn.commit()
 pytest -v
 ```
 
-94 tests, including both `US1QATest` scenarios:
+126 tests. `tests/test_us1_acceptance.py` walks the story sheet clause by clause:
 
-| US1 acceptance criterion | Test |
+| US1 clause | Test |
 |---|---|
-| 5 natural-language questions return the right block and floor in under 5 s | `test_scenario1_correct_building_and_floor` (English and Russian, including a Cyrillic lookalike room code) |
-| A room that does not exist gives a clear "not found" plus real nearby rooms | `test_scenario2_not_found_with_suggestions` |
-| Every room in the database is drawn exactly once on the map | `test_every_room_in_the_database_is_drawn_exactly_once` |
-| Only nine-digit SDU addresses with strong passwords can register | `test_everything_else_is_refused`, `test_weak_passwords_are_named_rule_by_rule` |
-| The app is unreachable without an account | `test_the_app_is_closed_without_an_account` |
-| Nothing in the database points at a row that is gone | `test_nothing_is_left_dangling` |
-| Each of the eight barrels is a circle and answers to its A1–D2 name | `test_every_barrel_is_drawn_as_a_circle_and_answers_to_its_name` |
+| QA scenario 1, verbatim: "Where is room 204 in the Engineering building?" returns building, floor and landmark | `test_qa_scenario_1_returns_building_floor_and_landmark` |
+| QA scenario 1: answered within 5 seconds | `test_qa_scenario_1_is_answered_well_inside_five_seconds` |
+| QA scenario 2: a room that does not exist gives "not found" plus real nearby rooms | `test_qa_scenario_2_says_not_found_and_suggests_real_rooms` |
+| Parses **room numbers** | `test_room_queries_are_understood` (English, Russian, Cyrillic lookalikes, hall names) |
+| Parses **department names** | `test_department_and_building_names_are_understood` |
+| Parses **facility types** | `test_facility_types_are_understood` |
+| Works across **single and multi-turn** conversations | `test_a_number_alone_asks_which_block_and_remembers_the_question`, `test_the_follow_up_turn_resolves_the_earlier_number` |
+| Returns building, floor and nearest landmark on every match | `test_every_room_answer_names_building_floor_and_a_landmark` |
+| Never reports a valid room as missing (test script: Fail) | `test_no_existing_room_is_ever_reported_as_missing` |
+| Never returns the wrong building (test script: Fail) | `test_no_room_is_ever_put_in_the_wrong_building` |
+| Reads the campus data read-only (constraint) | `test_the_campus_database_is_opened_read_only` |
+| Five plain-language questions return the right block and floor | `test_scenario1_correct_building_and_floor` |
+
+Beyond US1: every room is drawn exactly once on the map
+(`test_every_room_in_the_database_is_drawn_exactly_once`), only nine-digit SDU
+addresses with strong passwords can register (`test_everything_else_is_refused`),
+the app is unreachable without an account
+(`test_the_app_is_closed_without_an_account`), and nothing in the database
+points at a row that is gone (`test_nothing_is_left_dangling`).
 
 Real answer time is around 0.1–1 ms.
 
@@ -168,7 +180,7 @@ Real answer time is around 0.1–1 ms.
 | `POST /api/auth/register` | Create an account (9 digits + `@sdu.edu.kz`, strong password) |
 | `POST /api/auth/login` / `logout` | Start or end a session |
 | `GET /api/auth/me` | The signed-in account |
-| `GET /api/search?q=Where is D103?` | The US1 endpoint: directions, map position, suggestions. Also answers to hall names such as `A1` |
+| `GET /api/search?q=...&context=...` | The US1 endpoint: directions, map position, suggestions. Understands room codes, hall names (`A1`), faculties (`Business School`), blocks (`Block D`) and services. `context` carries the room number a previous answer asked about, which is what makes a follow-up like "Engineering" resolve "204" |
 | `GET /api/map` | All three floors as vector geometry |
 | `GET /api/sheets` | The original evacuation sheets, for reference |
 | `GET /api/services` | Services with an open/closed status in Almaty time |
@@ -178,8 +190,9 @@ Everything except `/api/health`, `/api/auth/*`, `/login` and `/static/*` needs
 a session cookie; without one the API answers `401` and `/` redirects to
 `/login`.
 
-`/api/search` answer kinds: `room`, `service`, `not_found`, `ambiguous`
-(e.g. "204" exists in five blocks) and `no_match`.
+`/api/search` answer kinds: `room`, `block` (a faculty or a whole block),
+`service`, `ambiguous` (e.g. "204" exists in five blocks — the answer carries a
+`context` for the next turn), `not_found` and `no_match`.
 
 ---
 
@@ -195,7 +208,17 @@ Nothing is invented — every sentence comes out of the plan geometry:
   counted from the central corridor;
 - "directly across the corridor is D107" is the room in the other row at the
   closest position;
-- landmarks are the exits on floor 1 and the wing-end stairwells on floors 2–3.
+- landmarks are the exits on floor 1 and the wing-end stairwells on floors 2–3;
+  where none is close enough, the answer falls back to what is recognisable
+  around the room — the round lecture hall beside it, the central corridor, or
+  the mouth of its wing — so every answer names a landmark;
+- a question that names a faculty or a block but no room ("Where is the Business
+  School?") is answered with the block, the floors it covers and the rooms it
+  starts at;
+- a bare number that exists in several blocks is answered with a question, and
+  the next turn settles it: "204" then "Engineering" gives F204. The pending
+  number travels in the answer's `context`, so the conversation state lives in
+  the browser tab rather than on the server.
 
 ## Honest limitations
 

@@ -24,6 +24,7 @@ const BLOCK_ZOOM = 0.72;
 
 const state = {
   floors: [],
+  context: null,        // what the last answer asked the user to pin down
   floor: null,          // the floor currently drawn
   result: null,         // last room/service answer that has a position
   view: { s: 1, fit: 1, tx: 0, ty: 0 },
@@ -97,11 +98,13 @@ async function ask(text) {
 
   let data;
   try {
-    data = await api(`/api/search?q=${encodeURIComponent(query)}`);
+    const carried = state.context ? `&context=${encodeURIComponent(state.context)}` : "";
+    data = await api(`/api/search?q=${encodeURIComponent(query)}${carried}`);
   } catch (err) {
     data = { kind: "error", title: "Couldn't reach the server", summary: `The request failed (${err.message}). Check that the API is running, then try again.`, suggestions: [] };
   }
 
+  state.context = data.context ?? null;
   const card = renderCard(data);
   thread.appendChild(card);
   card.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -144,6 +147,21 @@ function renderCard(d) {
       </div>
       ${stepsList(d.steps)}
       ${d.note ? `<p class="note">${esc(d.note)}</p>` : ""}
+      ${foot(!!d.map)}`;
+  } else if (d.kind === "block") {
+    const b = d.block;
+    card.className = "card";
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="plate">${esc(b.building_id)}</div>
+        <div class="head-text">
+          <div class="head-title">${esc(b.name.replace(/^Block \w+ — /, ""))}</div>
+          <div class="head-sub">${b.rooms} rooms on floor${b.floors.length > 1 ? "s" : ""} ${esc(b.floors.join(", "))}</div>
+        </div>
+      </div>
+      ${stepsList(d.steps)}
+      <p class="summary">Rooms in this block:</p>
+      ${suggestionChips(d.suggestions)}
       ${foot(!!d.map)}`;
   } else if (d.kind === "service") {
     const s = d.service;
@@ -330,7 +348,7 @@ function paintResult() {
 }
 
 function showResultOnMap(d) {
-  if (d.kind !== "room" && d.kind !== "service") return;
+  if (!["room", "service", "block"].includes(d.kind)) return;
   if (!d.map) {
     if (d.kind === "service") showStageMsg(`${d.title} isn't pinned to a room yet, so there's nothing to show on the plan.`);
     return;

@@ -87,6 +87,7 @@ class CampusIndex:
         self.by_code: dict[str, dict] = {}
         self.landmarks: dict[str, list[dict]] = {}
         self.services: dict[str, dict] = {}
+        self.building_aliases: list[tuple[str, str]] = []   # (alias, building_id), longest first
         self.map = None          # CampusMap, attached after load (see app/main.py)
 
     def attach_map(self, campus_map) -> None:
@@ -130,6 +131,10 @@ class CampusIndex:
             if room:
                 room["aliases"].append(normalize(r["alias"]))
                 self.by_code.setdefault(normalize(r["alias"]), room)
+
+        aliases = [(normalize(r["alias"]), r["building_id"])
+                   for r in conn.execute("SELECT building_id, alias FROM building_aliases")]
+        self.building_aliases = sorted(aliases, key=lambda a: -len(a[0]))
 
         for r in conn.execute("SELECT * FROM landmarks"):
             self.landmarks.setdefault(r["floor_id"], []).append(dict(r))
@@ -184,16 +189,20 @@ class CampusIndex:
     def service_list(self, now: datetime | None = None) -> list[dict]:
         return [self._service_payload(s, now) for s in self.services.values()]
 
-    def search(self, query: str, now: datetime | None = None) -> dict:
+    def search(self, query: str, now: datetime | None = None, context: str | None = None) -> dict:
+        """Answer a question. `context` is the room number a previous answer
+        asked the user to pick a block for, so "204" then "Engineering" works."""
         t0 = time.perf_counter()
-        result = self._search(query, now)
+        result = self._search(query, now, context)
+        result.setdefault("context", None)
         result["query"] = query
         result["elapsed_ms"] = round((time.perf_counter() - t0) * 1000, 3)
         return result
 
     # --------------------------------------------------------------- search
-    def _search(self, query: str, now: datetime | None) -> dict:
+    def _search(self, query: str, now: datetime | None, context: str | None = None) -> dict:
         lowered = query.lower().translate(CYR_TO_LAT)
+        qn = normalize(query)
 
         m = CODE_RE.search(lowered)
         if m:
@@ -209,31 +218,89 @@ class CampusIndex:
             if hall:
                 return self._room_answer(hall)
 
-        qn = normalize(query)
+        # "room 204 in the Engineering building" — and the same thing split over
+        # two turns, where the number came from the question before this one.
+        blocks = self._buildings_in(qn, normalize(lowered))
+        found_number = BARE_NUMBER_RE.search(query)
+        digits = found_number.group(1) if found_number else (context or None)
+        if digits and blocks:
+            rooms = [self.by_code[key] for key in (normalize(b + digits) for b in blocks)
+                     if key in self.by_code]
+            if len(rooms) == 1:
+                return self._room_answer(rooms[0])
+            if rooms:
+                return self._ambiguous(digits, rooms)
+            if len(blocks) == 1:
+                return self._not_found(f"{blocks[0]}{digits}")
+
         for svc in self.services.values():
             if any(alias in qn for alias in svc["aliases"]) or normalize(svc["name"]) in qn:
                 return self._service_answer(svc, now)
 
-        n = BARE_NUMBER_RE.search(query)
-        if n:
-            matches = [r for r in self.rooms if re.search(rf"(?<!\d){n.group(1)}$", r["room_number"])]
+        if found_number:
+            matches = [r for r in self.rooms
+                       if re.search(rf"(?<!\d){found_number.group(1)}$", r["room_number"])]
             matches = [r for r in matches if r["source"] != "approximated_from_H"] or matches
             if len(matches) == 1:
                 return self._room_answer(matches[0])
             if matches:
-                codes = sorted(r["room_number"] for r in matches)
-                return {
-                    "kind": "ambiguous",
-                    "title": f"Several blocks have a room {n.group(1)}",
-                    "summary": f"There's a {n.group(1)} in {len(codes)} blocks — {human_list(codes)}. Which one did you mean?",
-                    "suggestions": codes,
-                }
+                return self._ambiguous(found_number.group(1), matches)
+
+        if blocks:
+            return self._block_answer(blocks[0])
 
         return {
             "kind": "no_match",
             "title": "I couldn't tell which place you mean",
-            "summary": "Try a room code like D103 or H304, or a service like library, cafeteria, dean's office or medcenter.",
-            "suggestions": ["D103", "G215", "Library", "Cafeteria"],
+            "summary": "Try a room code like D103 or H304, a faculty such as the Business School, "
+                       "or a service like library, cafeteria, dean's office or medcenter.",
+            "suggestions": ["D103", "G215", "Business School", "Library"],
+        }
+
+    def _buildings_in(self, qn: str, latin: str) -> list[str]:
+        """Which blocks a question names, most specific alias first."""
+        found: list[str] = []
+        for alias, building_id in self.building_aliases:
+            if alias and alias in qn and building_id not in found:
+                found.append(building_id)
+        # a one-letter reply to "which block did you mean?"
+        if not found and re.fullmatch(r"[c-i]", latin):
+            found.append(latin.upper())
+        return found
+
+    def _ambiguous(self, digits: str, matches: list[dict]) -> dict:
+        codes = sorted(r["room_number"] for r in matches)
+        return {
+            "kind": "ambiguous",
+            "title": f"Several blocks have a room {digits}",
+            "summary": f"There's a {digits} in {len(codes)} blocks — {human_list(codes)}. "
+                       f"Which one did you mean? Naming the block or the faculty is enough.",
+            "suggestions": codes,
+            "context": digits,
+        }
+
+    def _block_answer(self, building_id: str) -> dict:
+        """Where a whole block or faculty is, when the question names no room."""
+        rooms = [r for r in self.rooms if r["building_id"] == building_id]
+        name = self.buildings.get(building_id, f"Block {building_id}")
+        floors = sorted({r["floor_number"] for r in rooms})
+        entry = min((r for r in rooms if r["zone"] == "wing"),
+                    key=lambda r: (r["floor_number"], r["x"]), default=rooms[0])
+        directions = self._room_answer(entry)
+        floor_text = ("floor " + str(floors[0]) if len(floors) == 1
+                      else f"floors {floors[0]} to {floors[-1]}")
+        return {
+            "kind": "block",
+            "title": f"Block {building_id}",
+            "summary": f"{name}. {len(rooms)} rooms on {floor_text}; "
+                       f"its wings start at {entry['room_number']}.",
+            "block": {"building_id": building_id, "name": name,
+                      "floors": floors, "rooms": len(rooms)},
+            "steps": directions["steps"][:3],
+            "map": directions["map"],
+            "suggestions": sorted(r["room_number"] for r in rooms
+                                  if r["zone"] == "wing" and r["floor_number"] == floors[0])[:4],
+            "note": None,
         }
 
     def _not_found(self, code: str) -> dict:
@@ -292,6 +359,8 @@ class CampusIndex:
             else:
                 where = "close by"
             steps.append(f"Landmark: the {landmark['name']} is {where} — handy if you get turned around.")
+        else:
+            steps.append(f"Landmark: {self._fallback_landmark(room)} — handy if you get turned around.")
 
         dept = DEPARTMENTS.get(room.get("department") or "")
         rtype = ROOM_TYPES.get(room.get("type") or "")
@@ -432,6 +501,23 @@ class CampusIndex:
         if near:
             sentence += f" Look for it next to {human_list([display_code(r) for r in near])}."
         return sentence
+
+    def _fallback_landmark(self, room: dict) -> str:
+        """US1 wants a recognisable landmark with every answer. Where no exit or
+        stairwell is close enough, the room's own surroundings are the landmark."""
+        block = f"Block {room['building_id']}"
+        if room["zone"] == "west":
+            halls = [r for r in self.rooms if r["floor_id"] == room["floor_id"]
+                     and r is not room and barrel_name(r)]
+            if halls:
+                near = min(halls, key=lambda r: (r["x"] - room["x"]) ** 2 + (r["y"] - room["y"]) ** 2)
+                return (f"the round lecture halls on that side of the corridor — the nearest is "
+                        f"{near['room_number']}, the one everyone calls {barrel_name(near)}")
+        if room["zone"] == "corridor":
+            return f"the central corridor itself, along the {block} stretch of it"
+        if room["building_id"] == "I":
+            return "the far end of the central corridor, past Block H"
+        return f"the mouth of the {block} wing, where it opens off the central corridor"
 
     def _nearest_landmark(self, room: dict) -> dict | None:
         candidates = self.landmarks.get(room["floor_id"], [])
