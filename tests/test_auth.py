@@ -133,3 +133,48 @@ def test_a_bad_seed_is_ignored_rather_than_breaking_the_deployment(tmp_path, spe
     from app.auth import UserStore, seed_account
     store = UserStore(tmp_path / "users.db")
     assert seed_account(store, spec) is None
+
+
+# ------------------------------------------------------------------ visitors
+# US1 names students, staff AND visitors. A visitor has no university address,
+# so they come in without an account and get everything US1 covers.
+def test_a_visitor_can_come_in_without_an_account(anon):
+    assert anon.get("/api/search", params={"q": "D103"}).status_code == 401
+
+    body = anon.post("/api/auth/guest").json()
+    assert body["user"]["role"] == "visitor"
+    assert body["user"]["email"] is None
+
+    assert anon.get("/api/auth/me").json()["user"]["role"] == "visitor"
+    for path, params in [("/api/search", {"q": "Where is the Business School?"}),
+                         ("/api/map", None), ("/api/services", None), ("/api/stats", None)]:
+        assert anon.get(path, params=params).status_code == 200, path
+    assert anon.get("/", follow_redirects=False).status_code == 200
+
+
+def test_a_visitor_is_kept_out_of_anything_personal(anon):
+    """The hook the later sprints hang their own features on."""
+    from app.main import ROLE_VISITOR, require_account
+    from fastapi import HTTPException
+
+    anon.post("/api/auth/guest")
+    visitor = anon.get("/api/auth/me").json()["user"]
+    assert visitor["role"] == ROLE_VISITOR
+    with pytest.raises(HTTPException) as raised:
+        require_account(visitor)
+    assert raised.value.status_code == 403
+
+    member = {"user_id": 1, "role": "student"}
+    assert require_account(member) is member
+
+
+def test_leaving_ends_the_visitor_session(anon):
+    anon.post("/api/auth/guest")
+    assert anon.get("/api/auth/me").status_code == 200
+    anon.post("/api/auth/logout")
+    assert anon.get("/api/auth/me").status_code == 401
+    assert anon.get("/", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_an_account_still_signs_in_as_itself(client):
+    assert client.get("/api/auth/me").json()["user"]["role"] == "student"

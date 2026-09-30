@@ -23,6 +23,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 EMAIL_RE = re.compile(r"^(\d{9})@sdu\.edu\.kz$", re.IGNORECASE)
+
+# US1 is written for students, staff AND visitors. A visitor has no university
+# address, so they get a session without an account: same door, no sign-up.
+# Everything US1 offers — search, the map, opening hours — is open to them;
+# anything added later that is personal (a saved route, a timetable) should ask
+# for an account through require_account() in app/main.py.
+ROLE_MEMBER = "student"
+ROLE_VISITOR = "visitor"
+GUEST = {"user_id": None, "email": None, "student_id": None,
+         "full_name": None, "role": ROLE_VISITOR}
 SPECIALS = "!@#$%^&*()-_=+[]{};:,.<>?/\\|`~'\""
 MIN_PASSWORD = 8
 MAX_PASSWORD = 72
@@ -125,6 +135,7 @@ class UserStore:
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
+            self._migrate(conn)
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,12 +147,24 @@ class UserStore:
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
-                    user_id    INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                    -- NULL for a visitor, who is signed in without an account
+                    user_id    INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
             """)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """Visitor sessions have no user, so user_id had to stop being NOT NULL.
+
+        SQLite cannot relax a column in place, and a session is disposable, so
+        the table is simply rebuilt — everyone signs in again once.
+        """
+        columns = {r["name"]: r for r in conn.execute("PRAGMA table_info(sessions)")}
+        if columns and columns["user_id"]["notnull"]:
+            conn.execute("DROP TABLE sessions")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -177,15 +200,16 @@ class UserStore:
         return self._public(row)
 
     # ------------------------------------------------------------- sessions
-    def start_session(self, user: dict) -> tuple[str, int]:
+    def start_session(self, user: dict | None = None) -> tuple[str, int]:
+        """Open a session. Without a user it is a visitor's session."""
         token = secrets.token_urlsafe(32)
         expires = _now() + timedelta(days=SESSION_DAYS)
         with self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE expires_at < ?", (_now().isoformat(),))
             conn.execute("INSERT INTO sessions (token_hash, user_id, created_at, expires_at)"
                          " VALUES (?, ?, ?, ?)",
-                         (_token_hash(token), user["user_id"], _now().isoformat(),
-                          expires.isoformat()))
+                         (_token_hash(token), user["user_id"] if user else None,
+                          _now().isoformat(), expires.isoformat()))
         return token, SESSION_DAYS * 24 * 3600
 
     def exists(self, email: str) -> bool:
@@ -193,14 +217,18 @@ class UserStore:
             return conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone() is not None
 
     def session_user(self, token: str | None) -> dict | None:
+        """Who is on the other end: an account, a visitor, or nobody."""
         if not token:
             return None
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT u.* FROM sessions s JOIN users u USING (user_id)"
+                "SELECT s.user_id, u.email, u.student_id, u.full_name"
+                " FROM sessions s LEFT JOIN users u ON u.user_id = s.user_id"
                 " WHERE s.token_hash = ? AND s.expires_at > ?",
                 (_token_hash(token), _now().isoformat())).fetchone()
-        return self._public(row) if row else None
+        if not row:
+            return None
+        return dict(GUEST) if row["user_id"] is None else self._public(row)
 
     def end_session(self, token: str | None) -> None:
         if not token:
@@ -211,7 +239,8 @@ class UserStore:
     @staticmethod
     def _public(row: sqlite3.Row) -> dict:
         return {"user_id": row["user_id"], "email": row["email"],
-                "student_id": row["student_id"], "full_name": row["full_name"]}
+                "student_id": row["student_id"], "full_name": row["full_name"],
+                "role": ROLE_MEMBER}
 
 
 def _token_hash(token: str) -> str:

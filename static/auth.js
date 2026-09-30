@@ -150,9 +150,26 @@ function drawAsidePlan() {
     </svg>`;
 }
 
+/* ------------------------------------------------------------ visitors */
+async function enterAsVisitor() {
+  const button = $("#guest");
+  button.disabled = true;
+  button.textContent = "Opening…";
+  try {
+    const res = await fetch("/api/auth/guest", { method: "POST" });
+    if (res.ok) { window.location.replace("/"); return; }
+    showError("Couldn't open the campus assistant. Try again.");
+  } catch (err) {
+    showError(`Couldn't reach the server (${err.message}).`);
+  }
+  button.disabled = false;
+  button.textContent = "Continue as a visitor";
+}
+
 /* ------------------------------------------------------------ boot */
 drawAsidePlan();
 $("#auth-form").addEventListener("submit", submit);
+$("#guest").addEventListener("click", enterAsVisitor);
 $("#email").addEventListener("input", () => { checkEmail(false); checkPassword(); });
 $("#email").addEventListener("blur", () => checkEmail(true));
 $("#password").addEventListener("input", checkPassword);

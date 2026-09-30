@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=3">
-<link rel="stylesheet" href="/static/auth.css?v=3">
+<link rel="stylesheet" href="/static/styles.css?v=4">
+<link rel="stylesheet" href="/static/auth.css?v=4">
 </head>
 <body class="auth-body">
 <main class="auth">
@@ -78,11 +78,17 @@
       <p class="auth-switch" id="auth-switch">
         No account yet? <button type="button" class="linkish" data-mode="register">Create one</button>
       </p>
+
+      <div class="auth-guest">
+        <span class="or">or</span>
+        <button type="button" id="guest">Continue as a visitor</button>
+        <p>Visiting the campus? Find a room and read the map without an account.</p>
+      </div>
     </div>
     <p class="auth-foot">Accounts are limited to SDU addresses. Passwords are stored as salted PBKDF2 hashes.</p>
   </section>
 
 </main>
-<script src="/static/auth.js?v=3"></script>
+<script src="/static/auth.js?v=4"></script>
 </body>
 </html>

@@ -42,9 +42,12 @@ async function api(path, options) {
 async function loadHeader() {
   try {
     const { user } = await api("/api/auth/me");
+    const visitor = user.role === "visitor";
     $("#account").hidden = false;
-    $("#account-who").textContent = user.full_name || user.student_id;
-    $("#account-who").title = user.email;
+    $("#account").classList.toggle("guest", visitor);
+    $("#account-who").textContent = visitor ? "Visitor" : (user.full_name || user.student_id);
+    $("#account-who").title = visitor ? "Looking around without an account" : user.email;
+    $("#signout").textContent = visitor ? "Sign in" : "Sign out";
   } catch { /* the 401 above already redirected */ }
 
   try {

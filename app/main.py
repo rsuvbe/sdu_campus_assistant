@@ -16,7 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .auth import SESSION_COOKIE, AuthError, UserStore, default_db_path, seed_account
+from .auth import (GUEST, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
+                   default_db_path, seed_account)
 from .engine import CampusIndex
 from .floorplan import CampusMap
 
@@ -42,14 +43,27 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "P
 
 
 def current_user(request: Request) -> dict:
-    """The signed-in account, or 401 — used by every endpoint that serves data."""
+    """Whoever is signed in — an SDU account or a visitor — or 401.
+
+    US1 is written for students, staff and visitors alike, so everything it
+    covers is behind this and not behind an account.
+    """
     user = users.session_user(request.cookies.get(SESSION_COOKIE))
     if not user:
-        raise HTTPException(status_code=401, detail="Sign in with your SDU account.")
+        raise HTTPException(status_code=401, detail="Open the campus assistant to continue.")
     return user
 
 
-def _set_session(response: Response, user: dict) -> None:
+def require_account(user: dict = Depends(current_user)) -> dict:
+    """For anything personal a visitor session cannot hold — a saved route, a
+    timetable, a reminder. Nothing in US1 needs it; US2 and later will."""
+    if user["role"] == ROLE_VISITOR:
+        raise HTTPException(status_code=403,
+                            detail="Sign in with your SDU account to use this.")
+    return user
+
+
+def _set_session(response: Response, user: dict | None) -> None:
     token, max_age = users.start_session(user)
     response.set_cookie(SESSION_COOKIE, token, max_age=max_age, httponly=True,
                         samesite="lax", secure=SECURE_COOKIES, path="/")
@@ -78,6 +92,18 @@ def login(response: Response, email: str = Body(..., embed=True),
         raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
     _set_session(response, user)
     return {"user": user}
+
+
+@app.post("/api/auth/guest", tags=["accounts"])
+def guest(response: Response):
+    """Come in as a visitor, without an account.
+
+    A visitor has no university address, so US1 — finding a room, reading the
+    map, checking opening hours — is open to them. Anything added later that
+    belongs to a person goes behind require_account().
+    """
+    _set_session(response, None)
+    return {"user": dict(GUEST)}
 
 
 @app.post("/api/auth/logout", tags=["accounts"])

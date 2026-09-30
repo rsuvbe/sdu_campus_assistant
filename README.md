@@ -8,7 +8,7 @@ floor plan that was redrawn from the university's own evacuation sheets.
 - Backend: **FastAPI** + SQLite (`data/campus.db`, read-only)
 - Frontend: plain HTML/CSS/JS in `static/`, no build step
 - Data: 237 rooms, blocks C–I, 3 floors, digitised from the fire evacuation plans
-- Accounts: SDU addresses only (nine digits + `@sdu.edu.kz`)
+- Accounts: SDU addresses (nine digits + `@sdu.edu.kz`); visitors come in without one
 
 ---
 
@@ -48,13 +48,26 @@ on its own set of tokens (`--map-bg`, `--map-slab`, `--map-room`, `--map-wall`,
 `--map-ink`) and is kept a shade darker than the page, so a floor full of rooms
 reads as a drawing instead of glaring white with labels lost in it.
 
-**3. Accounts.** The map is behind a sign-in page. An account needs a
-university address — exactly nine digits and `@sdu.edu.kz`, e.g.
-`240103048@sdu.edu.kz` — and a password that has an uppercase letter, a
+**3. Accounts, and a door for visitors.** The map is behind a sign-in page. An
+account needs a university address — exactly nine digits and `@sdu.edu.kz`,
+e.g. `240103048@sdu.edu.kz` — and a password that has an uppercase letter, a
 lowercase letter, a digit, a special character, at least 8 characters, no
 spaces, no student ID inside it, and nothing from the common-password list.
 Both checks run on the server (`app/auth.py`); the form only makes them
 quicker to see.
+
+US1 is written for students, staff **and visitors**, and a visitor has no
+university address to sign up with. So the sign-in page also has *Continue as a
+visitor*: a session with no account behind it, which gets everything US1
+covers — search, the map, opening hours. Anything added later that belongs to a
+person (a saved route, a timetable, a reminder) goes behind
+`require_account()` in `app/main.py`, which answers a visitor with 403.
+
+| Who | How they get in | What they can reach |
+|---|---|---|
+| Student | 9-digit SDU address + password | everything |
+| Visitor | *Continue as a visitor* | everything in US1; `require_account()` refuses the rest |
+| Staff | **not yet** — see "Honest limitations" | — |
 
 ---
 
@@ -79,7 +92,7 @@ sdu-campus-assistant/
 │   ├── styles.css, auth.css
 │   ├── img/           # the SDU mark, the full lockup and the favicon
 │   └── plans/         # the six original sheets, kept for reference
-├── tests/             # 126 tests: US1 clause by clause, the data, accounts, the map
+├── tests/             # 130 tests: US1 clause by clause, the data, accounts, the map
 ├── requirements.txt
 ├── render.yaml        # one-click deploy on Render
 └── Dockerfile         # Railway or any Docker host
@@ -145,7 +158,7 @@ conn.commit()
 pytest -v
 ```
 
-126 tests. `tests/test_us1_acceptance.py` walks the story sheet clause by clause:
+130 tests. `tests/test_us1_acceptance.py` walks the story sheet clause by clause:
 
 | US1 clause | Test |
 |---|---|
@@ -179,6 +192,7 @@ Real answer time is around 0.1–1 ms.
 |---|---|
 | `POST /api/auth/register` | Create an account (9 digits + `@sdu.edu.kz`, strong password) |
 | `POST /api/auth/login` / `logout` | Start or end a session |
+| `POST /api/auth/guest` | Come in as a visitor, without an account |
 | `GET /api/auth/me` | The signed-in account |
 | `GET /api/search?q=...&context=...` | The US1 endpoint: directions, map position, suggestions. Understands room codes, hall names (`A1`), faculties (`Business School`), blocks (`Block D`) and services. `context` carries the room number a previous answer asked about, which is what makes a follow-up like "Engineering" resolve "204" |
 | `GET /api/map` | All three floors as vector geometry |
@@ -237,6 +251,11 @@ Nothing is invented — every sentence comes out of the plan geometry:
   on the plan.
 - Answers are in English. Questions are understood in English and Russian;
   full multilingual answers are planned for US6.
+- **Staff cannot register yet.** The sign-up rule is exactly nine digits plus
+  `@sdu.edu.kz`, which is a student number. A lecturer's address is usually a
+  name (`aidana.serikova@sdu.edu.kz`) and is refused. Either widen the rule to
+  any `@sdu.edu.kz` address and give those accounts a staff role, or leave
+  staff on the visitor door until US2 needs to tell the two apart.
 - **Free hosting has no persistent disk.** On Render's free plan the filesystem
   is wiped every time the service restarts, which includes waking from sleep —
   so accounts created through the sign-up form do not last. Set
