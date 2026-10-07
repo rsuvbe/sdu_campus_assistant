@@ -3,92 +3,140 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sign in — SDU Campus Assistant</title>
+<title>Sign in · SDU Campus Assistant</title>
 <meta name="description" content="Sign in with your SDU university account to use the campus assistant.">
+<script>try{var t=localStorage.getItem("sdu-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta name="color-scheme" content="light dark">
+<meta name="darkreader-lock">
+<meta name="theme-color" content="#2F345C">
 <link rel="icon" type="image/png" href="/static/img/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=4">
-<link rel="stylesheet" href="/static/auth.css?v=4">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="/static/img/sdu-entrance-night.jpg">
+<link rel="stylesheet" href="/static/styles.css?v=70">
+<link rel="stylesheet" href="/static/auth.css?v=60">
 </head>
 <body class="auth-body">
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
+  <symbol id="i-steppe" viewBox="0 0 24 24"><path d="M2.5 17.5h19M5 21h14"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5V9M6 9.5l1.6 1.6M18 9.5l-1.6 1.6"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><path d="M3.5 5h17v11h-17zM9 20h6M12 16v4"/></symbol>
+  <symbol id="i-entrance" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M3 12h11M9.5 7.5 14 12l-4.5 4.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17v.4"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><path d="M3.5 6h17v12h-17z"/><path d="m3.5 6.5 8.5 7 8.5-7"/></symbol>
+</svg>
+
 <main class="auth">
 
-  <section class="auth-aside">
-    <div class="aside-brand">
-      <span class="logo-tile lg"><img src="/static/img/sdu-logo.png" alt="SDU University"></span>
-      <div>
-        <h1>SDU Campus Assistant</h1>
-        <p>Every room in blocks C to I, redrawn from the evacuation plans.</p>
-      </div>
+  <!-- the doors every route starts from -->
+  <section class="entrance" aria-label="SDU Campus Assistant">
+    <img class="entrance-photo" src="/static/img/sdu-entrance-night.jpg" width="1280" height="963"
+         alt="The main entrance of SDU University in Kaskelen at night, the SDU mark lit above the doors">
+    <div class="entrance-top">
+      <span class="brand">
+        <span class="mark"><img src="/static/img/sdu-mark.png" alt=""></span>
+        <span class="brand-text">
+          <span class="brand-name">Campus Assistant</span>
+          <span class="brand-sub">SDU University, Kaskelen</span>
+        </span>
+      </span>
+      <div class="theme-switch on-photo" data-theme-switch></div>
     </div>
-    <div class="aside-plan" id="aside-plan"></div>
-    <ul class="aside-points">
-      <li><b>237 rooms</b> on three floors, one continuous plan per floor</li>
-      <li><b>Step-by-step directions</b> counted door by door along the real wings</li>
-      <li><b>Services</b> with live open/closed status in Almaty time</li>
-    </ul>
+    <div class="entrance-bottom">
+      <p class="entrance-line">Every route starts at these doors.</p>
+      <p class="entrance-more">Ask for any of 271 rooms in blocks A to I and get the way there, door by door, with opening hours for every office.</p>
+      <p class="credit">Photo: Tunceribrahim, Wikimedia Commons, CC0</p>
+    </div>
   </section>
 
   <section class="auth-panel">
-    <div class="auth-card">
-      <div class="auth-tabs" role="tablist" aria-label="Account">
-        <button type="button" role="tab" id="tab-login" aria-selected="true" data-mode="login">Sign in</button>
-        <button type="button" role="tab" id="tab-register" aria-selected="false" data-mode="register">Create account</button>
-      </div>
+    <div class="auth-stack">
 
-      <h2 id="auth-title">Welcome back</h2>
-      <p class="auth-lead" id="auth-lead">Sign in with your SDU account to open the campus map.</p>
-
-      <form id="auth-form" novalidate autocomplete="on">
-        <div class="field" id="field-name" hidden>
-          <label for="full_name">Full name <span class="optional">optional</span></label>
-          <input id="full_name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Aidana Serikova">
-        </div>
-
-        <div class="field">
-          <label for="email">University email</label>
-          <input id="email" name="email" type="email" inputmode="email" autocomplete="username"
-                 placeholder="240103048@sdu.edu.kz" spellcheck="false" required>
-          <p class="hint" id="email-hint">Nine digits and <b>@sdu.edu.kz</b> — the address printed on your student card.</p>
-        </div>
-
-        <div class="field">
-          <label for="password">Password</label>
-          <div class="pw-wrap">
-            <input id="password" name="password" type="password" autocomplete="current-password"
-                   maxlength="72" required>
-            <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password">Show</button>
+      <!-- the account card, issued to SDU addresses -->
+      <div class="auth-form-wrap issue-card">
+        <div class="card-band"><span>SDU account</span><span class="band-where">Students</span></div>
+        <div class="issue-body">
+          <div class="auth-tabs" role="tablist" aria-label="Account">
+            <button type="button" role="tab" id="tab-login" aria-selected="true" data-mode="login">Sign in</button>
+            <button type="button" role="tab" id="tab-register" aria-selected="false" data-mode="register">Create account</button>
           </div>
-          <ul class="rules" id="rules" hidden>
-            <li data-rule="length">at least 8 characters</li>
-            <li data-rule="upper">an uppercase letter</li>
-            <li data-rule="lower">a lowercase letter</li>
-            <li data-rule="digit">a digit</li>
-            <li data-rule="special">a special character (!&nbsp;@&nbsp;#&nbsp;…)</li>
-            <li data-rule="notid">not your student ID, no spaces</li>
-          </ul>
+
+          <h1 id="auth-title">Welcome back</h1>
+          <p class="auth-lead" id="auth-lead">Sign in with your SDU account to open the campus map.</p>
+
+          <form id="auth-form" novalidate autocomplete="on">
+            <div class="field" id="field-name" hidden>
+              <label for="full_name">Full name</label>
+              <input id="full_name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Aidana Serikova"
+                     aria-describedby="name-hint">
+              <p class="hint" id="name-hint">As it is written in your student records.</p>
+            </div>
+
+            <div class="field" id="field-email">
+              <label for="email">University email</label>
+              <input id="email" name="email" type="email" inputmode="email" autocomplete="username"
+                     placeholder="240103048@sdu.edu.kz" spellcheck="false" required aria-describedby="email-hint">
+              <p class="hint" id="email-hint">Nine digits and <b>@sdu.edu.kz</b>, the address printed on your student card.</p>
+            </div>
+
+            <div class="field" id="field-password">
+              <div class="label-row">
+                <label for="password" id="password-label">Password</label>
+                <button type="button" class="linkish forgot" id="forgot-link" data-mode="forgot">Forgot password?</button>
+              </div>
+              <div class="pw-wrap">
+                <input id="password" name="password" type="password" autocomplete="current-password"
+                       maxlength="72" required>
+                <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password">Show</button>
+              </div>
+              <ul class="rules" id="rules" hidden>
+                <li data-rule="length">at least 8 characters</li>
+                <li data-rule="upper">an uppercase letter</li>
+                <li data-rule="lower">a lowercase letter</li>
+                <li data-rule="digit">a digit</li>
+                <li data-rule="special">a special character (!&nbsp;@&nbsp;#&nbsp;…)</li>
+                <li data-rule="notid">not your student ID, no spaces</li>
+              </ul>
+            </div>
+
+            <div class="field" id="field-confirm" hidden>
+              <label for="confirm">Repeat the new password</label>
+              <input id="confirm" name="confirm" type="password" autocomplete="new-password" maxlength="72">
+            </div>
+
+            <p class="form-error" id="form-error" role="alert" hidden></p>
+            <p class="form-ok" id="form-ok" role="status" hidden></p>
+            <button type="submit" class="btn-go wide" id="submit">Sign in</button>
+          </form>
+
+          <p class="auth-switch" id="auth-switch">
+            No account yet? <button type="button" class="linkish" data-mode="register">Create one</button>
+          </p>
         </div>
-
-        <p class="form-error" id="form-error" role="alert" hidden></p>
-        <button type="submit" class="auth-submit" id="submit">Sign in</button>
-      </form>
-
-      <p class="auth-switch" id="auth-switch">
-        No account yet? <button type="button" class="linkish" data-mode="register">Create one</button>
-      </p>
-
-      <div class="auth-guest">
-        <span class="or">or</span>
-        <button type="button" id="guest">Continue as a visitor</button>
-        <p>Visiting the campus? Find a room and read the map without an account.</p>
       </div>
+
+      <!-- the visitor pass: the same card, handed out at the front desk -->
+      <div class="auth-guest pass-card">
+        <div class="pass-band"><span>Visitor pass</span><span>No account needed</span></div>
+        <div class="pass-body">
+          <p>Visiting the campus? Find a room, read the plan and check opening hours without an account.</p>
+          <button type="button" id="guest">
+            <svg class="i" aria-hidden="true"><use href="#i-entrance"/></svg>Continue as a visitor
+          </button>
+        </div>
+      </div>
+
+      <p class="auth-foot">Accounts are limited to SDU addresses. Passwords are stored as salted PBKDF2 hashes.</p>
     </div>
-    <p class="auth-foot">Accounts are limited to SDU addresses. Passwords are stored as salted PBKDF2 hashes.</p>
   </section>
 
 </main>
-<script src="/static/auth.js?v=4"></script>
+<script src="/static/theme.js?v=5"></script>
+<script src="/static/auth.js?v=30"></script>
 </body>
 </html>

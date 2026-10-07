@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your profile · SDU Campus Assistant</title>
+<meta name="description" content="Your SDU Campus Assistant account: change your password or sign out.">
+<script>try{var t=localStorage.getItem("sdu-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta name="color-scheme" content="light dark">
+<meta name="darkreader-lock">
+<meta name="theme-color" content="#2F345C">
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css?v=70">
+<link rel="stylesheet" href="/static/auth.css?v=60">
+</head>
+<body class="profile-body">
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
+  <symbol id="i-steppe" viewBox="0 0 24 24"><path d="M2.5 17.5h19M5 21h14"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5V9M6 9.5l1.6 1.6M18 9.5l-1.6 1.6"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><path d="M3.5 5h17v11h-17zM9 20h6M12 16v4"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H5M11.5 5.5 5 12l6.5 6.5"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M3 12h11M7.5 7.5 3 12l4.5 4.5"/></symbol>
+  <symbol id="i-entrance" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M3 12h11M9.5 7.5 14 12l-4.5 4.5"/></symbol>
+</svg>
+
+<header class="bar">
+  <a class="brand" href="/" aria-label="SDU Campus Assistant, back to the map">
+    <span class="mark"><img src="/static/img/sdu-mark.png" alt=""></span>
+    <span class="brand-text">
+      <span class="brand-name">Campus Assistant</span>
+      <span class="brand-sub">SDU University</span>
+    </span>
+  </a>
+  <div class="bar-end">
+    <div class="theme-switch" data-theme-switch></div>
+    <a class="icon-btn back" href="/"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg><span>Back to the map</span></a>
+  </div>
+</header>
+
+<main class="profile">
+
+  <!-- a visitor has no account, so no profile: they hold a visitor pass -->
+  <div class="profile-grid" id="visitor" hidden>
+    <div class="pass-card big">
+      <div class="pass-band"><span>Visitor pass</span><span>SDU University</span></div>
+      <div class="pass-body">
+        <h1>No profile for visitors</h1>
+        <p class="auth-lead">You're looking around without an account. Sign in with your SDU address to have a profile and change your password.</p>
+        <a class="btn-go wide" href="/login">Sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-grid" id="member" hidden>
+    <section class="id-card" aria-labelledby="p-title">
+      <div class="card-band"><span>SDU University</span><span class="band-where">Student</span></div>
+      <div class="id-card-body">
+        <div class="id-photo" id="p-initials" aria-hidden="true"></div>
+        <div class="id-who">
+          <h1 id="p-title" class="visually-hidden">Your profile</h1>
+          <p class="id-name" id="p-headline"></p>
+          <p class="id-role">Campus Assistant account</p>
+        </div>
+      </div>
+      <dl class="fields">
+        <div class="wide"><dt>Full name</dt><dd id="p-name"></dd></div>
+        <div class="wide"><dt>University email</dt><dd id="p-email"></dd></div>
+        <div class="wide"><dt>Student ID</dt><dd id="p-id"></dd></div>
+      </dl>
+      <div class="id-foot">
+        <button type="button" class="btn-line" id="signout"><svg class="i" aria-hidden="true"><use href="#i-out"/></svg>Sign out</button>
+        <p>Ends this session on this device. Use it on shared computers.</p>
+      </div>
+    </section>
+
+    <section class="pw-card" aria-labelledby="pw-title">
+      <h2 class="section-title" id="pw-title">Change password</h2>
+      <p class="auth-lead">You'll stay signed in here; anywhere else signed in with the old password is signed out.</p>
+      <form id="pw-form" novalidate autocomplete="on">
+        <input type="text" name="username" id="p-username" autocomplete="username" hidden>
+        <div class="field" id="field-current_password">
+          <label for="current_password">Current password</label>
+          <div class="pw-wrap">
+            <input id="current_password" type="password" autocomplete="current-password" maxlength="72" required>
+            <button type="button" class="pw-toggle" data-toggle="current_password" aria-label="Show password">Show</button>
+          </div>
+        </div>
+        <div class="field" id="field-new_password">
+          <label for="new_password">New password</label>
+          <div class="pw-wrap">
+            <input id="new_password" type="password" autocomplete="new-password" maxlength="72" required>
+            <button type="button" class="pw-toggle" data-toggle="new_password" aria-label="Show password">Show</button>
+          </div>
+          <ul class="rules" id="rules">
+            <li data-rule="length">at least 8 characters</li>
+            <li data-rule="upper">an uppercase letter</li>
+            <li data-rule="lower">a lowercase letter</li>
+            <li data-rule="digit">a digit</li>
+            <li data-rule="special">a special character (!&nbsp;@&nbsp;#&nbsp;…)</li>
+            <li data-rule="notid">not your student ID, no spaces</li>
+          </ul>
+        </div>
+        <div class="field" id="field-confirm">
+          <label for="confirm">Repeat the new password</label>
+          <input id="confirm" type="password" autocomplete="new-password" maxlength="72" required>
+        </div>
+        <p class="form-error" id="form-error" role="alert" hidden></p>
+        <p class="form-ok" id="form-ok" role="status" hidden></p>
+        <button type="submit" class="btn-go wide" id="pw-submit">Change password</button>
+      </form>
+    </section>
+  </div>
+</main>
+<script src="/static/theme.js?v=5"></script>
+<script src="/static/profile.js?v=2"></script>
+</body>
+</html>
