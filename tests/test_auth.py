@@ -2,6 +2,8 @@
 Accounts: only a 9-digit SDU address with a strong password gets in, and the
 main page stays closed until it does.
 """
+import json
+
 import pytest
 
 from app.auth import AuthError, hash_password, normalise_email, password_problems, verify_password
@@ -397,4 +399,57 @@ def test_the_mailer_sends_a_real_letter_through_smtp(monkeypatch):
     assert talk["login"] == ("noreply@example", "app-password")
     msg = talk["msg"]
     assert msg["To"] == "240103048@sdu.edu.kz" and "Reset" in msg["Subject"]
-    assert "https://campus.example/login?mode=reset#reset=abc" in msg.get_content()
+    assert "https://campus.example/login?mode=reset#reset=abc" in msg.get_body(("plain",)).get_content()
+    assert 'href="https://campus.example/login?mode=reset#reset=abc"' in msg.get_body(("html",)).get_content()
+
+
+class _BrevoReply:
+    status = 201
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc):
+        return False
+
+
+def test_brevo_carries_the_letter_over_https(monkeypatch):
+    """With a Brevo key the mail goes through Brevo's HTTP API, not SMTP: hosts
+    such as free Render block the SMTP ports."""
+    import app.mailer as mailer
+    sent = {}
+
+    def fake_urlopen(request, timeout):
+        sent["url"], sent["headers"] = request.full_url, dict(request.header_items())
+        sent["body"] = json.loads(request.data)
+        return _BrevoReply()
+
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mailer.smtplib, "SMTP", lambda *a, **k: pytest.fail("SMTP used instead of Brevo"))
+    monkeypatch.setenv("CAMPUS_BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("CAMPUS_SMTP_HOST", "smtp.example")
+    monkeypatch.setenv("CAMPUS_MAIL_FROM", "campus@example.org")
+    assert mailer.mail_configured()
+    assert mailer.send_reset_link("240103048@sdu.edu.kz", "https://campus.example/login?mode=reset#reset=abc", 30)
+    assert sent["url"] == "https://api.brevo.com/v3/smtp/email"
+    assert sent["headers"]["Api-key"] == "xkeysib-test"
+    body = sent["body"]
+    assert body["sender"]["email"] == "campus@example.org"
+    assert body["to"] == [{"email": "240103048@sdu.edu.kz"}]
+    assert "#reset=abc" in body["textContent"] and "#reset=abc" in body["htmlContent"]
+
+
+def test_a_brevo_refusal_is_logged_not_raised(monkeypatch, caplog):
+    """An unverified sender or a wrong key: the person was already answered, so
+    the reason goes to the log for whoever runs the site."""
+    import io
+    import urllib.error
+    import app.mailer as mailer
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 400, "Bad Request", {},
+                                     io.BytesIO(b'{"message":"sender not valid"}'))
+
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", refuse)
+    monkeypatch.setenv("CAMPUS_BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("CAMPUS_MAIL_FROM", "campus@example.org")
+    assert mailer.send_reset_link("240103048@sdu.edu.kz", "https://campus.example/x", 30) is False
+    assert "sender not valid" in caplog.text

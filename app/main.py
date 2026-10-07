@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import (GUEST, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
-                   default_db_path, normalise_email, seed_account)
+                   database_url, default_db_path, normalise_email, seed_account)
 from .engine import CampusIndex
 from .floorplan import CampusMap
 from .mailer import mail_configured, send_reset_link
@@ -32,14 +32,17 @@ SECURE_COOKIES = os.environ.get("CAMPUS_SECURE_COOKIES", "").lower() in ("1", "t
 # Taken from the configuration and never from the request, whose Host header the
 # caller controls — otherwise anyone could have a reset link mailed out that
 # points at their own server.
-PUBLIC_URL = os.environ.get("CAMPUS_PUBLIC_URL", "").rstrip("/")
+# On Vercel the production address is known without being configured.
+PUBLIC_URL = (os.environ.get("CAMPUS_PUBLIC_URL")
+              or (f"https://{os.environ['VERCEL_PROJECT_PRODUCTION_URL']}"
+                  if os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") else "")).rstrip("/")
 RESET_SENT = (f"If an account exists for that address, a link to choose a new password is on "
               f"its way. It works once, for {RESET_MINUTES} minutes.")
 
 index = CampusIndex.load(DB_PATH)
 campus_map = CampusMap(index)
 index.attach_map(campus_map)
-users = UserStore(default_db_path(BASE_DIR))
+users = UserStore(default_db_path(BASE_DIR), database_url())
 seeded = seed_account(users, os.environ.get("CAMPUS_SEED_ACCOUNT", ""),
                       os.environ.get("CAMPUS_SEED_NAME"))
 
@@ -154,7 +157,8 @@ def forgot_password(request: Request, background: BackgroundTasks,
 
     if not mail_configured() or not PUBLIC_URL:
         logging.getLogger("campus.mail").error(
-            "Password reset requested, but mail is not set up: set CAMPUS_SMTP_HOST and CAMPUS_PUBLIC_URL.")
+            "Password reset requested, but mail is not set up: set CAMPUS_BREVO_API_KEY (or "
+            "CAMPUS_SMTP_HOST) and CAMPUS_PUBLIC_URL.")
         return {"ok": False, "delivery": "unavailable",
                 "message": "Password reset by e-mail isn't switched on for this site yet. "
                            "Ask the site's administrator to reset your password."}

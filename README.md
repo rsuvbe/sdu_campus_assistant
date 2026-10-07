@@ -53,8 +53,6 @@ The university's own list of offices, their rooms and hours:
 | School of Information Technologies and Applied Mathematics — dean's office | F212, F213 | Mon–Fri 08:30–17:30; written applications 10:00–11:00 and 14:00–15:00 |
 | School of Social Sciences, Business and Law — dean's office | D212, D213 | Mon–Fri 08:30–17:30 |
 | Center for Multidisciplinary Education — dean's office | H210 | Mon–Fri 08:30–17:30 |
-| Strategic Development Department | I214 | — |
-| Inclusive Education Office | I113 | — |
 | Educational Methodical Center | H107 | — |
 
 - A lunch break is two opening intervals on one day; the status says "Open until
@@ -397,12 +395,11 @@ Nothing is invented — every sentence comes out of the plan geometry:
   (08:00–18:00), as the university's list says.
 - **Office days are assumed.** The list gives "8:30–17:30" without days; offices
   are taken as Monday to Friday. The cafeteria's hours are still approximate,
-  and the Medcenter, Moodle help, the Strategic Development Department, the
-  Inclusive Education Office and the Educational Methodical Center have none on
+  and the Medcenter, Moodle help and the Educational Methodical Center have none on
   file — the app says so rather than guessing.
-- **I113 and I214 are approximate.** Block I has no plan; the two rooms the
-  university names on its west side are drawn where Block H has H111 and H214,
-  dashed like the rest of Block I.
+- **Block I's two offices are left out.** The university names the Strategic
+  Development Department (I214) and the Inclusive Education Office (I113) in
+  Block I, which has no plan; neither the rooms nor the offices are listed.
 - **One colour-map reading is an inference.** The table-tennis corner's edges are
   read off a schematic. Red Canteen's seating runs past the top of the sheet,
   where nothing is drawn, so its outline stops at the sheet edge.
@@ -422,11 +419,9 @@ Nothing is invented — every sentence comes out of the plan geometry:
   name (`aidana.serikova@sdu.edu.kz`) and is refused. Either widen the rule to
   any `@sdu.edu.kz` address and give those accounts a staff role, or leave
   staff on the visitor door until US2 needs to tell the two apart.
-- **Free hosting has no persistent disk.** On Render's free plan the filesystem
-  is wiped every time the service restarts, which includes waking from sleep —
-  so accounts created through the sign-up form do not last. Set
-  `CAMPUS_SEED_ACCOUNT` to keep one account alive across restarts, or pay for
-  an instance with a disk and point `CAMPUS_USERS_DB` at it.
+- **Free hosting has no persistent disk.** Serverless functions and Render's
+  free plan wipe their filesystem, so accounts must not live in `users.db`
+  there. The live site keeps them in Postgres (`DATABASE_URL`, see Deployment).
 
 ---
 
@@ -446,6 +441,27 @@ git push -u origin main
 `data/campus.db` is part of the repository — the app reads the campus from it,
 so it has to be committed. `data/users.db` is ignored: accounts belong to each
 deployment, not to the source.
+
+### Vercel + Neon + Brevo (the live site)
+
+The site runs at <https://sdu-campus-assistant.vercel.app>: FastAPI as one
+Vercel Function in Frankfurt (`vercel.json`), accounts in a Neon Postgres
+database, password-reset mail through Brevo's HTTP API. All three are free.
+
+1. **Vercel.** `npx vercel login`, then `npx vercel deploy --prod` from the
+   project folder. `app/main.py` is found by itself; `.vercelignore` keeps the
+   tests, the reports and the local `users.db` out of the bundle.
+2. **Neon.** In the Vercel project: **Storage → Create Database → Neon**, region
+   Frankfurt, **Connect** to the project. That adds `DATABASE_URL`; the tables
+   are created on the first start.
+3. **Brevo.** Verify a sender (**Settings → Senders**), create an API key
+   (**SMTP & API → API Keys**), and add `CAMPUS_BREVO_API_KEY` (sensitive) and
+   `CAMPUS_MAIL_FROM` (the verified sender) to the Vercel project.
+4. Redeploy. `CAMPUS_PUBLIC_URL` and `CAMPUS_SECURE_COOKIES=true` are set on the
+   project; reset links point at the public address.
+
+Why not free Render: it blocks the SMTP ports and wipes the disk whenever the
+service sleeps, so neither accounts nor reset mail survive there.
 
 ### Render (free)
 
@@ -476,15 +492,17 @@ docker run -p 8000:8000 sdu-campus
 | Variable | Default | Meaning |
 |---|---|---|
 | `CAMPUS_DB` | `data/campus.db` | The read-only campus database |
-| `CAMPUS_USERS_DB` | `data/users.db` | Where accounts and sessions are stored |
+| `DATABASE_URL` | unset | Postgres for accounts, sessions and reset links (also read as `CAMPUS_DATABASE_URL` or `POSTGRES_URL`); unset uses SQLite |
+| `CAMPUS_USERS_DB` | `data/users.db` | The SQLite file when there is no `DATABASE_URL` (`/tmp/users.db` on Vercel) |
 | `CAMPUS_SECURE_COOKIES` | off | Set to `true` when serving over HTTPS |
 | `CAMPUS_SEED_ACCOUNT` | unset | `<email>:<password>` — one account recreated at every start, so a shared link keeps working on hosting with no persistent disk |
 | `CAMPUS_SEED_NAME` | `SDU Student` | The full name for that account (every account has one) |
-| `CAMPUS_PUBLIC_URL` | unset | The site's address, e.g. `https://sdu-campus-assistant.onrender.com` — reset links are built from it; required once mail is configured |
-| `CAMPUS_SMTP_HOST` | unset | SMTP server for the reset email; unset writes the link to the log instead |
+| `CAMPUS_PUBLIC_URL` | unset | The site's address, e.g. `https://sdu-campus-assistant.vercel.app` — reset links are built from it; on Vercel it defaults to the production address |
+| `CAMPUS_BREVO_API_KEY` | unset | Brevo API key: the reset email goes over HTTPS through Brevo |
+| `CAMPUS_SMTP_HOST` | unset | SMTP server, used when there is no Brevo key; with neither the link goes to the log |
 | `CAMPUS_SMTP_PORT` | `587` | STARTTLS; `465` for implicit TLS |
 | `CAMPUS_SMTP_USER` / `CAMPUS_SMTP_PASSWORD` | unset | SMTP login |
-| `CAMPUS_MAIL_FROM` | `CAMPUS_SMTP_USER` | Sender address |
+| `CAMPUS_MAIL_FROM` | `CAMPUS_SMTP_USER` | Sender address; with Brevo, a sender verified in the account |
 
 ---
 
