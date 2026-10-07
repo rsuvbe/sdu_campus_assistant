@@ -13,9 +13,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=73">
+<link rel="stylesheet" href="/static/styles.css?v=80">
 </head>
-<body>
+<body class="app-body">
 <a class="skip" href="#q">Skip to search</a>
 
 <!-- One icon family: 24px grid, 2px stroke. -->
@@ -70,6 +70,10 @@
     </div>
   </header>
 
+  <!-- On a phone the search and the answers are one sheet over the plan, dragged
+       by its handle; on a laptop the sheet is only a wrapper. -->
+  <div class="sheet" id="sheet" data-snap="half">
+  <button type="button" class="sheet-handle" id="sheet-handle" aria-controls="thread" aria-label="Show more of the answers"><span aria-hidden="true"></span></button>
   <form class="composer" id="composer" autocomplete="off" role="search">
     <label class="ask-label" for="q">Where do you need to be?</label>
     <div class="ask-row">
@@ -109,6 +113,7 @@
       <p class="plan-credit">The floor plans are redrawn from SDU's own evacuation sheets.</p>
     </div>
   </section>
+  </div>
 
   <section class="map" id="map" aria-label="Floor plan">
     <div class="map-bar">
@@ -138,6 +143,6 @@
 
 </div>
 <script src="/static/theme.js?v=5"></script>
-<script src="/static/app.js?v=52"></script>
+<script src="/static/app.js?v=60"></script>
 </body>
 </html>

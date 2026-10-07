@@ -37,9 +37,12 @@ const state = {
   result: null,         // last room/service answer that has a position
   view: { s: 1, fit: 1, tx: 0, ty: 0 },
   inView: null,         // the block at the centre of the stage
+  cover: 0,             // how much of the stage the answers sheet hides (phone)
 };
 
 const phone = () => matchMedia("(max-width: 1023px)").matches;
+// a phone held in the hand: the plan fills the screen and the answers are a sheet over it
+const handset = () => matchMedia("(max-width: 767px)").matches;
 const smooth = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
 
 /* ------------------------------------------------------------ API */
@@ -58,7 +61,9 @@ async function loadHeader() {
     const who = $("#account-who");
     $("#account").hidden = false;
     // a visitor carries a visitor pass; an account holder, their name
-    who.textContent = visitor ? "Visitor pass" : (user.full_name || user.student_id);
+    // on a phone the pass is just "Visitor", the second word stays for screen readers
+    if (visitor) who.innerHTML = `Visitor<span class="pass-word"> pass</span>`;
+    else who.textContent = user.full_name || user.student_id;
     who.classList.toggle("pass", visitor);
     who.title = visitor ? "Looking around without an account" : user.email;
     $("#signout-label").textContent = visitor ? "Sign in" : "Sign out";
@@ -137,6 +142,11 @@ async function ask(text) {
   if (!query) return;
   const log = $("#log");
   $("#thread").classList.add("asked");
+  if (handset()) {
+    // the keyboard goes away and the sheet makes room for the plan the answer lands on
+    $("#q").blur();
+    setSnap("half");
+  }
   const go = $("#composer .btn-go");
 
   // every question opens a turn at the top; earlier answers fold underneath it
@@ -182,10 +192,11 @@ async function ask(text) {
   showResultOnMap(data);
 }
 
-// The newest turn sits at the top of the answers: on a laptop the panel scrolls
-// back to it; on a phone the page brings it up under the search field.
+// The newest turn sits at the top of the answers: on a laptop or in the phone's
+// sheet the answers scroll back to it; on a tablet the page brings it up under
+// the search field.
 function bringIntoView(turn) {
-  if (!phone()) { $("#thread").scrollTo({ top: 0, behavior: smooth() }); return; }
+  if (!phone() || handset()) { $("#thread").scrollTo({ top: 0, behavior: smooth() }); return; }
   const top = turn.getBoundingClientRect().top + window.scrollY - $("#composer").offsetHeight - 12;
   window.scrollTo({ top: Math.max(top, 0), behavior: smooth() });
 }
@@ -425,7 +436,8 @@ function renderCard(d) {
   card.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
   const refocus = card.querySelector("[data-refocus]");
   if (refocus) refocus.addEventListener("click", () => {
-    if (phone()) $("#map").scrollIntoView({ block: "start", behavior: smooth() });
+    if (handset()) setSnap("peek");
+    else if (phone()) $("#map").scrollIntoView({ block: "start", behavior: smooth() });
     showResultOnMap(d);
   });
   const expand = card.querySelector("[data-expand]");
@@ -700,7 +712,13 @@ function markInView() {
   }
   if (id === state.inView) return;
   state.inView = id;
-  $("#block-seg").querySelectorAll("button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.block === id)));
+  const seg = $("#block-seg");
+  seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.block === id)));
+  // on a phone the rail is a strip that scrolls: keep the block in view on it
+  const current = id && seg.querySelector(`[data-block="${id}"]`);
+  if (current && seg.scrollWidth > seg.clientWidth) {
+    seg.scrollTo({ left: current.offsetLeft - (seg.clientWidth - current.offsetWidth) / 2, behavior: smooth() });
+  }
   $("#map-where").innerHTML = `<b>Floor ${state.floor.floor}</b><span>${id ? `Block ${id}` : "Whole floor"}</span>`;
 }
 
@@ -745,7 +763,12 @@ function updateDetail() {
   markInView();
 }
 
-function stageRect() { return $("#stage").getBoundingClientRect(); }
+// The part of the stage you can see: on a phone the sheet lies over its bottom,
+// so the plan centres, fits and clamps to what is left above it.
+function stageRect() {
+  const r = $("#stage").getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: Math.max(r.height - state.cover, 96) };
+}
 
 function fitView(animate) {
   if (!state.floor) return;
@@ -901,9 +924,119 @@ function setupPanZoom() {
   }).observe(stage);
 }
 
+/* ------------------------------------------------------------ phone: the sheet */
+// On a phone the search and the answers are one sheet over the plan. It rests
+// at three heights: "peek" shows the search alone, "half" shares the screen
+// with the plan, "full" is for reading. Its head drags it; a tap on the handle
+// steps it up, and from the top back to half.
+const SNAPS = ["peek", "half", "full"];
+
+function snapOffset(snap) {
+  const sheet = $("#sheet");
+  const h = sheet.offsetHeight;
+  if (snap === "full") return 0;
+  const head = $("#composer").offsetTop + $("#composer").offsetHeight;
+  const peek = h - head - parseFloat(getComputedStyle(sheet).paddingBottom || 0);
+  if (snap === "peek") return Math.max(0, peek);
+  return Math.min(Math.max(0, h - Math.round(window.innerHeight * 0.5)), peek);
+}
+
+function setSnap(snap, animate = true) {
+  if (!handset()) return;
+  const sheet = $("#sheet");
+  const prev = sheet.dataset.snap;
+  sheet.dataset.snap = snap;
+  sheet.classList.toggle("dragging", !animate);
+  const off = snapOffset(snap);
+  sheet.style.setProperty("--sheet-y", `${off}px`);
+  // what the sheet will hide once it rests, so the plan can centre above it now
+  const stage = $("#stage").getBoundingClientRect();
+  const sheetTop = $(".app").getBoundingClientRect().bottom - sheet.offsetHeight + off;
+  state.cover = Math.max(0, stage.bottom - sheetTop);
+  $("#map").style.setProperty("--cover", `${state.cover}px`);
+  const handle = $("#sheet-handle");
+  handle.setAttribute("aria-label", snap === "full" ? "Show the plan" : "Show more of the answers");
+  handle.setAttribute("aria-expanded", String(snap === "full"));
+  if (!animate) requestAnimationFrame(() => sheet.classList.remove("dragging"));
+  // the answer's room stays in sight above the sheet
+  const map = state.result?.map;
+  if (prev !== snap && snap !== "full" && map && map.floor === state.floor?.floor) {
+    focusOn(map.x, map.y, Math.max(state.view.s, ROOM_ZOOM), animate);
+  }
+}
+
+function setupSheet() {
+  const sheet = $("#sheet");
+  const handle = $("#sheet-handle");
+  let drag = null;
+  let swallowClick = false;
+
+  const offsetNow = () => new DOMMatrixReadOnly(getComputedStyle(sheet).transform).m42;
+  const begin = (e) => {
+    if (!handset() || e.button > 0) return;
+    swallowClick = false;
+    // the field and the Find button keep their own taps
+    if (e.target.closest("input, .btn-go")) return;
+    drag = { id: e.pointerId, y0: e.clientY, off0: offsetNow(), moved: false, last: e.clientY, t: e.timeStamp, v: 0 };
+  };
+  const move = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dy = e.clientY - drag.y0;
+    if (!drag.moved) {
+      if (Math.abs(dy) < 6) return;
+      drag.moved = true;
+      sheet.classList.add("dragging");
+      e.target.setPointerCapture?.(e.pointerId);
+    }
+    const max = snapOffset("peek");
+    const off = Math.min(Math.max(drag.off0 + dy, 0), max);
+    sheet.style.setProperty("--sheet-y", `${off}px`);
+    const dt = e.timeStamp - drag.t;
+    if (dt > 0) drag.v = (e.clientY - drag.last) / dt;
+    drag.last = e.clientY; drag.t = e.timeStamp;
+  };
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    sheet.classList.remove("dragging");
+    if (!d.moved) return;
+    swallowClick = true;
+    // where the flick would carry the sheet, then the nearest resting height
+    const landing = offsetNow() + d.v * 180;
+    const best = SNAPS.map((sn) => [sn, Math.abs(snapOffset(sn) - landing)]).sort((a, b) => a[1] - b[1])[0][0];
+    setSnap(best);
+  };
+  [handle, $("#composer")].forEach((el) => {
+    el.addEventListener("pointerdown", begin);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  });
+  handle.addEventListener("click", () => {
+    if (swallowClick) { swallowClick = false; return; }
+    const snap = sheet.dataset.snap;
+    setSnap(snap === "peek" ? "half" : snap === "half" ? "full" : "half");
+  });
+  // typing wants room: the sheet rises with the field above the keyboard
+  $("#q").addEventListener("focus", () => { if (handset()) setSnap("full"); });
+
+  let resizeT;
+  const settle = () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => {
+      if (handset()) setSnap(sheet.dataset.snap || "half", false);
+      else { state.cover = 0; sheet.style.removeProperty("--sheet-y"); }
+    }, 60);
+  };
+  window.addEventListener("resize", settle);
+  setSnap(sheet.dataset.snap || "half", false);
+}
+
 /* ------------------------------------------------------------ boot */
 async function boot() {
   renderExamples();
+  setupSheet();
   setupPanZoom();
   $("#composer").addEventListener("submit", (e) => {
     e.preventDefault();

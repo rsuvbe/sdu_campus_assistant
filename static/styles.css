@@ -245,6 +245,10 @@ input { caret-color: var(--dest); }
   height: 100vh; height: 100dvh;
 }
 
+/* the search and the answers: one sheet on a phone, two grid cells otherwise */
+.sheet { display: contents; }
+.sheet-handle { display: none; }
+
 /* the navy bar across the top: who made it, who you are */
 .bar {
   grid-area: bar;
@@ -896,23 +900,158 @@ input { caret-color: var(--dest); }
   .fields > div { padding-left: var(--s3); padding-right: var(--s3); }
   .hit { grid-template-columns: 4.25rem minmax(0, 1fr) auto; padding: 6px var(--s3); }
   .hit .loc { display: none; }
-  .blocks { width: 44px; margin: 6px 0 6px 6px; }
 }
-@media (max-width: 430px) {
-  /* beside the theme button, the visitor pass and sign-in there is no room for
-     the name on one line: it stands on two, "Campus" over "Assistant" */
+
+/* ---------------------------------------------------------------- phone */
+/* A phone is held like a map app: the plan fills the screen under a one-line bar,
+   and the search and the answers are one card-stock sheet laid over the plan.
+   The sheet's head is the card band (navy, guilloche, the stripe), so the search
+   reads as the top of the card it issues. It rests at three heights: "peek" (the
+   search alone), "half" (sharing the screen with the plan) and "full" (reading),
+   and is dragged by its head. The page itself never scrolls. */
+@media (max-width: 767px) {
+  :root {
+    --bar-h: calc(52px + env(safe-area-inset-top, 0px));
+    --sheet-gap: 10px;            /* the strip of plan left above a full sheet */
+    --composer-h: 0px;
+  }
+  .app-body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  .app { display: block; position: fixed; inset: 0; height: auto; min-height: 0; overflow: hidden; }
+
+  /* the bar: one line, the mark and the name, the theme and who you are */
+  .app .bar {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 9;
+    height: var(--bar-h); min-height: 0;
+    padding: env(safe-area-inset-top, 0px) var(--s3) 0;
+    gap: var(--s2);
+  }
+  .brand { gap: 10px; }
+  .mark { width: 34px; height: 34px; padding: 3px; border-radius: 7px; }
+  .brand-name { font-size: var(--t-15); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-end { gap: 6px; }
+  .bar .theme-btn, .bar #signout, .bar .icon-btn.square { width: 40px; min-width: 40px; min-height: 40px; height: 40px; padding: 0; }
+  .who.pass { padding: 4px 8px; font-size: 11px; letter-spacing: .06em; }
+  .who.pass .pass-word { display: none; }
+
+  /* the theme menu becomes a full-width list under the bar, never off the edge */
+  .bar .theme-menu {
+    position: fixed; left: var(--s3); right: var(--s3); top: calc(var(--bar-h) + 6px);
+    width: auto; z-index: 40;
+  }
+  .theme-opt { min-height: 56px; }
+  .swatch { width: 34px; height: 34px; }
+
+  /* the plan: everything under the bar. Floors and blocks share one strip. */
+  .map {
+    position: absolute; left: 0; right: 0; bottom: 0; top: var(--bar-h);
+    height: auto; min-height: 0; max-height: none; border: 0;
+    display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    background: var(--stock);
+  }
+  .map-bar, .map-body { display: contents; }
+  .map-where, .legend { display: none; }
+  .levels { grid-row: 1; grid-column: 1; align-self: center; margin: 6px 0 6px var(--s3); }
+  .levels button { width: 38px; height: 36px; }
+  /* the block rail turns on its side: a strip of blocks in walking order */
+  .blocks {
+    grid-row: 1; grid-column: 2; align-self: center;
+    position: relative;           /* the strip measures its blocks from itself */
+    flex-direction: row; width: auto; height: 42px;
+    margin: 6px var(--s3) 6px var(--s2);
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  .blocks::-webkit-scrollbar { display: none; }
+  .blocks button { flex-shrink: 0; flex-basis: 0; min-width: 36px; min-height: 0; scroll-snap-align: center; }
+  .blocks button + button::before { left: 0; top: 9px; bottom: 9px; right: auto; width: 1px; height: auto; }
+  .blocks button.here::after { left: 6px; right: 6px; }
+  .stage { grid-row: 2; grid-column: 1 / -1; background: var(--map-bg); border-top: 1px solid var(--line); }
+  /* the zoom stack and messages keep to the part of the plan the sheet leaves */
+  .zoom {
+    right: var(--s3); top: auto;
+    bottom: calc(var(--cover, 0px) + var(--s3));
+    transition: bottom 320ms var(--ease), opacity var(--fast) var(--ease);
+  }
+  .tool { width: 42px; height: 42px; }
+  .sheet[data-snap="full"] ~ .map .zoom { opacity: 0; pointer-events: none; }
+  .stage-msg { top: var(--s3); }
+
+  /* the sheet */
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 8;
+    height: calc(100% - var(--bar-h) - var(--sheet-gap));
+    display: flex; flex-direction: column;
+    background: var(--paper);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -1px 0 rgba(0, 0, 0, .06), 0 -10px 30px -12px rgba(15, 20, 50, .45);
+    overflow: hidden;
+    transform: translateY(var(--sheet-y, 50%));
+    transition: transform 360ms var(--ease);
+    will-change: transform;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sheet.dragging { transition: none; }
+  .sheet-handle {
+    flex: none; position: relative; z-index: 2;
+    display: grid; place-items: center;
+    width: 100%; height: 22px; margin: 0; padding: 0;
+    border: 0; background: var(--navy) var(--guilloche) 0 0 / 96px 20px;
+    touch-action: none; cursor: grab;
+  }
+  .sheet-handle span {
+    width: 40px; height: 5px; border-radius: 3px;
+    background: color-mix(in srgb, var(--on-navy) 45%, transparent);
+    transition: width var(--fast) var(--ease), background var(--fast) var(--ease);
+  }
+  .sheet-handle:hover span, .sheet.dragging .sheet-handle span { width: 48px; background: color-mix(in srgb, var(--on-navy) 70%, transparent); }
+  .sheet-handle:focus-visible { outline-offset: -4px; outline-color: #FFFFFF; }
+
+  .composer {
+    flex: none; position: relative; top: auto; z-index: 1;
+    padding: 0 var(--s4) calc(var(--s3) + 4px);
+    background: var(--navy) var(--guilloche) 0 -22px / 96px 20px;
+    box-shadow: inset 0 -4px 0 var(--peach);
+    touch-action: none;
+  }
+  .ask-label { font-size: var(--t-16); line-height: 1.25; margin: 0 0 var(--s2); }
+  .ask-hint { display: none; }
+  .field-q input { height: 48px; font-size: 16px; }
+  .composer .btn-go { width: 48px; height: 48px; padding: 0; flex: none; }
+  .composer .btn-go span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .composer .btn-go .i { width: 20px; height: 20px; }
+
+  .panel { flex: 1; min-height: 0; border: 0; background: var(--paper); }
+  .thread {
+    overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    max-width: none; margin: 0;
+    padding: var(--s5) var(--s4) var(--s8);
+    gap: var(--s6);
+  }
+  .sheet[data-snap="peek"] .thread { visibility: hidden; }
+  .turn { scroll-margin-top: var(--s3); }
+
+  /* first visit: things to try, two to a row as a set of small cards */
+  .destinations { grid-template-columns: 1fr 1fr; gap: var(--s2); }
+  .dest {
+    grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: start;
+    gap: 6px var(--s2); min-height: 0; height: 100%; padding: 10px 10px 12px 12px;
+  }
+  .dest .tag { grid-column: 1; grid-row: 1; }
+  .dest .what { grid-column: 1 / -1; grid-row: 2; font-size: var(--t-14); line-height: 1.3; }
+  .dest .i { grid-column: 2; grid-row: 1; width: 16px; height: 16px; margin-top: 3px; }
+  .welcome-tip { font-size: var(--t-13); }
+  .dir-row { min-height: 48px; }
+  .plan-credit { padding-bottom: var(--s2); }
+}
+@media (max-width: 374px) {
+  .brand-name { font-size: var(--t-14); letter-spacing: -0.015em; }
   .brand { gap: var(--s2); }
-  .brand-name { white-space: normal; line-height: 1.1; }
 }
-@media (max-width: 380px) {
-  .btn-go span { display: none; }
-  .btn-go { padding: 0 16px; }
-  .brand-name { font-size: var(--t-15); }
-  .mark { width: 36px; height: 36px; }
-  .bar { gap: var(--s2); }
-  .who.pass { padding: 5px 7px; letter-spacing: .03em; }
-}
-@media (max-width: 340px) {
-  /* the smallest phones: the SDU mark alone stands for the name (it keeps its label) */
+@media (max-width: 359px) {
   .bar .brand-text { display: none; }
+  .destinations { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) and (max-height: 560px) {
+  /* a phone on its side: the sheet sits beside nothing, so it peeks lower */
+  .ask-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }

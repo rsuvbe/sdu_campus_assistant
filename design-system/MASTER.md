@@ -206,9 +206,25 @@ Visitors see their **visitor pass** with "Sign in".
 |---|---|
 | ≥1360 | grid `440px | 1fr`: bar across; search well + answers left; plan right |
 | 1024–1359 | same, answers column `minmax(380px, 420px)`; key hides under 1280 |
-| 640–1023 | one column: bar · sticky search · plan band (52dvh, 340–620px) · answers (max 760px, centred); suggestions in two columns; portrait 136px |
-| <640 | as above; stats line, account name, plan credit hide; card insets 12px; portrait 96px; list rows drop the location column |
-| <380 | "Find" becomes its arrow; mark 36px |
+| 768–1023 | one column: bar · sticky search · plan band (52dvh, 340–620px) · answers (max 760px, centred); suggestions in two columns; portrait 136px |
+| <768 | **phone, held like a map app**: see below |
+| <640 | card insets 12px; portrait 96px; list rows drop the location column |
+| <375 | the name drops to 14px; <360 the SDU mark stands alone and suggestions go one per row |
+
+**Phone (<768).** The page never scrolls. A one-line 52px bar (mark, name, theme, the
+"Visitor" chip, sign in) sits over the plan, which fills the rest of the screen. Floors and
+blocks share one strip at the top of the plan: the floor switch, then the block rail turned
+on its side and scrolling, keeping the block in view centred. The search and the answers
+are one **sheet** laid over the plan (18px top corners, upward shadow): its head is the card
+band (navy, guilloche, the stripe) with a grab handle, "Where do you need to be?", the field
+and a 48px arrow button; under it, the answers on paper. The sheet rests at three heights:
+**peek** (the search alone), **half** (half the screen) and **full** (10px of plan left
+above). The head drags it, a flick carries it to the nearest height, a tap on the handle
+steps it up (and from full back to half). Focusing the field raises it to full; asking
+blurs the field and sets it to half; "Show on plan" sets it to peek. The plan centres,
+fits and clamps to the part the sheet leaves (`state.cover`), and the zoom stack rides above
+the sheet. The theme menu is a full-width list under the bar. Suggestions are two-up small
+cards.
 
 `100dvh` with `100vh` fallback; `env(safe-area-inset-*)` on the bar and the end of the thread.
 No horizontal scroll at any width (grid tracks are `minmax(0, 1fr)`).
