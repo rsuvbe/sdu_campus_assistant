@@ -19,3 +19,13 @@ services:
       # account is recreated on every start.
       - key: CAMPUS_SEED_ACCOUNT
         sync: false
+      # Password reset: the address reset links point at, and the mail server.
+      # Without CAMPUS_SMTP_HOST the link only reaches the service's log.
+      - key: CAMPUS_PUBLIC_URL
+        sync: false
+      - key: CAMPUS_SMTP_HOST
+        sync: false
+      - key: CAMPUS_SMTP_USER
+        sync: false
+      - key: CAMPUS_SMTP_PASSWORD
+        sync: false

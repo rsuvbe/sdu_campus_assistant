@@ -20,13 +20,15 @@ from app.main import app                       # noqa: E402
 
 TEST_EMAIL = "240103048@sdu.edu.kz"
 TEST_PASSWORD = "Campus#2026"
+TEST_NAME = "Aidana Serikova"
 
 
 @pytest.fixture(scope="session")
 def client():
     """A client with a signed-in account; its cookie jar keeps the session."""
     with TestClient(app) as c:
-        c.post("/api/auth/register", json={"email": TEST_EMAIL, "password": TEST_PASSWORD})
+        c.post("/api/auth/register", json={"email": TEST_EMAIL, "password": TEST_PASSWORD,
+                                           "full_name": TEST_NAME})
         yield c
 
 

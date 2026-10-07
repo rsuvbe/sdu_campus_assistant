@@ -10,6 +10,12 @@ Storage is a small SQLite file of its own (data/users.db) — campus.db stays
 read-only. Passwords are kept as PBKDF2-HMAC-SHA256 hashes with a per-user
 salt, and a session is a random token whose SHA-256 is what the table holds,
 so a copy of the database cannot be replayed as a login.
+
+A forgotten password is reset through a one-time link: a random token whose
+SHA-256 is stored, valid for RESET_MINUTES, spent on first use. Asking for one
+answers the same way whether or not the address has an account, so the form
+cannot be used to find out who is registered; a successful reset signs the
+account out everywhere.
 """
 from __future__ import annotations
 
@@ -39,6 +45,8 @@ MAX_PASSWORD = 72
 SESSION_DAYS = 14
 SESSION_COOKIE = "sdu_session"
 PBKDF2_ROUNDS = 240_000
+RESET_MINUTES = 30
+RESET_COOLDOWN_SECONDS = 60   # one link a minute per account, so the form cannot flood an inbox
 
 # Passwords that pass the character rules but are still the first thing anyone
 # would try against a student portal.
@@ -70,6 +78,24 @@ def normalise_email(raw: str) -> str:
     if not EMAIL_RE.match(email):
         raise AuthError(EMAIL_HINT, "email")
     return email
+
+
+# A name as people write it: letters of any script (Kazakh and Russian included),
+# with spaces, hyphens and apostrophes between them. At least two letters.
+NAME_RE = re.compile(r"^[^\W\d_]+(?:[ '’\-][^\W\d_]+)*$")
+MAX_NAME = 80
+
+
+def normalise_name(raw: str | None) -> str:
+    """The full name, tidied, or AuthError if it is missing or not a name."""
+    name = re.sub(r"\s+", " ", (raw or "").strip())
+    if not name:
+        raise AuthError("Enter your full name.", "full_name")
+    if len(name) > MAX_NAME:
+        raise AuthError(f"A name can be at most {MAX_NAME} characters.", "full_name")
+    if len(re.sub(r"[^\w]|\d|_", "", name)) < 2 or not NAME_RE.match(name):
+        raise AuthError("Use letters only, as your name is written: Aidana Serikova.", "full_name")
+    return name
 
 
 def student_id(email: str) -> str:
@@ -153,6 +179,12 @@ class UserStore:
                     expires_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+                CREATE TABLE IF NOT EXISTS password_resets (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id    INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                );
             """)
 
     @staticmethod
@@ -173,10 +205,10 @@ class UserStore:
         return conn
 
     # ------------------------------------------------------------- accounts
-    def register(self, email: str, password: str, full_name: str | None = None) -> dict:
+    def register(self, email: str, password: str, full_name: str | None) -> dict:
+        name = normalise_name(full_name)
         email = normalise_email(email)
         validate_password(password, email)
-        name = (full_name or "").strip()[:80] or None
         with self._connect() as conn:
             if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
                 raise AuthError("That account already exists — sign in instead.", "email")
@@ -197,6 +229,79 @@ class UserStore:
             row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if not row or not verify_password(password, row["password_hash"]):
             raise AuthError("Email or password is wrong.", "password")
+        return self._public(row)
+
+    # ------------------------------------------------------ password change
+    def change_password(self, user_id: int, current: str, new: str,
+                        keep_token: str | None = None) -> dict:
+        """Change a signed-in account's password. The current one has to be given
+        and right; the new one passes the usual rules and differs from it. Every
+        other session of the account ends, the one making the change stays."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if not row:
+                raise AuthError("This account no longer exists.", "current_password")
+            if not current or not verify_password(current, row["password_hash"]):
+                raise AuthError("Your current password is not right.", "current_password")
+            try:
+                validate_password(new, row["email"])
+            except AuthError as err:
+                raise AuthError(err.message, "new_password") from None
+            if verify_password(new, row["password_hash"]):
+                raise AuthError("Choose a password different from the current one.", "new_password")
+            conn.execute("UPDATE users SET password_hash = ? WHERE user_id = ?",
+                         (hash_password(new), user_id))
+            conn.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+                         (user_id, _token_hash(keep_token) if keep_token else ""))
+        return self._public(row)
+
+    # ------------------------------------------------------- password reset
+    def request_reset(self, email: str) -> tuple[dict, str] | None:
+        """A one-time reset token for the account, or None when there is no such
+        account (or one was issued under a minute ago). The caller answers the
+        same way in every case and only mails the token when there is one."""
+        email = normalise_email(email)
+        now = _now()
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            if not row:
+                return None
+            recent = conn.execute(
+                "SELECT 1 FROM password_resets WHERE user_id = ? AND created_at > ?",
+                (row["user_id"], (now - timedelta(seconds=RESET_COOLDOWN_SECONDS)).isoformat())).fetchone()
+            if recent:
+                return None
+            token = secrets.token_urlsafe(32)
+            # a new link replaces any older one
+            conn.execute("DELETE FROM password_resets WHERE user_id = ? OR expires_at < ?",
+                         (row["user_id"], now.isoformat()))
+            conn.execute("INSERT INTO password_resets (token_hash, user_id, created_at, expires_at)"
+                         " VALUES (?, ?, ?, ?)",
+                         (_token_hash(token), row["user_id"], now.isoformat(),
+                          (now + timedelta(minutes=RESET_MINUTES)).isoformat()))
+        return self._public(row), token
+
+    def reset_password(self, token: str, password: str) -> dict:
+        """Spend a reset token on a new password. Every session of the account
+        ends, so whoever knew the old password is signed out too."""
+        expired = AuthError("This reset link has expired or has already been used. "
+                            "Ask for a new one.", "token")
+        if not token:
+            raise expired
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT u.* FROM password_resets r JOIN users u ON u.user_id = r.user_id"
+                " WHERE r.token_hash = ? AND r.expires_at > ?",
+                (_token_hash(token), _now().isoformat())).fetchone()
+            if not row:
+                raise expired
+            validate_password(password, row["email"])
+            if verify_password(password, row["password_hash"]):
+                raise AuthError("Choose a password you haven't used for this account.", "password")
+            conn.execute("UPDATE users SET password_hash = ? WHERE user_id = ?",
+                         (hash_password(password), row["user_id"]))
+            conn.execute("DELETE FROM password_resets WHERE user_id = ?", (row["user_id"],))
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))
         return self._public(row)
 
     # ------------------------------------------------------------- sessions
@@ -270,7 +375,9 @@ def seed_account(store: UserStore, spec: str, full_name: str | None = None) -> s
     try:
         email = normalise_email(email)
         if not store.exists(email):
-            store.register(email, password, full_name)
+            # every account has a name; the seeded one gets a plain one unless
+            # CAMPUS_SEED_NAME gives it a real one
+            store.register(email, password, full_name or "SDU Student")
         return email
     except AuthError as err:
         logging.getLogger(__name__).warning("CAMPUS_SEED_ACCOUNT ignored: %s", err.message)
