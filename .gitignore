@@ -8,3 +8,6 @@ venv/
 
 # local accounts database
 data/users.db
+
+# sprint reports are handed in, not versioned
+Sprint*_Report.docx

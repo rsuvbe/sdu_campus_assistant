@@ -7,8 +7,146 @@ floor plan that was redrawn from the university's own evacuation sheets.
 
 - Backend: **FastAPI** + SQLite (`data/campus.db`, read-only)
 - Frontend: plain HTML/CSS/JS in `static/`, no build step
-- Data: 237 rooms, blocks C–I, 3 floors, digitised from the fire evacuation plans
+- Data: 268 rooms and places, blocks A–I, 3 floors, digitised from the fire evacuation plans
+  and the university's colour campus map
 - Accounts: SDU addresses (nine digits + `@sdu.edu.kz`); visitors come in without one
+
+---
+
+## Sprints 2 and 3
+
+Checked story by story against the story sheet in `tests/test_sprints_2_3.py`:
+every responsibility, QA scenario and (Fail) test script of US5 to US12, plus the
+password change US4 carried over from Sprint 1.
+
+| Story | What it is now |
+|---|---|
+| US5 Room and Facility Directory | `data/campus.sql` is the versioned source (schema and data); `tools/build_db.py` rebuilds `campus.db` from it and fails loudly on a duplicate or a dangling row; `--dump` writes it back after an edit, `--check` says whether the two match. Room numbers are unique in the database itself, and every room has a `purpose` |
+| US6 Search by Room Code | one exact result with block, floor and purpose; an unknown code says so and explains the code format |
+| US7 Search by Name and Purpose | "laboratory", "lecture hall", "labs in Block F": every room whose purpose or name matches, closest first, as a list with code, block and floor; case-insensitive |
+| US8 Plain-Language Questions | ten question forms reach the room; with two codes the one asked about wins ("I'm in D101, where is D105?"); "room 204" names its blocks and floor; an unclear question gets examples |
+| US9 Floor Plan Viewer | three continuous vector floors, blocks in corridor order, no two rooms overlapping (measured) |
+| US10 Highlight the Found Room | switches floor, highlights, centres, clears the previous highlight |
+| US11 Floor Switching, Zoom and Pan | floors switch in place keeping the zoom; zoom bounded; drag clamped so the plan stays in view; two-finger pinch on touch |
+| US12 Lecture Halls by Name | A1 to D2 answer by name with their code, drawn as traced circles, the highlight covering the hall |
+| US4 (carried over) | `/profile`: name, address, student ID, change password (current password required, rules enforced, other devices signed out), sign out |
+
+**What the data still needs from the university:** 115 rooms are on the plans
+with no recorded use, so their purpose is "Room"; Block C's floor-3 rooms are
+drawn on the sheet without numbers and are not in the directory until they are
+given.
+
+## Campus offices — October 2026
+
+The university's own list of offices, their rooms and hours:
+
+| Office | Where | Hours |
+|---|---|---|
+| Library | B, foyer | Mon–Fri 08:30–17:30, no lunch break |
+| Student Center | D109 | Mon–Fri 08:30–17:30, lunch 12:30–13:30 |
+| Advising Desk | corridor west wall, across from D109 | Mon–Fri 08:30–17:30, lunch 12:30–13:30 |
+| Moodle help | F105 | — |
+| Ay Market | the shop beside the food court, F, floor 1 | Mon–Fri 08:00–20:00, Sat–Sun 08:00–18:00 |
+| Wardrobe | C, lobby | Mon–Sat 08:30–20:30 |
+| Table tennis | beside the food court, F, floor 1 | Mon–Sat 08:30–20:30 |
+| Extension Center | F109, F110 | Mon–Fri 08:30–17:30 |
+| School of Information Technologies and Applied Mathematics — dean's office | F212, F213 | Mon–Fri 08:30–17:30; written applications 10:00–11:00 and 14:00–15:00 |
+| School of Social Sciences, Business and Law — dean's office | D212, D213 | Mon–Fri 08:30–17:30 |
+| Center for Multidisciplinary Education — dean's office | H210 | Mon–Fri 08:30–17:30 |
+| Strategic Development Department | I214 | — |
+| Inclusive Education Office | I113 | — |
+| Educational Methodical Center | H107 | — |
+
+- A lunch break is two opening intervals on one day; the status says "Open until
+  12:30, back at 13:30 after lunch" and "Lunch break, back at 13:30".
+- An office in two rooms (`service_rooms`) is routed to the first and lights up
+  both; asking for the second room names the office among its facts.
+- On the plan, a numbered room that holds an office is tinted and, where the name
+  fits between its walls, labelled with it ("Student Center"); otherwise the name
+  is on hover. The directory board lists every office with hours, open ones first,
+  folded after six.
+- The three schools' offices are their dean's offices. "Where is the dean's
+  office?" / "Где деканат?" answers with the three to choose from; naming the
+  school, its block or its faculty ("деканат юридического", "dean's office in
+  Block F") goes straight to it. The old generic "Dean's Office", which had no
+  room and guessed hours, is gone.
+- Hours from this list are marked exact (`services.hours_confirmed`); the
+  cafeteria's remain approximate and say so.
+
+## Plan update — October 2026
+
+Four new photographs of the evacuation sheets were read into the map. Three
+are reprints of sheets already in `static/plans/` with more labels on them
+(pixel-identical otherwise, so their coordinates carry straight over); the
+fourth is a wider print of floor 1 that shows what the old front sheet cut off.
+
+| Sheet | What it added |
+|---|---|
+| floor 1, wider print (`floor1_north.jpg`) | **Block B** north of the lobby: B114, the **Library** and **Red Hall** along a foyer running east, with an exit at each end |
+| floor 1, back | **Red Canteen**, **Red Coffee**, **Doner House** and the **Cafeteria** on the Block F west side; three exits that had no landmark (west by Doner House, between F and G, end of the H wing) |
+| floor 3, back | **G318–G322** in the slanted west wing of Block G; the **Red Canteen** upper hall in Block F |
+| floor 3, front | the four round halls above A1–D1 are **Study Spaces** |
+
+- The Library and the Cafeteria now have a room, so asking for them gives a
+  route and a pin on the plan, not just the opening hours. Red Canteen, Red
+  Coffee and Doner House are new services ("where can I get coffee?",
+  "где донер").
+- Places are found by their name: "Where is Red Hall?". A name several rooms
+  share ("study space") shows the first one from the lobby, lights up the
+  rest and offers each one ("Study Space 3").
+- Block B does not hang off the central corridor, so its directions count the
+  doors along the foyer instead, and room codes now start at B (`B114`, `Б114`).
+- Rooms the row logic cannot shape — an irregular hall, a slanted wing, all of
+  Block B — are drawn from outlines traced on their sheet (`OUTLINES` in
+  `app/floorplan.py`). Block B was traced on the wider print and carried onto
+  the front sheet's pixels with an affine fit on nine shared points (worst
+  error 6 px).
+
+### Second pass: the colour campus map
+
+The university's colour map of floor 1 (`plans/floor1_colour.jpg`, drawn upside
+down relative to ours) says what the rooms *are*: every icon and block colour
+was matched to a room traced on the evacuation sheets.
+
+- **Red Hall is Block A** (coral), a block of its own at the end of the Block B
+  foyer; the Library, B114, a restroom and **Administration** (the org-chart
+  icon) are Block B.
+- **The Library includes its north exit**: the evacuation path runs down the
+  passage on its east side to that exit, so the passage is drawn as Library.
+- **Information desk** and **wardrobe** in the lobby; **restrooms** at the mouth
+  of every wing on floor 1 (public on the classroom side, staff on the slanted
+  side), plus Block B's; **Student Support** is D109; the **Medcenter** as before.
+- **The food court is the size the map shows**: the dining hall (fork and
+  knife) is the whole hall in Block F — that is the Cafeteria now — the seating
+  is Red Canteen, the coffee bar Red Coffee. The shop beside it is
+  **Ay Market**, next to the **table tennis** corner.
+- **G115 and G114 were each on the wrong room.** Their points sat one room along
+  from their printed labels; they now sit on their labels, and G114–G116 and
+  G112–G113 are drawn with their real rotated outlines.
+- Restrooms sit in the corridor column at each wing mouth, drawn like the other
+  corridor rooms. The two rows south of the Block B foyer are drawn plain, the
+  rest of them unnamed; floors 2 and 3 are drawn from their rooms alone, as
+  before.
+- Restrooms: "Where is the toilet?" shows the first one from the lobby and lists
+  the rest; "туалет в блоке F" or "toilet in block G" picks that block's.
+
+### Forgot password
+
+The sign-in page has **Forgot password?**: enter the SDU address and a one-time
+link is emailed; it opens a form for a new password and signs you in.
+
+- the answer is the same whether or not the address has an account, and the
+  mail is sent after it, so the form does not reveal who is registered;
+- the token is random, stored only as a SHA-256 hash, works once, for 30
+  minutes, and at most one is issued per minute per account;
+- it travels in the link's `#fragment`, which browsers never send to a server,
+  and is wiped from the address bar as soon as the page reads it;
+- a reset signs the account out everywhere else;
+- the link is built from `CAMPUS_PUBLIC_URL`, never from the request's Host
+  header, so nobody can get a reset mailed out that points at their own server.
+
+Without SMTP settings the link is written to the server log instead of mailed,
+which is how to use it on a laptop.
 
 ---
 
@@ -49,7 +187,8 @@ on its own set of tokens (`--map-bg`, `--map-slab`, `--map-room`, `--map-wall`,
 reads as a drawing instead of glaring white with labels lost in it.
 
 **3. Accounts, and a door for visitors.** The map is behind a sign-in page. An
-account needs a university address — exactly nine digits and `@sdu.edu.kz`,
+account needs a full name (letters of any alphabet, with spaces, hyphens or
+apostrophes; required), a university address — exactly nine digits and `@sdu.edu.kz`,
 e.g. `240103048@sdu.edu.kz` — and a password that has an uppercase letter, a
 lowercase letter, a digit, a special character, at least 8 characters, no
 spaces, no student ID inside it, and nothing from the common-password list.
@@ -79,9 +218,11 @@ sdu-campus-assistant/
 │   ├── main.py        # FastAPI: API, accounts, the site
 │   ├── engine.py      # search, directions, service hours
 │   ├── floorplan.py   # the redrawn vector floor plans
-│   └── auth.py        # SDU accounts, password rules, sessions
+│   ├── auth.py        # SDU accounts, password rules, sessions, password reset
+│   └── mailer.py      # the password-reset email (SMTP, or the log in development)
 ├── data/
-│   ├── campus.db      # source of truth (read-only)
+│   ├── campus.sql     # the campus, schema and data: the versioned source
+│   ├── campus.db      # built from campus.sql by tools/build_db.py (read-only for the app)
 │   ├── users.db       # accounts, created on first run, git-ignored
 │   └── schema.sql     # exact schema of campus.db
 ├── static/
@@ -91,8 +232,8 @@ sdu-campus-assistant/
 │   ├── auth.js        # the sign-in form
 │   ├── styles.css, auth.css
 │   ├── img/           # the SDU mark, the full lockup and the favicon
-│   └── plans/         # the six original sheets, kept for reference
-├── tests/             # 130 tests: US1 clause by clause, the data, accounts, the map
+│   └── plans/         # the original sheets, the wider floor-1 print, the colour map
+├── tests/             # 180 tests: US1 clause by clause, the data, accounts, the map
 ├── requirements.txt
 ├── render.yaml        # one-click deploy on Render
 └── Dockerfile         # Railway or any Docker host
@@ -135,6 +276,9 @@ as DB Browser for SQLite. Two rules:
 
 - turn foreign keys on (`PRAGMA foreign_keys = ON`) before deleting anything,
   because SQLite ignores them otherwise;
+- write the change back to the versioned source with
+  `python3 tools/build_db.py --dump` (the test suite fails while `campus.sql`
+  and `campus.db` differ), and commit both;
 - run `pytest` afterwards. `tests/test_data.py` fails on an alias, a service or
   a floor left pointing at a room that is gone, and `tests/test_map.py` fails if
   a room stops being drawn or two rooms end up on top of each other.
@@ -158,7 +302,7 @@ conn.commit()
 pytest -v
 ```
 
-130 tests. `tests/test_us1_acceptance.py` walks the story sheet clause by clause:
+180 tests. `tests/test_us1_acceptance.py` walks the story sheet clause by clause:
 
 | US1 clause | Test |
 |---|---|
@@ -192,6 +336,9 @@ Real answer time is around 0.1–1 ms.
 |---|---|
 | `POST /api/auth/register` | Create an account (9 digits + `@sdu.edu.kz`, strong password) |
 | `POST /api/auth/login` / `logout` | Start or end a session |
+| `POST /api/auth/forgot` | Mail a one-time password-reset link (same answer for every address) |
+| `POST /api/auth/reset` | Spend the link's token on a new password; signs in, ends other sessions |
+| `POST /api/profile/password` | Change the password: current password required; other sessions end (accounts only) |
 | `POST /api/auth/guest` | Come in as a visitor, without an account |
 | `GET /api/auth/me` | The signed-in account |
 | `GET /api/search?q=...&context=...` | The US1 endpoint: directions, map position, suggestions. Understands room codes, hall names (`A1`), faculties (`Business School`), blocks (`Block D`) and services. `context` carries the room number a previous answer asked about, which is what makes a follow-up like "Engineering" resolve "204" |
@@ -243,12 +390,31 @@ Nothing is invented — every sentence comes out of the plan geometry:
   order, row sides and adjacency come straight from the digitised sheets;
   wall thicknesses and room depths are regularised so the drawing stays
   readable. The original photographs are still served under `/static/plans/`.
-- **Opening hours** for the library, cafeteria and dean's offices are
-  approximate (Mon–Fri). The Medcenter has none on file, and the app says so
-  rather than guessing.
-- The library, cafeteria and dean's offices are **not tied to rooms** yet, so
-  they show a status but no route. The Medcenter is tied to a room and appears
-  on the plan.
+- **Default hours.** Every service the university gave no hours for (the
+  Medcenter, the cafés, Moodle help, the offices, the information desk,
+  restrooms and the rest) is open 08:30–17:30, Monday to Saturday,
+  and says its hours are approximate. On a Sunday only Ay Market is open
+  (08:00–18:00), as the university's list says.
+- **Office days are assumed.** The list gives "8:30–17:30" without days; offices
+  are taken as Monday to Friday. The cafeteria's hours are still approximate,
+  and the Medcenter, Moodle help, the Strategic Development Department, the
+  Inclusive Education Office and the Educational Methodical Center have none on
+  file — the app says so rather than guessing.
+- **I113 and I214 are approximate.** Block I has no plan; the two rooms the
+  university names on its west side are drawn where Block H has H111 and H214,
+  dashed like the rest of Block I.
+- **One colour-map reading is an inference.** The table-tennis corner's edges are
+  read off a schematic. Red Canteen's seating runs past the top of the sheet,
+  where nothing is drawn, so its outline stops at the sheet edge.
+- **The colour map covers floor 1 only.** Restrooms and the other places it
+  marks are not repeated on floors 2 and 3 until a source shows them there.
+- The **dean's offices are not tied to rooms** yet, so they show a status but
+  no route. The Library, Cafeteria, Medcenter, Red Canteen, Red Coffee and
+  Doner House are tied to rooms and appear on the plan; the last three have no
+  opening hours on file and say so.
+- **Block B's letter** comes from the room label B114. The sheet does not say
+  which block the Library and Red Hall belong to; they are filed under Block B
+  because they share its foyer.
 - Answers are in English. Questions are understood in English and Russian;
   full multilingual answers are planned for US6.
 - **Staff cannot register yet.** The sign-up rule is exactly nine digits plus
@@ -313,7 +479,12 @@ docker run -p 8000:8000 sdu-campus
 | `CAMPUS_USERS_DB` | `data/users.db` | Where accounts and sessions are stored |
 | `CAMPUS_SECURE_COOKIES` | off | Set to `true` when serving over HTTPS |
 | `CAMPUS_SEED_ACCOUNT` | unset | `<email>:<password>` — one account recreated at every start, so a shared link keeps working on hosting with no persistent disk |
-| `CAMPUS_SEED_NAME` | unset | The display name for that account |
+| `CAMPUS_SEED_NAME` | `SDU Student` | The full name for that account (every account has one) |
+| `CAMPUS_PUBLIC_URL` | unset | The site's address, e.g. `https://sdu-campus-assistant.onrender.com` — reset links are built from it; required once mail is configured |
+| `CAMPUS_SMTP_HOST` | unset | SMTP server for the reset email; unset writes the link to the log instead |
+| `CAMPUS_SMTP_PORT` | `587` | STARTTLS; `465` for implicit TLS |
+| `CAMPUS_SMTP_USER` / `CAMPUS_SMTP_PASSWORD` | unset | SMTP login |
+| `CAMPUS_MAIL_FROM` | `CAMPUS_SMTP_USER` | Sender address |
 
 ---
 
