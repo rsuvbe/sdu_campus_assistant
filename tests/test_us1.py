@@ -85,11 +85,15 @@ def test_service_open_and_closed_by_schedule():
     assert index.search("cafeteria", now=saturday)["service"]["status"] == "Closed, opens Monday at 08:00"
 
 
-def test_medcenter_has_route_but_no_invented_hours():
+def test_medcenter_has_route_and_the_default_hours():
+    """No hours were given for the Medcenter, so it keeps the campus default
+    (08:30-17:30, Monday to Saturday) and says the hours are approximate."""
     body = index.search("medcenter")
     assert body["kind"] == "service"
     assert body["plan"] is not None
-    assert body["service"]["hours"] == []
+    assert {h["day"] for h in body["service"]["hours"]} == {
+        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+    assert body["service"]["hours"][0]["open"] == "08:30" and body["service"]["hours_approximate"]
 
 
 # ---------------------------------------------------------------- API surface
