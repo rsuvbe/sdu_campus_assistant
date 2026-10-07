@@ -816,11 +816,21 @@ function setupPanZoom() {
     drag = null;
   };
 
+  // A press only becomes a drag once the pointer has moved: until then it is a
+  // tap, so a room or a zoom button on the stage gets its click. The pointer is
+  // captured from that moment on, and the click that ends a drag is swallowed.
+  const DRAG_START = 4;
+  let swallowClick = false;
+  const capture = (id) => { try { stage.setPointerCapture(id); } catch { /* a pointer that is already gone */ } };
+
   stage.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, a")) return;   // the zoom buttons are pressed, not dragged
     pointers.set(e.pointerId, local(e));
-    try { stage.setPointerCapture(e.pointerId); } catch { /* a pointer that is already gone */ }
-    stage.classList.add("dragging");
-    if (pointers.size === 2) startPinch(); else if (pointers.size === 1) startDrag(local(e));
+    if (pointers.size === 2) {
+      pointers.forEach((_, id) => capture(id));
+      stage.classList.add("dragging");
+      startPinch();
+    } else if (pointers.size === 1) startDrag(local(e));
   });
   stage.addEventListener("pointermove", (e) => {
     if (!pointers.has(e.pointerId)) return;
@@ -838,18 +848,37 @@ function setupPanZoom() {
       pinch.s = state.view.s; pinch.dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     } else if (drag) {
       const p = pointers.get(e.pointerId);
+      if (!drag.moved) {
+        if (Math.hypot(p.x - drag.x, p.y - drag.y) < DRAG_START) return;
+        drag.moved = true;
+        capture(e.pointerId);
+        stage.classList.add("dragging");
+      }
       state.view.tx = drag.tx + (p.x - drag.x);
       state.view.ty = drag.ty + (p.y - drag.y);
       applyView(false);
     }
   });
   const end = (e) => {
-    pointers.delete(e.pointerId);
-    if (pointers.size === 1) { pinch = null; startDrag([...pointers.values()][0]); }
+    if (!pointers.delete(e.pointerId)) return;
+    if (pinch || drag?.moved) swallowClick = true;
+    if (pointers.size === 1) {
+      pinch = null;
+      startDrag([...pointers.values()][0]);
+      drag.moved = true;   // the finger left on the glass keeps dragging
+    }
     if (pointers.size === 0) { drag = null; pinch = null; stage.classList.remove("dragging"); }
   };
+  stage.addEventListener("click", (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
   stage.addEventListener("pointerup", end);
   stage.addEventListener("pointercancel", end);
+  // a press that leaves the stage before it turned into a drag was never captured
+  stage.addEventListener("pointerleave", (e) => { if (!stage.hasPointerCapture(e.pointerId)) end(e); });
   stage.addEventListener("wheel", (e) => {
     e.preventDefault();
     const r = stageRect();

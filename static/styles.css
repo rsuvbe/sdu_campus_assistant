@@ -260,7 +260,7 @@ input { caret-color: var(--dest); }
   background: #fff; border-radius: var(--r-ctl);
 }
 .mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.brand-text { display: grid; min-width: 0; }
+.brand-text { display: grid; min-width: 0; overflow: hidden; }   /* never runs under the buttons */
 .brand-name { font-size: var(--t-16); line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
 .brand-sub { font-size: var(--t-12); line-height: 1.35; color: var(--on-navy-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar-end { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
@@ -725,7 +725,7 @@ input { caret-color: var(--dest); }
 .blocks button.here::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--peach); }
 .blocks button.here[aria-current="true"] { background: var(--navy); color: var(--on-navy); }
 
-.stage { position: relative; flex: 1; min-width: 0; overflow: hidden; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none; }
+.stage { position: relative; flex: 1; min-width: 0; overflow: hidden; overflow: clip; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none; }
 .stage.dragging { cursor: grabbing; }
 .canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .canvas.animate { transition: transform 640ms var(--ease); }
@@ -898,9 +898,21 @@ input { caret-color: var(--dest); }
   .hit .loc { display: none; }
   .blocks { width: 44px; margin: 6px 0 6px 6px; }
 }
+@media (max-width: 430px) {
+  /* beside the theme button, the visitor pass and sign-in there is no room for
+     the name on one line: it stands on two, "Campus" over "Assistant" */
+  .brand { gap: var(--s2); }
+  .brand-name { white-space: normal; line-height: 1.1; }
+}
 @media (max-width: 380px) {
   .btn-go span { display: none; }
   .btn-go { padding: 0 16px; }
   .brand-name { font-size: var(--t-15); }
   .mark { width: 36px; height: 36px; }
+  .bar { gap: var(--s2); }
+  .who.pass { padding: 5px 7px; letter-spacing: .03em; }
+}
+@media (max-width: 340px) {
+  /* the smallest phones: the SDU mark alone stands for the name (it keeps its label) */
+  .bar .brand-text { display: none; }
 }

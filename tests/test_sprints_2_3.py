@@ -315,6 +315,16 @@ def test_us11_two_fingers_pinch_to_zoom():
     assert "pointers.size === 2" in APP_JS and "startPinch()" in APP_JS
 
 
+def test_us11_a_tap_is_not_a_drag():
+    """The zoom buttons and the rooms sit on the plan: pressing them must not start
+    a drag that captures the pointer and swallows their click, and the stage must
+    not scroll when a button on it takes the focus."""
+    assert 'if (e.target.closest("button, a")) return;' in APP_JS
+    assert "Math.hypot(p.x - drag.x, p.y - drag.y) < DRAG_START" in APP_JS
+    css = (BASE_DIR / "static" / "styles.css").read_text()
+    assert re.search(r"\.stage \{[^}]*overflow: clip", css)
+
+
 def test_us11_switching_floors_keeps_the_zoom():
     assert "const before = state.floor ? { ...state.view } : null;" in APP_JS
     assert "if (zoomed) focusOn(spot.x, spot.y, before.s, false);" in APP_JS
