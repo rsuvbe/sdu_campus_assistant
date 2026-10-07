@@ -261,14 +261,23 @@ def _at(day, hour, minute=0):
     ("school of information technologies", "School of Information Technologies and Applied Mathematics", "F212"),
     ("school of social sciences", "School of Social Sciences, Business and Law", "D212"),
     ("Center for Multidisciplinary Education", "Center for Multidisciplinary Education", "H210"),
-    ("strategic development department", "Strategic Development Department", "I214"),
-    ("inclusive education office", "Inclusive Education Office", "I113"),
     ("educational methodical center", "Educational Methodical Center", "H107"),
 ])
 def test_every_office_is_found_where_the_university_says(query, title, room):
     answer = index.search(query)
     assert answer["kind"] == "service" and answer["title"] == title
     assert answer["room"]["room_number"] == room and answer["map"]
+
+
+@pytest.mark.parametrize("query", ["strategic development department", "inclusive education office",
+                                   "I113", "I214"])
+def test_the_block_i_offices_are_gone(query):
+    """Block I has no plan, so its two offices (I113, I214) are not in the
+    directory at all: neither as rooms nor as services."""
+    answer = index.search(query)
+    assert answer["kind"] != "service" and "I113" not in str(answer.get("room")) and "I214" not in str(answer.get("room"))
+    names = {svc["name"] for svc in index.services.values()}
+    assert not names & {"Strategic Development Department", "Inclusive Education Office"}
 
 
 @pytest.mark.parametrize("moment, status", [

@@ -463,8 +463,6 @@ INSERT INTO "room_aliases" VALUES(326,'F-3-RED-CANTEEN-3','red canteen 3rd floor
 INSERT INTO "room_aliases" VALUES(327,'F-3-RED-CANTEEN-3','red canteen floor 3');
 INSERT INTO "room_aliases" VALUES(328,'F-3-RED-CANTEEN-3','red canteen 3 floor');
 INSERT INTO "room_aliases" VALUES(329,'D-1-ADVISING-DESK','advising-desk');
-INSERT INTO "room_aliases" VALUES(330,'I-1-I113','i113');
-INSERT INTO "room_aliases" VALUES(331,'I-2-I214','i214');
 CREATE TABLE rooms (
     room_id             TEXT PRIMARY KEY,
     floor_id            TEXT NOT NULL REFERENCES floors(floor_id) ON DELETE CASCADE,
@@ -748,8 +746,6 @@ INSERT INTO "rooms" VALUES('G-1-STAFF-RESTROOM-G','G-1','STAFF-RESTROOM-G','Staf
 INSERT INTO "rooms" VALUES('F-1-TABLE-TENNIS','F-1','TABLE-TENNIS','Table tennis','SPORT','MAIN','fire_plan',195.0,430.0,NULL,1,NULL,NULL,'Sports and games');
 INSERT INTO "rooms" VALUES('F-1-AY-MARKET','F-1','AY-MARKET','Ay Market','SHOP','MAIN','fire_plan',303.0,412.0,NULL,1,NULL,NULL,'Shop');
 INSERT INTO "rooms" VALUES('D-1-ADVISING-DESK','D-1','ADVISING-DESK','Advising Desk','OFFICE','MAIN','fire_plan',381.0,795.0,NULL,1,NULL,NULL,'Office');
-INSERT INTO "rooms" VALUES('I-1-I113','I-1','I113','I113','OFFICE',NULL,'approximated_from_H',224.1,1060.3,NULL,1,NULL,NULL,'Office');
-INSERT INTO "rooms" VALUES('I-2-I214','I-2','I214','I214','OFFICE',NULL,'approximated_from_H',185.7,1034.5,NULL,1,NULL,NULL,'Office');
 CREATE TABLE service_aliases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     service_id TEXT NOT NULL REFERENCES services(service_id) ON DELETE CASCADE,
@@ -865,12 +861,6 @@ INSERT INTO "service_aliases" VALUES(114,'SVC_SSBL','школа социальн
 INSERT INTO "service_aliases" VALUES(115,'SVC_CMDE','multidisciplinary education');
 INSERT INTO "service_aliases" VALUES(116,'SVC_CMDE','multidisciplinary');
 INSERT INTO "service_aliases" VALUES(117,'SVC_CMDE','мультидисциплинарн');
-INSERT INTO "service_aliases" VALUES(118,'SVC_STRATEGY','strategic development');
-INSERT INTO "service_aliases" VALUES(119,'SVC_STRATEGY','strategy department');
-INSERT INTO "service_aliases" VALUES(120,'SVC_STRATEGY','стратегического развития');
-INSERT INTO "service_aliases" VALUES(121,'SVC_INCLUSIVE','inclusive education');
-INSERT INTO "service_aliases" VALUES(122,'SVC_INCLUSIVE','inclusive');
-INSERT INTO "service_aliases" VALUES(123,'SVC_INCLUSIVE','инклюзив');
 INSERT INTO "service_aliases" VALUES(124,'SVC_METHODICAL','educational methodical');
 INSERT INTO "service_aliases" VALUES(125,'SVC_METHODICAL','methodical center');
 INSERT INTO "service_aliases" VALUES(126,'SVC_METHODICAL','methodical');
@@ -967,12 +957,6 @@ INSERT INTO "service_hours" VALUES(81,'SVC_DONER_HOUSE',2,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(82,'SVC_DONER_HOUSE',3,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(83,'SVC_DONER_HOUSE',4,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(84,'SVC_DONER_HOUSE',5,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(85,'SVC_INCLUSIVE',0,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(86,'SVC_INCLUSIVE',1,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(87,'SVC_INCLUSIVE',2,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(88,'SVC_INCLUSIVE',3,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(89,'SVC_INCLUSIVE',4,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(90,'SVC_INCLUSIVE',5,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(91,'SVC_INFO',0,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(92,'SVC_INFO',1,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(93,'SVC_INFO',2,'08:30','17:30');
@@ -1021,12 +1005,6 @@ INSERT INTO "service_hours" VALUES(135,'SVC_STAFF_RESTROOM',2,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(136,'SVC_STAFF_RESTROOM',3,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(137,'SVC_STAFF_RESTROOM',4,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(138,'SVC_STAFF_RESTROOM',5,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(145,'SVC_STRATEGY',0,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(146,'SVC_STRATEGY',1,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(147,'SVC_STRATEGY',2,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(148,'SVC_STRATEGY',3,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(149,'SVC_STRATEGY',4,'08:30','17:30');
-INSERT INTO "service_hours" VALUES(150,'SVC_STRATEGY',5,'08:30','17:30');
 INSERT INTO "service_hours" VALUES(151,'SVC_TABLE_TENNIS',0,'08:30','20:30');
 INSERT INTO "service_hours" VALUES(152,'SVC_TABLE_TENNIS',1,'08:30','20:30');
 INSERT INTO "service_hours" VALUES(153,'SVC_TABLE_TENNIS',2,'08:30','20:30');
@@ -1079,8 +1057,6 @@ INSERT INTO "services" VALUES('SVC_EXTENSION','F-1-F109',NULL,'Extension Center'
 INSERT INTO "services" VALUES('SVC_SITAM','F-2-F212',NULL,'School of Information Technologies and Applied Mathematics','deanery',NULL,'unknown','mock',NULL,'School of IT','Written applications from students: Monday to Friday, 10:00–11:00 and 14:00–15:00.',1);
 INSERT INTO "services" VALUES('SVC_SSBL','D-2-D212',NULL,'School of Social Sciences, Business and Law','deanery',NULL,'unknown','mock',NULL,'Business & Law',NULL,1);
 INSERT INTO "services" VALUES('SVC_CMDE','H-2-H210',NULL,'Center for Multidisciplinary Education','deanery',NULL,'unknown','mock',NULL,'Multidisciplinary',NULL,1);
-INSERT INTO "services" VALUES('SVC_STRATEGY','I-2-I214',NULL,'Strategic Development Department','office',NULL,'unknown','mock',NULL,'Strategy Dept.',NULL,0);
-INSERT INTO "services" VALUES('SVC_INCLUSIVE','I-1-I113',NULL,'Inclusive Education Office','office',NULL,'unknown','mock',NULL,'Inclusive Ed.',NULL,0);
 INSERT INTO "services" VALUES('SVC_METHODICAL','H-1-H107',NULL,'Educational Methodical Center','office',NULL,'unknown','mock',NULL,'Methodical Ctr',NULL,0);
 CREATE TABLE sheet_geometry (
     sheet_id    TEXT PRIMARY KEY REFERENCES plan_sheets(sheet_id),

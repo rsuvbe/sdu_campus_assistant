@@ -55,8 +55,9 @@ def test_block_i_continues_the_corridor_past_block_h():
         assert all(shape["approx"] for shape in floor["rooms"] if shape["block"] == "I")
 
 
-# Block I's west side is only what the university has named there: I113 and I214.
-@pytest.mark.parametrize("code", ["I109", "I110", "I111", "I212", "I213"])
+# Block I has no plan: its west side is not copied from Block H, and the two
+# offices the university names there (I113, I214) are not drawn either.
+@pytest.mark.parametrize("code", ["I109", "I110", "I111", "I212", "I213", "I113", "I214"])
 def test_the_west_half_of_block_h_is_not_repeated_in_block_i(code):
     _assert_gone(code)
 

@@ -164,9 +164,6 @@ OUTLINES = {
     "H109": _box("H1", 0, 85, 108, 148),
     # floor 1, Block D: the Advising Desk on the corridor's west wall, across from D109
     "ADVISING-DESK": [(366, 772), (398, 772), (398, 818), (366, 818)],
-    # Block I has no sheet: I113 and I214 take the place of H111 and H214
-    "I113": _box("H1", 112, 192, 0, 82),
-    "I214": _box("H2", 101, 179, 0, 77),
     # floor 2, the same two blocks one floor up (back sheet)
     "G219": _box("G2", 60, 121, -95, 15, across=True),
     "G218": _box("G2", 121, 181, -95, 15, across=True),
