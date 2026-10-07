@@ -76,9 +76,11 @@ def test_every_room_can_be_found_by_its_own_number(db):
 
 def test_the_engine_loads_every_room_in_the_file(db):
     assert len(index.rooms) == db.execute("SELECT count(*) FROM rooms").fetchone()[0]
-    assert all(index.search(r["room_number"])["kind"] == "room"
-               for r in db.execute("SELECT room_number FROM rooms")
-               if not r["room_number"].startswith("MEDCENTER"))
+    # a room that houses a service (Library, Cafeteria, Medcenter) answers as
+    # that service, which still carries the room, the floor and the route
+    for room in index.rooms:
+        expected = "service" if index.hosted_service(room) else "room"
+        assert index.search(room["room_number"])["kind"] == expected, room["room_number"]
 
 
 def test_the_schema_file_still_matches_the_database(db):
