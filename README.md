@@ -503,12 +503,3 @@ docker run -p 8000:8000 sdu-campus
 | `CAMPUS_SMTP_PORT` | `587` | STARTTLS; `465` for implicit TLS |
 | `CAMPUS_SMTP_USER` / `CAMPUS_SMTP_PASSWORD` | unset | SMTP login |
 | `CAMPUS_MAIL_FROM` | `CAMPUS_SMTP_USER` | Sender address; with Brevo, a sender verified in the account |
-
----
-
-## Next: Sprint 2
-
-- **US2 Navigation.** A corridor graph (`nav_nodes` / `nav_edges` are already
-  in the schema) and a real route drawn on the vector plan.
-- **US3 Smart Recommendations.** Tie services to rooms, add exact hours, and
-  suggest a place to work during a gap in the timetable.
