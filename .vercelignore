@@ -1,14 +1,12 @@
 # Only what the site runs on goes to Vercel: app/, data/campus.db, static/, requirements.txt
-.git
-.venv
-.pytest_cache
+/*
+!/app
+!/data
+!/static
+!/requirements.txt
+!/.python-version
+!/vercel.json
 __pycache__
 *.pyc
-design-system
-tests
-tools
 data/users.db
 data/campus.sql
-*.docx
-Dockerfile
-render.yaml
