@@ -91,6 +91,9 @@ BARREL_NAME_RE = re.compile(r"^[a-d][12]$")
 DEANERY = "deanery"
 DEANERY_WORDS = ["dean's office", "deans office", "dean office", "deanery", "dean", "деканат", "декан"]
 CATEGORY_LABELS = {DEANERY: "Dean's office"}
+# Block I has no plan: its east half is copied from Block H, its west half
+# placed from a sketch of the floors. Either way the position is a guess.
+APPROXIMATE_SOURCES = {"approximated_from_H", "sketch"}
 
 # A west-side room this close to the corridor stands against the corridor wall.
 WALL_ROOM_REACH = 30.0
@@ -256,7 +259,7 @@ class CampusIndex:
             "rooms": len(self.rooms),
             "blocks": len(self.buildings),
             "floors": len({f["floor_number"] for f in self.floors.values()}),
-            "measured_rooms": sum(1 for r in self.rooms if r["source"] != "approximated_from_H"),
+            "measured_rooms": sum(1 for r in self.rooms if r["source"] not in APPROXIMATE_SOURCES),
         }
 
     def sheet_list(self) -> list[dict]:
@@ -348,7 +351,7 @@ class CampusIndex:
         if found_number:
             matches = [r for r in self.rooms
                        if re.search(rf"(?<!\d){found_number.group(1)}$", r["room_number"])]
-            matches = [r for r in matches if r["source"] != "approximated_from_H"] or matches
+            matches = [r for r in matches if r["source"] not in APPROXIMATE_SOURCES] or matches
             if len(matches) == 1:
                 return self._room_answer(matches[0])
             if matches:
@@ -540,7 +543,7 @@ class CampusIndex:
         block_label = f"Block {bid}"
         if bid == "I":
             steps.append("Keep going down the central corridor past Block H — Block I carries on from there "
-                         "and repeats the Block H layout, without its west-side rooms.")
+                         "and its classroom wings repeat the Block H layout.")
 
         zone = room["zone"]
         door: dict = {}
@@ -584,6 +587,9 @@ class CampusIndex:
         note = None
         if room["source"] == "approximated_from_H":
             note = ("Block I isn't digitised yet — this position is copied from the matching Block H room, "
+                    "so treat the door order as a best guess.")
+        elif room["source"] == "sketch":
+            note = ("Block I isn't digitised yet — this room is placed from a sketch of the floor, "
                     "so treat the door order as a best guess.")
 
         plan = None

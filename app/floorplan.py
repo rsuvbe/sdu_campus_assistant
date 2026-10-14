@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 
-from .engine import BLOCK_ORDER, NORTH_BLOCKS, barrel_name, base_name, display_code, ask_text
+from .engine import APPROXIMATE_SOURCES, BLOCK_ORDER, NORTH_BLOCKS, barrel_name, base_name, display_code, ask_text
 
 # Vertical offset applied to the back sheet of each floor, in plan pixels.
 # Each value keeps the block-to-block pitch measured on the front sheet
@@ -181,6 +181,16 @@ OUTLINES = {
     "G320": [(184, 828), (235, 828), (235, 885), (184, 885)],
     "G319": [(184, 885), (235, 885), (235, 946), (184, 946)],
     "G318": [(246, 863), (288, 863), (288, 948), (246, 948)],
+    # Block I west side, from a sketch of the floors (Block H sheet pixels, like
+    # the rest of Block I): a row of rooms against the corridor's west wall.
+    # I110/I111, I211/I212 and I310/I311 are each one lecture hall with two numbers.
+    "I110": [(213, 945), (373, 945), (373, 1245), (213, 1245)],
+    "I213": [(203, 928), (363, 928), (363, 1015), (203, 1015)],
+    "I211": [(203, 1015), (363, 1015), (363, 1190), (203, 1190)],
+    "I210": [(203, 1190), (363, 1190), (363, 1265), (203, 1265)],
+    "I312": [(183, 949), (343, 949), (343, 1014), (183, 1014)],
+    "I310": [(183, 1014), (343, 1014), (343, 1154), (183, 1154)],
+    "I309": [(183, 1154), (343, 1154), (343, 1214), (183, 1214)],
 }
 # Rooms the plans draw but nobody has named: the two rows south of the Block B
 # foyer, which the colour map shows in Block B's colour next to its restroom and
@@ -223,6 +233,10 @@ WEST_OUTLINES = {
                        _fr("G2", 0, 15), (30, 615)],
     ("S2_BACK", "H"): [_fr("H2", 0, 0), _fr("H2", 179, 0), (183, 975), (400, 975), (400, 1228),
                        _fr("H2", 0, 162)],
+    # Block I: its west rooms out to the corridor
+    ("S1_I_APPROX", "I"): [(213, 945), (390, 945), (390, 1245), (213, 1245)],
+    ("S2_I_APPROX", "I"): [(203, 928), (380, 928), (380, 1265), (203, 1265)],
+    ("S3_I_APPROX", "I"): [(183, 949), (360, 949), (360, 1214), (183, 1214)],
 }
 # Rooms whose name the plans print level even though the room is turned.
 LEVEL_LABELS = {"H109", "H110", "H111", "H212", "H213", "H214"}
@@ -805,7 +819,7 @@ class CampusMap:
             "block": room["building_id"],
             "barrel": barrel_name(room),
             "type": room["type"], "department": room["department"],
-            "approx": room["source"] == "approximated_from_H",
+            "approx": room["source"] in APPROXIMATE_SOURCES,
             "x": center[0] if center else room["_x"],
             "y": center[1] if center else room["_y"],
         }

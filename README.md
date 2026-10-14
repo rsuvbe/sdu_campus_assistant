@@ -381,9 +381,12 @@ Nothing is invented — every sentence comes out of the plan geometry:
 
 ## Honest limitations
 
-- **Block I** is not digitised. Its rooms are copied from the east half of the
-  Block H layout (`source = 'approximated_from_H'` in the database); the answer
-  says so and the map draws it with dashed outlines.
+- **Block I** is not digitised. Its classroom wings are copied from the east
+  half of the Block H layout (`source = 'approximated_from_H'` in the database)
+  and the rooms west of its corridor are placed from a sketch of the floors
+  (`source = 'sketch'`); I110/I111, I211/I212 and I310/I311 are each one
+  lecture hall answering to both numbers. The answer says the position is a
+  guess and the map draws Block I with dashed outlines.
 - **The vector plan is a redrawing, not a survey.** Room positions, door
   order, row sides and adjacency come straight from the digitised sheets;
   wall thicknesses and room depths are regularised so the drawing stays

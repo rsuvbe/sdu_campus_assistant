@@ -463,6 +463,14 @@ INSERT INTO "room_aliases" VALUES(326,'F-3-RED-CANTEEN-3','red canteen 3rd floor
 INSERT INTO "room_aliases" VALUES(327,'F-3-RED-CANTEEN-3','red canteen floor 3');
 INSERT INTO "room_aliases" VALUES(328,'F-3-RED-CANTEEN-3','red canteen 3 floor');
 INSERT INTO "room_aliases" VALUES(329,'D-1-ADVISING-DESK','advising-desk');
+INSERT INTO "room_aliases" VALUES(330,'I-1-I110','i110');
+INSERT INTO "room_aliases" VALUES(331,'I-1-I110','i111');
+INSERT INTO "room_aliases" VALUES(332,'I-2-I213','i213');
+INSERT INTO "room_aliases" VALUES(333,'I-2-I211','i211');
+INSERT INTO "room_aliases" VALUES(334,'I-2-I211','i212');
+INSERT INTO "room_aliases" VALUES(335,'I-3-I312','i312');
+INSERT INTO "room_aliases" VALUES(336,'I-3-I310','i310');
+INSERT INTO "room_aliases" VALUES(337,'I-3-I310','i311');
 CREATE TABLE rooms (
     room_id             TEXT PRIMARY KEY,
     floor_id            TEXT NOT NULL REFERENCES floors(floor_id) ON DELETE CASCADE,
@@ -698,7 +706,7 @@ INSERT INTO "rooms" VALUES('I-1-I107','I-1','I107','I107','ROOM','ENG','approxim
 INSERT INTO "rooms" VALUES('I-2-I201','I-2','I201','I201','CLASS','ENG','approximated_from_H',472.0,996.0,NULL,1,NULL,NULL,'Classroom');
 INSERT INTO "rooms" VALUES('I-2-I202','I-2','I202','I202','CLASS','ENG','approximated_from_H',572.0,996.0,NULL,1,NULL,NULL,'Classroom');
 INSERT INTO "rooms" VALUES('I-2-I203','I-2','I203','I203','CLASS','ENG','approximated_from_H',650.0,985.0,NULL,1,NULL,NULL,'Classroom');
-INSERT INTO "rooms" VALUES('I-2-I210','I-2','I210','I210','ROOM','ENG','approximated_from_H',397.0,1180.0,NULL,1,NULL,NULL,'Room');
+INSERT INTO "rooms" VALUES('I-2-I210','I-2','I210','I210','ROOM','ENG','sketch',283.0,1227.5,NULL,1,NULL,NULL,'Room');
 INSERT INTO "rooms" VALUES('I-2-I209','I-2','I209','I209','ROOM','ENG','approximated_from_H',438.0,1115.0,NULL,1,NULL,NULL,'Room');
 INSERT INTO "rooms" VALUES('I-2-I208','I-2','I208','I208','ROOM','ENG','approximated_from_H',465.0,1117.0,NULL,1,NULL,NULL,'Room');
 INSERT INTO "rooms" VALUES('I-2-I207','I-2','I207','I207','ROOM','ENG','approximated_from_H',505.0,1100.0,NULL,1,NULL,NULL,'Room');
@@ -713,7 +721,12 @@ INSERT INTO "rooms" VALUES('I-3-I307','I-3','I307','I307','ROOM','ENG','approxim
 INSERT INTO "rooms" VALUES('I-3-I306','I-3','I306','I306','ROOM','ENG','approximated_from_H',542.0,1095.0,NULL,1,NULL,NULL,'Room');
 INSERT INTO "rooms" VALUES('I-3-I305','I-3','I305','I305','ROOM','ENG','approximated_from_H',587.0,1090.0,NULL,1,NULL,NULL,'Room');
 INSERT INTO "rooms" VALUES('I-3-I304','I-3','I304','I304','ROOM','ENG','approximated_from_H',622.0,1105.0,NULL,1,NULL,NULL,'Room');
-INSERT INTO "rooms" VALUES('I-3-I309','I-3','I309','I309','ROOM','ENG','approximated_from_H',398.0,1165.0,NULL,1,NULL,NULL,'Room');
+INSERT INTO "rooms" VALUES('I-3-I309','I-3','I309','I309','ROOM','ENG','sketch',263.0,1184.0,NULL,1,NULL,NULL,'Room');
+INSERT INTO "rooms" VALUES('I-1-I110','I-1','I110','I110/I111','HALL','ENG','sketch',293.0,1095.0,NULL,1,NULL,NULL,'Lecture hall');
+INSERT INTO "rooms" VALUES('I-2-I213','I-2','I213','I213','ROOM','ENG','sketch',283.0,971.5,NULL,1,NULL,NULL,'Room');
+INSERT INTO "rooms" VALUES('I-2-I211','I-2','I211','I211/I212','HALL','ENG','sketch',283.0,1102.5,NULL,1,NULL,NULL,'Lecture hall');
+INSERT INTO "rooms" VALUES('I-3-I312','I-3','I312','I312','ROOM','ENG','sketch',263.0,981.5,NULL,1,NULL,NULL,'Room');
+INSERT INTO "rooms" VALUES('I-3-I310','I-3','I310','I310/I311','HALL','ENG','sketch',263.0,1084.0,NULL,1,NULL,NULL,'Lecture hall');
 INSERT INTO "rooms" VALUES('B-1-B114','B-1','B114','B114','ROOM',NULL,'fire_plan',433.0,78.0,NULL,1,NULL,NULL,'Room');
 INSERT INTO "rooms" VALUES('B-1-LIBRARY','B-1','LIBRARY','Library','LIBRARY','MAIN','fire_plan',607.0,22.0,NULL,1,NULL,NULL,'Library');
 INSERT INTO "rooms" VALUES('F-1-RED-CANTEEN','F-1','RED-CANTEEN','Red Canteen (1st floor)','FOOD','MAIN','fire_plan',251.0,95.0,NULL,1,NULL,NULL,'Food and drink');
@@ -1081,7 +1094,7 @@ CREATE INDEX idx_nav_edges_to   ON nav_edges(to_node_id);
 CREATE INDEX idx_service_hours_service ON service_hours(service_id);
 CREATE UNIQUE INDEX idx_rooms_room_number ON rooms(room_number);
 DELETE FROM "sqlite_sequence";
-INSERT INTO "sqlite_sequence" VALUES('room_aliases',331);
+INSERT INTO "sqlite_sequence" VALUES('room_aliases',337);
 INSERT INTO "sqlite_sequence" VALUES('service_hours',163);
 INSERT INTO "sqlite_sequence" VALUES('service_aliases',142);
 INSERT INTO "sqlite_sequence" VALUES('building_aliases',58);

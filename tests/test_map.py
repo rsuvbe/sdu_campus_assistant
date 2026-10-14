@@ -57,9 +57,39 @@ def test_block_i_continues_the_corridor_past_block_h():
 
 # Block I has no plan: its west side is not copied from Block H, and the two
 # offices the university names there (I113, I214) are not drawn either.
-@pytest.mark.parametrize("code", ["I109", "I110", "I111", "I212", "I213", "I113", "I214"])
+@pytest.mark.parametrize("code", ["I109", "I113", "I214"])
 def test_the_west_half_of_block_h_is_not_repeated_in_block_i(code):
     _assert_gone(code)
+
+
+# Block I's west side comes from a sketch: one column of rooms against the
+# corridor, north to south, where some pairs of numbers are one lecture hall.
+BLOCK_I_WEST = {1: ["I110"], 2: ["I213", "I211", "I210"], 3: ["I312", "I310", "I309"]}
+COMBINED_HALLS = {"I110": "I111", "I211": "I212", "I310": "I311"}
+
+
+@pytest.mark.parametrize("floor, codes", sorted(BLOCK_I_WEST.items()))
+def test_block_i_west_rooms_run_down_the_corridor_wall(floor, codes):
+    plan = FLOORS[floor]
+    spine = plan["spines"][0]["x"]
+    column = [next(s for s in plan["rooms"] if s["code"] == code) for code in codes]
+    assert [s["y"] for s in column] == sorted(s["y"] for s in column)
+    for shape in column:
+        assert shape["approx"] and shape["block"] == "I"
+        assert max(p[0] for p in shape["points"]) < spine - plan["spine_half"], "must stay west of the corridor"
+    for upper, lower in zip(column, column[1:]):
+        assert max(p[1] for p in upper["points"]) <= min(p[1] for p in lower["points"]) + 0.1
+
+
+@pytest.mark.parametrize("code, twin", sorted(COMBINED_HALLS.items()))
+def test_a_combined_hall_is_one_room_under_both_numbers(code, twin):
+    title = f"{code}/{twin}"
+    for query in (code, twin, f"Where is {twin}?"):
+        answer = index.search(query)
+        assert answer["kind"] == "room" and answer["title"] == title
+    shape = next(s for floor in FLOORS.values() for s in floor["rooms"] if s["code"] == code)
+    assert shape["label"] == title and shape["type"] == "HALL"
+    assert all(s["code"] != twin for floor in FLOORS.values() for s in floor["rooms"])
 
 
 @pytest.mark.parametrize("code", ["D114", "D115", "D118", "D215", "D216", "D219", "E116", "E220"])
