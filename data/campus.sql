@@ -142,6 +142,13 @@ INSERT INTO "landmarks" VALUES('EXIT_F1_B_SOUTH','B-1','exit down the passage be
 INSERT INTO "landmarks" VALUES('EXIT_F1_CANTEEN','F-1','west exit beside Doner House','exit',95.0,198.0);
 INSERT INTO "landmarks" VALUES('EXIT_F1_FG_MID','F-1','side exit between Blocks F and G','exit',550.0,530.0);
 INSERT INTO "landmarks" VALUES('EXIT_F1_H_END','H-1','exit at the far end of the Block H wing','exit',790.0,1068.0);
+INSERT INTO "landmarks" VALUES('STAIRS_LOBBY1','C-1','main lobby staircase','stairs',385.0,395.0);
+INSERT INTO "landmarks" VALUES('STAIRS_LOBBY2','C-2','main lobby staircase','stairs',310.0,485.0);
+INSERT INTO "landmarks" VALUES('STAIRS_D1','D-1','stairwell at the far end of the Block D wing','stairs',745.0,650.0);
+INSERT INTO "landmarks" VALUES('STAIRS_E1','E-1','stairwell at the far end of the Block E wing','stairs',771.0,1105.0);
+INSERT INTO "landmarks" VALUES('STAIRS_F1','F-1','stairwell at the far end of the Block F wing','stairs',715.0,293.0);
+INSERT INTO "landmarks" VALUES('STAIRS_G1','G-1','stairwell at the far end of the Block G wing','stairs',722.0,692.0);
+INSERT INTO "landmarks" VALUES('STAIRS_H1','H-1','stairwell at the far end of the Block H wing','stairs',737.0,1103.0);
 CREATE TABLE nav_edges (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     from_node_id  TEXT NOT NULL REFERENCES nav_nodes(node_id) ON DELETE CASCADE,

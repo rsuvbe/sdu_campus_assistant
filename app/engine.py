@@ -28,7 +28,19 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-CAMPUS_TZ = ZoneInfo("Asia/Almaty")
+def _campus_zone() -> ZoneInfo:
+    """Campus time. Kazakhstan moved to UTC+5 in March 2024, and a server's own
+    time-zone files can be older than that, so the copy bundled with the tzdata
+    package (kept current in requirements.txt) is preferred to the system's."""
+    try:
+        from importlib.resources import files
+        with files("tzdata.zoneinfo").joinpath("Asia/Almaty").open("rb") as fh:
+            return ZoneInfo.from_file(fh, key="Asia/Almaty")
+    except (ImportError, FileNotFoundError, ModuleNotFoundError):
+        return ZoneInfo("Asia/Almaty")
+
+
+CAMPUS_TZ = _campus_zone()
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 ORDINALS = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", 6: "sixth",
             7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth"}
@@ -90,12 +102,65 @@ BARREL_NAME_RE = re.compile(r"^[a-d][12]$")
 # its faculty ("деканат юридического", "dean's office in Block F") picks one.
 DEANERY = "deanery"
 DEANERY_WORDS = ["dean's office", "deans office", "dean office", "deanery", "dean", "деканат", "декан"]
-CATEGORY_LABELS = {DEANERY: "Dean's office"}
+CATEGORY_LABELS = {
+    "cafeteria": "Canteen", "cafe": "Café", "shop": "Shop", "library": "Library",
+    "health_center": "Health centre", "student_services": "Student services", "information": "Information",
+    "it_support": "IT support", DEANERY: "Dean's office", "office": "Office", "administrative": "Administration",
+    "sport": "Sport", "wardrobe": "Wardrobe", "restroom": "Restroom",
+}
+# The services page, browsed by category (US15): each group gathers the
+# categories a student looks for together. Every category is in exactly one.
+SERVICE_GROUPS = [
+    ("food", "Food and shops", ("cafeteria", "cafe", "shop")),
+    ("study", "Library and study", ("library",)),
+    ("health", "Health", ("health_center",)),
+    ("students", "Student services", ("student_services", "information", "it_support")),
+    ("deans", "Dean's offices", (DEANERY,)),
+    ("offices", "Offices", ("office", "administrative")),
+    ("facilities", "Facilities", ("sport", "wardrobe", "restroom")),
+]
+GROUP_OF = {cat: (key, label, n) for n, (key, label, cats) in enumerate(SERVICE_GROUPS) for cat in cats}
+# Kinds of room the campus offers many of — the computer and science labs, the
+# study spaces — listed on the services page beside the services themselves.
+# They have no opening hours: they are booked for classes.
+ROOM_COLLECTIONS = [
+    ("LAB", "Laboratory rooms", "laboratory", "study"),
+    ("STUDY", "Study spaces", "study space", "study"),
+    ("HALL", "Lecture halls", "lecture hall", "study"),
+]
 # Block I has no plan: its east half is copied from Block H, its west half
 # placed from a sketch of the floors. Either way the position is a guess.
 APPROXIMATE_SOURCES = {"approximated_from_H", "sketch"}
 
 # A west-side room this close to the corridor stands against the corridor wall.
+# A question that names where the asker starts as well as where they are going
+# ("from G108 to F204", "I'm in D101, where is D105?", "из D101 в F204"): the
+# answer is the destination, with the walk from the start (US13).
+TRIP_RES = [
+    re.compile(r"\b(?:nearest|closest)\s+(?P<b>.+?)\s+(?:from|to|near|for)\s+(?P<a>.+)$"),
+    re.compile(r"ближайш\w*\s+(?P<b>.+?)\s+(?:от|к|около|возле|рядом с)\s+(?P<a>.+)$"),
+    re.compile(r"\bbetween\s+(?P<a>.+?)\s+and\s+(?P<b>.+)$"),
+    re.compile(r"\bfrom\s+(?P<a>.+?)\s+(?:to|till|until)\s+(?P<b>.+)$"),
+    # the destination first: "how do I get to Red Hall from D217", "way to the library from G108"
+    re.compile(r"(?:\bget\s+to|\bgo\s+to|\bwalk\s+to|\bway\s+to|\breach|\bfind|\bto)\s+(?P<b>.+?)\s+from\s+(?P<a>.+)$"),
+    re.compile(r"^(?P<b>[^,]+?)\s+from\s+(?P<a>[^,]+)$"),
+    re.compile(r"(?:^|\s)(?:в|во|до|к|ко)\s+(?P<b>.+?)\s+(?:из|от)\s+(?P<a>.+)$"),
+    re.compile(r"^(?:route|directions|way)?\s*:?\s*(?P<a>[^,]+?)\s*(?:->|→|=>|—>|–>)\s*(?P<b>.+)$"),
+    re.compile(r"\b(?:i'?m|i am|we'?re|we are)\s+(?:in|at|near|by|next to)\s+(?P<a>.+?)\s*[,.;]?\s*"
+               r"(?:where(?:'s|\s+is)|how\s+(?:do|can|should)\s+i\s+get\s+to|how\s+to\s+get\s+to|"
+               r"how\s+to\s+find|take\s+me\s+to|get\s+to)\s+(?P<b>.+)$"),
+    re.compile(r"\bя\s+(?:в|во|у|около|возле|рядом с)\s+(?P<a>.+?)\s*[,.;]?\s*"
+               r"(?:где|как\s+(?:пройти|дойти|попасть|добраться)(?:\s+(?:в|во|до|к|ко))?)\s+(?P<b>.+)$"),
+    re.compile(r"(?:^|\s)(?:из|от)\s+(?P<a>.+?)\s+(?:в|во|до|к|ко)\s+(?P<b>.+)$"),
+]
+# A question that asks for the way, not only the place: it gets the walk from
+# the main entrance, which is where a route starts unless told otherwise (US14).
+ROUTE_WORDS_RE = re.compile(r"how\s+(?:do|can|should)\s+i\s+get|how\s+to\s+get|directions|\broute\b|"
+                            r"\bway\s+to\b|take\s+me|как\s+(?:пройти|дойти|попасть|добраться)|маршрут|дорог")
+ENTRANCE_WORDS = ("entrance", "main entrance", "the main entrance", "front door", "main door", "the entrance",
+                  "вход", "главный вход", "центральный вход", "кіреберіс", "басты кіреберіс")
+PLACE_FILLER_RE = re.compile(r"^(?:the|room|аудитори[яюи]|кабинет[а-я]*)\s+|[\s?!.,;:]+$")
+
 WALL_ROOM_REACH = 30.0
 # How far away a room on the west side can be and still be called its neighbour.
 WEST_NEIGHBOUR_REACH = 250.0
@@ -103,6 +168,9 @@ WEST_NEIGHBOUR_REACH = 250.0
 
 def normalize(text: str) -> str:
     return re.sub(r"[\s\-_'’.()]", "", text.strip().lower())
+
+
+ENTRANCE_KEYS = {normalize(w) for w in ENTRANCE_WORDS}
 
 
 def base_name(name: str) -> str:
@@ -163,10 +231,15 @@ class CampusIndex:
         self.building_aliases: list[tuple[str, str]] = []   # (alias, building_id), longest first
         self.named: dict[str, list[dict]] = {}   # normalised name -> rooms that carry it
         self.map = None          # CampusMap, attached after load (see app/main.py)
+        self.router = None       # Router, attached after the map (see app/main.py)
 
     def attach_map(self, campus_map) -> None:
         """Let answers carry positions on the redrawn vector plan as well."""
         self.map = campus_map
+
+    def attach_router(self, router) -> None:
+        """Let answers carry walking routes (US13, US14)."""
+        self.router = router
 
     # ------------------------------------------------------------------ load
     @classmethod
@@ -277,17 +350,158 @@ class CampusIndex:
         return sorted(out, key=lambda s: (s["floor_number"], s["section"] != "front"))
 
     def service_list(self, now: datetime | None = None) -> list[dict]:
-        return [self._service_payload(s, now) for s in self.services.values()]
+        """The services page: every service with where it is and whether it is
+        open, in category order, then the kinds of room there are many of."""
+        out = [self._service_payload(s, now) for s in self.services.values()]
+        for rtype, label, ask, group in ROOM_COLLECTIONS:
+            rooms = sorted((r for r in self.rooms if r["type"] == rtype), key=self._walk_order)
+            if not rooms:
+                continue
+            key, group_label, order = next((k, l, n) for n, (k, l, _) in enumerate(SERVICE_GROUPS) if k == group)
+            out.append({
+                "kind": "rooms", "service_id": f"ROOMS_{rtype}", "name": label, "short_name": None,
+                "category": rtype.lower(), "category_label": label,
+                "group": key, "group_label": group_label, "group_order": order,
+                "open_now": None, "status": f"{len(rooms)} rooms, booked for classes", "hours": [],
+                "hours_approximate": False, "notes": None, "ask": ask,
+                "location": self._spread(rooms),
+            })
+        # services first within a group, the kinds of room after them
+        out.sort(key=lambda s: (s["group_order"], s["kind"] == "rooms", s["category_label"] or "", s["name"]))
+        return out
+
+    def _spread(self, rooms: list[dict]) -> dict:
+        """Where a set of rooms is, in one line: the blocks and floors they cover."""
+        blocks = sorted({r["building_id"] for r in rooms}, key=BLOCK_ORDER.find)
+        floors = sorted({r["floor_number"] for r in rooms})
+        blk = (f"Block {blocks[0]}" if len(blocks) == 1 else
+               f"Blocks {blocks[0]}–{blocks[-1]}" if len(blocks) > 2 and
+               "".join(blocks) in BLOCK_ORDER else f"Blocks {human_list(blocks)}")
+        flr = (f"Floor {floors[0]}" if len(floors) == 1 else
+               f"Floors {floors[0]}–{floors[-1]}" if floors == list(range(floors[0], floors[-1] + 1))
+               else f"Floors {human_list([str(f) for f in floors])}")
+        return {"count": len(rooms), "blocks": blocks, "floors": floors, "text": f"{blk} · {flr}"}
+
+    def _service_location(self, svc: dict) -> dict | None:
+        """Room, block and floor of a service; for one with a room in many blocks
+        (the restrooms), the blocks and floors it covers."""
+        room = next((r for r in self.rooms if r["room_id"] == svc.get("room_id")), None)
+        if room:
+            return {"room": display_code(room), "code": room["room_number"],
+                    "building_id": room["building_id"], "floor_number": room["floor_number"],
+                    "text": f"Block {room['building_id']} · Floor {room['floor_number']}"
+                            + (f" · {room['room_number']}" if not is_named(room)
+                               and not room["room_number"].startswith("MEDCENTER") else "")}
+        rooms = self.named.get(normalize(svc["name"]), [])
+        return self._spread(rooms) if rooms else None
 
     def search(self, query: str, now: datetime | None = None, context: str | None = None) -> dict:
         """Answer a question. `context` is the room number a previous answer
         asked the user to pick a block for, so "204" then "Engineering" works."""
         t0 = time.perf_counter()
-        result = self._search(query, now, context)
+        result = self._trip(query, now) or self._search(query, now, context)
+        if (self.router and "directions" not in result and ROUTE_WORDS_RE.search(query.lower())
+                and self._place_of(result)):
+            result["directions"] = self.router.route(self.entrance(), self._place_of(result))
         result.setdefault("context", None)
         result["query"] = query
         result["elapsed_ms"] = round((time.perf_counter() - t0) * 1000, 3)
         return result
+
+    # ------------------------------------------------------------ directions
+    def entrance(self) -> dict:
+        from .routing import MAIN_ENTRANCE
+        return self.router.place("exit", MAIN_ENTRANCE)
+
+    def _place_of(self, answer: dict) -> dict | None:
+        """The room an answer puts on the plan, as a place a route can end at."""
+        if not self.router or answer.get("kind") not in ("room", "service", "block"):
+            return None
+        code = (answer.get("map") or {}).get("code")
+        return self.router.place("room", code) if code else None
+
+    def resolve_place(self, text: str | None) -> tuple[dict | None, dict | None]:
+        """Where a route starts or ends, from what someone typed: the main
+        entrance (also when nothing is typed), an exit by its name, or anything
+        the search understands. Returns (place, the search answer if it failed)."""
+        raw = PLACE_FILLER_RE.sub("", (text or "").strip())
+        raw = PLACE_FILLER_RE.sub("", raw)
+        key = normalize(raw)
+        if not key or key in ENTRANCE_KEYS:
+            return self.entrance(), None
+        for exit_id, ex in self.router.exits.items():
+            if key in (normalize(ex["name"]), normalize("the " + ex["name"])):
+                return self.router.place("exit", exit_id), None
+        answer = self._search(raw, None)
+        place = self._place_of(answer)
+        return place, (None if place else answer)
+
+    def _nearest_of_name(self, origin: dict, dest: dict, now: datetime | None) -> tuple[dict, dict | None]:
+        """Several rooms share a name (restrooms, study spaces): from a known start,
+        the one to walk to is the nearest, not the first from the lobby."""
+        room = next(r for r in self.rooms if r["room_number"] == dest["key"])
+        same = self.named.get(normalize(base_name(room.get("name") or ""))) if is_named(room) else None
+        if not same or len(same) < 2:
+            return dest, None
+        places = [p for p in (self.router.place("room", r["room_number"]) for r in same) if p]
+        best = min(places, key=lambda p: self.router.distance(origin, p))
+        if best["key"] == dest["key"]:
+            return dest, None
+        chosen = next(r for r in same if r["room_number"] == best["key"])
+        answer = self._room_or_service(chosen, now)
+        answer["note"] = " ".join(filter(None, [
+            answer.get("note"), f"The plans mark {len(same)} places called {base_name(room['name'])}; "
+                                f"this is the nearest one to {origin['label']}."]))
+        answer["suggestions"] = [ask_text(r) for r in same]
+        return best, answer
+
+    def _trip(self, query: str, now: datetime | None) -> dict | None:
+        """A question that names a start and a destination: the destination's
+        answer, with the walk from the start. None when it is not such a question."""
+        if not self.router:
+            return None
+        lowered = query.lower().strip()
+        m = next((m for m in (r.search(lowered) for r in TRIP_RES) if m), None)
+        if not m:
+            return None
+        frm, to = m.group("a"), m.group("b")
+        answer = self._search(PLACE_FILLER_RE.sub("", to.strip()), now)
+        dest = self._place_of(answer)
+        if not dest:
+            return None
+        origin, _ = self.resolve_place(frm)
+        note = None
+        if origin is None:
+            origin = self.entrance()
+            note = (f"I couldn't tell where \u201c{frm.strip(' ,.?')}\u201d is, so the route starts at "
+                    f"the main entrance. Pick your start under the route to change it.")
+        else:
+            dest, nearer = self._nearest_of_name(origin, dest, now)
+            if nearer:
+                answer = nearer
+        answer["directions"] = self.router.route(origin, dest)
+        if note:
+            answer["directions"]["note"] = " ".join(filter(None, [note, answer["directions"].get("note")]))
+        return answer
+
+    def directions(self, to: str, frm: str | None = None) -> dict:
+        """GET /api/route: the walk to a place, from the main entrance unless a
+        start is given (US14: the start can be any room)."""
+        dest_answer = self._search(PLACE_FILLER_RE.sub("", (to or "").strip()), None)
+        dest = self._place_of(dest_answer)
+        if not dest:
+            return {"kind": "route_error", "title": f"I couldn't find \u201c{to}\u201d",
+                    "summary": "Name the place you're going to the way you'd search for it: a room code "
+                               "like D103, a hall like A1, or a service like the library.",
+                    "suggestions": dest_answer.get("suggestions", [])}
+        origin, failed = self.resolve_place(frm)
+        if origin is None:
+            return {"kind": "route_error", "title": f"I couldn't tell where \u201c{frm}\u201d is",
+                    "summary": "Start from a room code like D103, a named place like the Library, "
+                               "or the main entrance.",
+                    "suggestions": (failed or {}).get("suggestions", [])}
+        dest, _ = self._nearest_of_name(origin, dest, None)
+        return self.router.route(origin, dest)
 
     # --------------------------------------------------------------- search
     def _search(self, query: str, now: datetime | None, context: str | None = None) -> dict:
@@ -868,7 +1082,9 @@ class CampusIndex:
 
     # --------------------------------------------------------------- services
     def _service_payload(self, svc: dict, now: datetime | None) -> dict:
-        now = now or datetime.now(CAMPUS_TZ)
+        # opening hours are campus time: a moment given in any other zone (a UTC
+        # server clock) is turned into Almaty time first; a naive one already is
+        now = now.astimezone(CAMPUS_TZ) if now and now.tzinfo else (now or datetime.now(CAMPUS_TZ))
         hours = svc["hours"]
         status, open_now = "Opening hours aren't on file yet", None
         if hours:
@@ -899,15 +1115,19 @@ class CampusIndex:
             breaks = [f"{intervals[i][1]}–{intervals[i + 1][0]}" for i in range(len(intervals) - 1)]
             table.append({"day": DAY_NAMES[d], "open": intervals[0][0], "close": intervals[-1][1],
                           "break": breaks[0] if breaks else None})
-        return {"service_id": svc["service_id"], "name": svc["name"], "short_name": svc.get("short_name"),
+        group, group_label, order = GROUP_OF.get(svc["category"], ("other", "Other", len(SERVICE_GROUPS)))
+        return {"kind": "service", "service_id": svc["service_id"], "name": svc["name"],
+                "short_name": svc.get("short_name"),
                 "category": svc["category"], "category_label": CATEGORY_LABELS.get(svc["category"]),
+                "group": group, "group_label": group_label, "group_order": order,
                 "open_now": open_now, "status": status, "hours": table,
                 "hours_approximate": not svc.get("hours_confirmed"),
-                "notes": svc.get("notes")}
+                "notes": svc.get("notes"), "ask": svc["name"],
+                "location": self._service_location(svc)}
 
     def _service_answer(self, svc: dict, now: datetime | None) -> dict:
         payload = self._service_payload(svc, now)
-        notes = (["Opening hours are approximate for now — exact timetables come in a later sprint."]
+        notes = (["These opening hours are the team's best reading and not yet confirmed by the service itself."]
                  if payload["hours"] and payload["hours_approximate"] else [])
         room = next((r for r in self.rooms if r["room_id"] == svc.get("room_id")), None)
         more = [r for r in self.rooms if r["room_id"] in svc["more_rooms"]]

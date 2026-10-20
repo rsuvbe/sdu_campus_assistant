@@ -296,6 +296,14 @@ def test_us10_the_client_switches_floor_highlights_clears_and_centres():
     assert "focusOn(focus.x, focus.y, ROOM_ZOOM, true)" in APP_JS  # bring it into view
 
 
+def test_us10_an_answer_without_a_room_clears_the_old_highlight():
+    """A room not found (or any answer with nothing to put on the plan) still
+    takes the previous room off it: only the newest search is ever lit."""
+    body = APP_JS.split("function showResultOnMap(d) {")[1].split("\n}\n")[0]
+    no_map = body.split("if (!placed) {")[1].split("return;")[0]
+    assert "state.result = null;" in no_map and "paintResult();" in no_map
+
+
 # ======================================================== US11 Floors, zoom, pan
 def test_us11_floor_buttons_redraw_without_reloading():
     assert "data-floor=" in APP_JS and "openFloor(Number(b.dataset.floor)" in APP_JS
@@ -328,6 +336,9 @@ def test_us11_a_tap_is_not_a_drag():
 def test_us11_switching_floors_keeps_the_zoom():
     assert "const before = state.floor ? { ...state.view } : null;" in APP_JS
     assert "if (zoomed) focusOn(spot.x, spot.y, before.s, false);" in APP_JS
+    # zoomed out to the whole floor, the next floor opens at that scale too,
+    # not at the zoomed-in overview the page starts with
+    assert "else if (before) zoomTo(before.s, r.width / 2, r.height / 2, false);" in APP_JS
 
 
 # ======================================================== US12 Hall names

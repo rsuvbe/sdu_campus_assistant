@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=80">
+<link rel="stylesheet" href="/static/styles.css?v=81">
 </head>
 <body class="app-body">
 <a class="skip" href="#q">Skip to search</a>
@@ -93,22 +93,25 @@
       <article class="welcome" id="welcome">
         <h2 class="sec-title">Try one of these</h2>
         <ul class="destinations" id="examples" aria-label="Try one of these"></ul>
-        <p class="welcome-tip">Or tap any room on the plan to ask about it.</p>
+        <p class="welcome-tip">Or tap any room on the plan to ask about it, or <a href="#services-page">browse the campus services</a>.</p>
       </article>
 
       <div class="log" id="log" aria-live="polite"></div>
 
-      <nav class="directory" aria-labelledby="dir-title">
+      <nav class="directory" id="services-page" aria-labelledby="dir-title">
         <div class="dir-head">
           <h2 class="sec-title" id="dir-title">Campus services</h2>
           <span class="dir-summary" id="dir-summary"></span>
         </div>
-        <ul class="dir-list" id="services">
-          <li class="dir-skel" aria-hidden="true"></li><li class="dir-skel" aria-hidden="true"></li>
-          <li class="dir-skel" aria-hidden="true"></li><li class="dir-skel" aria-hidden="true"></li>
-        </ul>
-        <button type="button" class="dir-more" id="dir-more" aria-expanded="false" aria-controls="services" hidden>All services</button>
+        <p class="dir-intro">Everything the campus offers, by category, with where it is and whether it's open now. Tap one to see it on the plan.</p>
+        <div class="dir-filter" id="dir-filter" role="group" aria-label="Show one category"></div>
+        <div class="dir-groups" id="services">
+          <ul class="dir-list" aria-hidden="true">
+            <li class="dir-skel"></li><li class="dir-skel"></li><li class="dir-skel"></li><li class="dir-skel"></li>
+          </ul>
+        </div>
       </nav>
+      <datalist id="places"></datalist>
 
       <p class="plan-credit">The floor plans are redrawn from SDU's own evacuation sheets.</p>
     </div>
@@ -143,6 +146,6 @@
 
 </div>
 <script src="/static/theme.js?v=5"></script>
-<script src="/static/app.js?v=60"></script>
+<script src="/static/app.js?v=63"></script>
 </body>
 </html>

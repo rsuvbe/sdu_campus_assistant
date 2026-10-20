@@ -22,6 +22,7 @@ from .auth import (GUEST, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError
                    database_url, default_db_path, normalise_email, seed_account)
 from .engine import CampusIndex
 from .floorplan import CampusMap
+from .routing import Router
 from .mailer import mail_configured, send_reset_link
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -42,6 +43,8 @@ RESET_SENT = (f"If an account exists for that address, a link to choose a new pa
 index = CampusIndex.load(DB_PATH)
 campus_map = CampusMap(index)
 index.attach_map(campus_map)
+router = Router(index, campus_map)
+index.attach_router(router)
 users = UserStore(default_db_path(BASE_DIR), database_url())
 seeded = seed_account(users, os.environ.get("CAMPUS_SEED_ACCOUNT", ""),
                       os.environ.get("CAMPUS_SEED_NAME"))
@@ -242,6 +245,17 @@ def search(q: str = Query(..., min_length=1, max_length=200,
            user: dict = Depends(current_user)):
     """Answer a free-form question about a room, a block or a campus service."""
     return index.search(q, context=context)
+
+
+@app.get("/api/route", tags=["directions"])
+def route(to: str = Query(..., min_length=1, max_length=200,
+                          description="Where to: a room code, a hall name or a service, e.g. 'F204'"),
+          frm: str | None = Query(None, alias="from", max_length=200,
+                                  description="Where from: any room, a named place or an exit. "
+                                              "Left out, the route starts at the main entrance."),
+          user: dict = Depends(current_user)):
+    """Step-by-step walking directions between two places, drawn on the plans too."""
+    return index.directions(to, frm)
 
 
 @app.get("/api/map", tags=["map"])

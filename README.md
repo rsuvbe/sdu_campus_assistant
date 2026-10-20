@@ -1,9 +1,10 @@
 # SDU Campus Assistant
 
 AI campus navigation and smart services assistant for SDU University.
-**Sprint 1, US1 — Conversational Location Search.** Ask where a room or a
-service is, get step-by-step directions, and watch the room light up on a
-floor plan that was redrawn from the university's own evacuation sheets.
+Ask where a room or a service is, see it light up on a floor plan redrawn
+from the university's own evacuation sheets, and get walking directions to it
+from the main entrance or from any other room. A services page lists what the
+campus offers and what is open right now.
 
 - Backend: **FastAPI** + SQLite (`data/campus.db`, read-only)
 - Frontend: plain HTML/CSS/JS in `static/`, no build step
@@ -30,6 +31,28 @@ password change US4 carried over from Sprint 1.
 | US11 Floor Switching, Zoom and Pan | floors switch in place keeping the zoom; zoom bounded; drag clamped so the plan stays in view; two-finger pinch on touch |
 | US12 Lecture Halls by Name | A1 to D2 answer by name with their code, drawn as traced circles, the highlight covering the hall |
 | US4 (carried over) | `/profile`: name, address, student ID, change password (current password required, rules enforced, other devices signed out), sign out |
+
+## Sprint 4 — Directions and campus services
+
+Checked story by story against the story sheet in `tests/test_sprint_4.py`:
+every responsibility, QA scenario and (Pass)/(Fail) test script of US13 to US16,
+and the maintenance tasks a program can check.
+
+| Story | What it is now |
+|---|---|
+| US13 Text Directions Between Two Rooms | `app/routing.py` builds a corridor graph from the plan geometry and walks it with Dijkstra. The steps name the corridor, the block, the turn, the side and the stairs ("Turn left into the Block F wing: F204 is the fourth door on your left, just after F202 and F203"), say every floor change ("take the stairwell there up to floor 2"), and count doors from the way you actually come in. Questions such as "from G108 to F204", "how do I get to Red Hall from D217", "I'm in D101, where is D105?", "из D101 в F204" and "nearest restroom to G101" get the walk. The route is drawn on the plan floor by floor, with a tag at each staircase |
+| US14 Directions from the Main Entrance | every answer that is on the plan has a **How do I get there?** button. The route starts at the main entrance, and its first step names it. "Starting from" can be changed to any room, a named place or another entrance, and the route is worked out again and replaces the old one. No device location is ever asked for |
+| US15 Campus Services Directory | the services page lists every service by category (Food and shops, Library and study, Health, Student services, Dean's offices, Offices, Facilities), with chips to show one category. Each row gives the room, block and floor (for restrooms, the blocks and floors they are in) and whether it is open now. A row opens the service on the plan with its room lit. The laboratory rooms, study spaces and lecture halls are listed as well |
+| US16 Opening Hours and Open-Now Status | weekday hours (lunch breaks included) live in `service_hours`. The status is computed in campus time, Asia/Almaty, UTC+5, even when the server clock runs on UTC; the zone comes from the bundled `tzdata` package so outdated system time-zone files cannot shift it by an hour. An open service shows its closing time, a closed one its next opening time, and a service with no hours on file is never shown as open |
+
+**Staircases.** Floors are joined only by staircases that are drawn on the
+evacuation sheets. Seven were added to `campus.sql` from the sheets: the main
+lobby staircase (floors 1–2) and the floor-1 foot of the stairwell at the far end
+of the Block D to H wings, which `campus.db` already had on floors 2 and 3.
+
+**Still to do by hand (US13, Verified):** walk three of the generated routes on
+campus and check each step. A program cannot do this, so it is left for the
+team.
 
 **What the data still needs from the university:** 115 rooms are on the plans
 with no recorded use, so their purpose is "Room"; Block C's floor-3 rooms are
@@ -214,7 +237,8 @@ person (a saved route, a timetable, a reminder) goes behind
 sdu-campus-assistant/
 ├── app/
 │   ├── main.py        # FastAPI: API, accounts, the site
-│   ├── engine.py      # search, directions, service hours
+│   ├── engine.py      # search, service hours, the services page
+│   ├── routing.py     # the corridor graph and walking directions (US13, US14)
 │   ├── floorplan.py   # the redrawn vector floor plans
 │   ├── auth.py        # SDU accounts, password rules, sessions, password reset
 │   └── mailer.py      # the password-reset email (SMTP, or the log in development)
@@ -231,7 +255,7 @@ sdu-campus-assistant/
 │   ├── styles.css, auth.css
 │   ├── img/           # the SDU mark, the full lockup and the favicon
 │   └── plans/         # the original sheets, the wider floor-1 print, the colour map
-├── tests/             # 180 tests: US1 clause by clause, the data, accounts, the map
+├── tests/             # 424 tests: every sprint's story sheet, the data, accounts, the map, the routes
 ├── requirements.txt
 ├── render.yaml        # one-click deploy on Render
 └── Dockerfile         # Railway or any Docker host
@@ -300,7 +324,9 @@ conn.commit()
 pytest -v
 ```
 
-180 tests. `tests/test_us1_acceptance.py` walks the story sheet clause by clause:
+424 tests. `tests/test_sprint_4.py` checks US13–US16, `tests/test_sprints_2_3.py` checks
+US4–US12 and `tests/test_us1_acceptance.py` checks US1, each line by line against
+the story sheet. The US1 checks:
 
 | US1 clause | Test |
 |---|---|
@@ -342,7 +368,8 @@ Real answer time is around 0.1–1 ms.
 | `GET /api/search?q=...&context=...` | The US1 endpoint: directions, map position, suggestions. Understands room codes, hall names (`A1`), faculties (`Business School`), blocks (`Block D`) and services. `context` carries the room number a previous answer asked about, which is what makes a follow-up like "Engineering" resolve "204" |
 | `GET /api/map` | All three floors as vector geometry |
 | `GET /api/sheets` | The original evacuation sheets, for reference |
-| `GET /api/services` | Services with an open/closed status in Almaty time |
+| `GET /api/route?to=...&from=...` | Walking directions (US13, US14): ordered `steps` with the floor each one is on, the route in brief (`signs`), the line to draw on each floor (`legs`) and the staircases (`stairs`). `to` and `from` take anything the search understands; leave out `from` and the route starts at the main entrance. A place it can't find gives `kind: "route_error"` and suggestions |
+| `GET /api/services` | The services page: each service with its category group, location and an open/closed status in Almaty time, then the kinds of room there are many of |
 | `GET /api/health` | Liveness check (the only open data endpoint) |
 
 Everything except `/api/health`, `/api/auth/*`, `/login` and `/static/*` needs
@@ -351,7 +378,9 @@ a session cookie; without one the API answers `401` and `/` redirects to
 
 `/api/search` answer kinds: `room`, `block` (a faculty or a whole block),
 `service`, `ambiguous` (e.g. "204" exists in five blocks — the answer carries a
-`context` for the next turn), `not_found` and `no_match`.
+`context` for the next turn), `not_found` and `no_match`. A question that names a
+start and a destination, or asks for the way ("how do I get to G215"), also
+carries `directions`, in the same shape as `/api/route`.
 
 ---
 
@@ -378,6 +407,33 @@ Nothing is invented — every sentence comes out of the plan geometry:
   the next turn settles it: "204" then "Engineering" gives F204. The pending
   number travels in the answer's `context`, so the conversation state lives in
   the browser tab rather than on the server.
+
+### Walking routes (US13, US14)
+
+The route graph is built at start-up (about 0.4 s) from the same geometry that
+draws the plans, so the route and the drawing always agree:
+
+- the **central corridor** is a chain of points down its middle, one where every
+  room, wing and open area joins it;
+- every **wing corridor** is a chain from the central corridor to the far end
+  of the wing, and each wing room's door is on it, level with the room;
+- the rooms **along the central corridor** open straight onto it;
+- the **west side** (the round halls, the food court), the **lobby** and the
+  **Block B foyer** are open floor. Each place there is joined to the corridor
+  by the shortest walk that goes round every room in the way: a visibility
+  graph over the rooms' corners, checked against the building's outline;
+- floors are joined only by the **staircases on the sheets** (see Sprint 4);
+- a room is a destination, never a corridor: no route walks through one.
+
+`tests/test_sprint_4.py` checks every edge of the graph against every room
+outline, so no route can pass through a wall or a closed room.
+
+The steps are written from the walker's point of view. Turns come from the angle
+between one stretch and the next ("turn right into the central corridor"), and
+sides come from which side of the walking direction a door is on. Doors are
+counted from where you enter, so coming down the wing-end stairwell counts from
+that end. The last step uses the same door order and "directly across" as the
+room's own answer.
 
 ## Honest limitations
 
@@ -408,10 +464,16 @@ Nothing is invented — every sentence comes out of the plan geometry:
   where nothing is drawn, so its outline stops at the sheet edge.
 - **The colour map covers floor 1 only.** Restrooms and the other places it
   marks are not repeated on floors 2 and 3 until a source shows them there.
-- The **dean's offices are not tied to rooms** yet, so they show a status but
-  no route. The Library, Cafeteria, Medcenter, Red Canteen, Red Coffee and
-  Doner House are tied to rooms and appear on the plan; the last three have no
-  opening hours on file and say so.
+- **Only the staircases on the sheets are routed.** The sheets also show
+  narrower stairs beside the central corridor and a stairwell by the wardrobe,
+  but not clearly enough to tell which floors each one joins, so routes don't
+  use them. There is no lift data, so step-free routes (US25) are not offered
+  yet. Block I has no plan and so no staircase: its upper floors are reached
+  along the corridor from Block H's stairwell.
+- **Routes are walks on the drawing.** Doors are placed where each room meets
+  its corridor, not surveyed, and the open floor west of the corridor is walked
+  in straight lines between rooms. Distances are never quoted, because the
+  sheets have no scale.
 - **Block B's letter** comes from the room label B114. The sheet does not say
   which block the Library and Red Hall belong to; they are filed under Block B
   because they share its foyer.
