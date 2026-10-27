@@ -435,6 +435,11 @@ input { caret-color: var(--dest); }
 .dir-row.open .state { color: var(--exit); font-weight: 600; }
 .dir-row.closed b { color: var(--ink-2); font-weight: 500; }
 .dir-row.closed .state { color: var(--ink-3); }
+/* hours not confirmed by the service: the lamp is lit only faintly, the time is a guess */
+.dir-row.open.guess .state { color: var(--ink-2); font-weight: 500; }
+.dir-row.open.guess .lamp { background: color-mix(in srgb, var(--exit) 40%, transparent); box-shadow: inset 0 0 0 1.5px var(--exit); }
+.dir-summary .likely { font-weight: 500; color: var(--ink-3); }
+.dir-note { margin: var(--s3) 0 0; font-size: var(--t-12); color: var(--ink-3); }
 .dir-row.rooms .lamp { border-radius: 2px; box-shadow: inset 0 0 0 1.5px var(--map-wall); }
 .dir-row:hover b { color: var(--dest); }
 .dir-skel { height: 54px; position: relative; }
@@ -864,23 +869,33 @@ input { caret-color: var(--dest); }
 .plan .mark.stairs use, .plan .mark.elevator use { color: var(--on-navy); }
 
 /* the route on the plan: a line down the corridors in the destination colour,
-   on a casing of room-white so it reads over any fill, with a slow flow of
-   dashes running the way you walk */
+   on a casing of room colour so it reads over any fill, its corners rounded,
+   with arrowheads along it pointing the way you walk */
 .plan .trip-path { pointer-events: none; }
-.plan .trip-case { fill: none; stroke: var(--map-room); stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; }
-.plan .trip-line { fill: none; stroke: var(--dest); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
-.plan .trip-flow {
-  fill: none; stroke: var(--map-room); stroke-width: 2.5; stroke-linecap: round;
-  stroke-dasharray: 1 15; animation: trip-flow 1.2s linear infinite; opacity: .9;
+.plan .trip-case { fill: none; stroke: var(--map-room); stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; }
+.plan .trip-line { fill: none; stroke: var(--dest); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+.plan .trip-chev {
+  fill: none; stroke: var(--map-room); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
 }
+.plan .trip-link { stroke: var(--dest); stroke-width: 4; stroke-linecap: round; opacity: .85; }
 .plan .trip-start circle { fill: var(--map-room); stroke: var(--dest); stroke-width: 4; }
 .plan .trip-start circle.core { fill: var(--dest); stroke: none; }
-.plan .trip-stairs .box { fill: var(--navy); stroke: var(--map-room); stroke-width: 2.5; }
+.plan .trip-start circle.ring { fill: none; stroke: var(--dest); stroke-width: 4; }
+.plan .trip-door { fill: var(--dest); stroke: var(--map-room); stroke-width: 3; }
+.plan .trip-stairs .box { fill: var(--navy); stroke: var(--dest); stroke-width: 3; }
 .plan .trip-stairs use { color: var(--on-navy); fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.plan .trip-stairs .tag { fill: var(--navy); }
+.plan .trip-stairs .tag { fill: var(--navy); stroke: var(--map-room); stroke-width: 2; }
 .plan .trip-stairs text { fill: var(--on-navy); font-size: 14px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+/* drawn in from the start once, the arrowheads following the line out */
+.plan .trip-path.fresh :is(.trip-case, .trip-line) {
+  stroke-dasharray: calc(var(--len) * 1px) calc(var(--len) * 1px);
+  animation: trip-draw .7s cubic-bezier(.3, .7, .4, 1) both;
+}
+.plan .trip-path.fresh .trip-chev { animation: rise-in .25s ease-out both; animation-delay: calc(var(--at) * .7s); }
+.plan .trip-path.fresh :is(.trip-stairs, .trip-door, .trip-link) { animation: rise-in .25s ease-out .6s both; }
 .map.focused .plan .room.hl-start polygon, .map.focused .plan .room.hl-start circle { fill: var(--dest-soft); stroke: var(--dest); stroke-width: 2.4; stroke-dasharray: none; }
-@keyframes trip-flow { to { stroke-dashoffset: -16; } }
+@keyframes trip-draw { from { stroke-dashoffset: calc(var(--len) * 1px); } to { stroke-dashoffset: 0; } }
+@keyframes rise-in { from { opacity: 0; } to { opacity: 1; } }
 
 .plan .landmark-call line { stroke: var(--exit); stroke-width: 3; stroke-dasharray: 9 8; opacity: .8; }
 .plan .landmark-call circle { fill: none; stroke: var(--exit); stroke-width: 3; }
@@ -908,6 +923,7 @@ input { caret-color: var(--dest); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
   .plan .target .pulse { opacity: .5; }
+  .plan .trip-path * { animation-delay: 0s !important; }
 }
 
 /* ---------------------------------------------------------------- wide desktop */

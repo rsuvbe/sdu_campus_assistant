@@ -28,7 +28,7 @@ from __future__ import annotations
 import heapq
 import math
 
-from .engine import APPROXIMATE_SOURCES, NORTH_BLOCKS, display_code, human_list, ordinal
+from .engine import APPROXIMATE_SOURCES, NORTH_BLOCKS, NORTH_FOYER_Y, human_list, ordinal, spoken
 
 MAIN_ENTRANCE = "EXIT_F1_MAIN"
 # One flight of stairs, as a length of corridor (plan pixels). Most of a flight's
@@ -40,6 +40,7 @@ OPEN_REACH = 560.0      # longest single straight step across open floor
 WING_REACH = 160.0      # an exit or stairwell this close to a wing's far end belongs to it
 SHORT_LEG = 30.0        # a stretch of corridor shorter than this is just crossed
 OPPOSITE_REACH = 45.0   # a door this close along the wing is "directly across"
+SPIKE = 12.0            # a turn back sharper than 135 degrees this short is not drawn
 
 
 # ------------------------------------------------------------------ geometry
@@ -79,6 +80,30 @@ def _unit(dx: float, dy: float) -> tuple[float, float]:
 
 def _dist(a, b) -> float:
     return math.hypot(b[0] - a[0], b[1] - a[1])
+
+
+def _line(points: list) -> list:
+    """A route as it is drawn: no point twice, no walking out to a point and
+    back (past a stairwell to the wing's end and back to it), and no bend in the
+    middle of a straight run, so the line turns only where the walk does."""
+    out: list = []
+    for p in points:
+        if out and _dist(out[-1], p) < 0.5:
+            continue
+        out.append(p)
+        while len(out) >= 3:
+            a, b, c = out[-3:]
+            if _dist(a, c) < 0.5:
+                del out[-2:]                       # out and back to the same spot
+                continue
+            off = abs(_orient(a, c, b)) / _dist(a, c)
+            ab, bc = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+            hook = (min(_dist(a, b), _dist(b, c)) < SPIKE
+                    and ab[0] * bc[0] + ab[1] * bc[1] < -0.7 * _dist(a, b) * _dist(b, c))
+            if off > 1.2 and not hook:
+                break
+            del out[-2]                            # b is on the straight line from a to c, or a hook
+    return out
 
 
 def _turn(h1, h2) -> str:
@@ -349,16 +374,22 @@ class Router:
                     continue
                 self._landmark(floor, geo, lm, fl["building_id"], at)
 
-        # the lobby is one open hall: its entrance, its staircase and its desks
-        # are also joined straight to each other wherever nothing stands between
-        lobby = [n for n, node in self.nodes.items() if node["floor"] == floor and node.get("zone") == "lobby"]
-        for k, a in enumerate(lobby):
-            for b in lobby[k + 1:]:
-                pa, pb = self._pt(a), self._pt(b)
-                own = tuple(s for s in geo.shapes if s.contains(pa) or s.contains(pb)
-                            or s.code in (self.nodes[a].get("room"), self.nodes[b].get("room")))
-                if geo.walkable(pa, pb, skip=own):
-                    self._edge(a, b, "open", floor=floor, zone="lobby")
+        # the lobby and the Block B foyer are each one open hall: what stands in
+        # one (its entrance, its staircase, its desks, the doors along the foyer)
+        # is also joined straight to the rest of it wherever nothing stands between
+        for hall in ("lobby", "foyer"):
+            places = [n for n, node in self.nodes.items() if node["floor"] == floor and node.get("zone") == hall]
+            for k, a in enumerate(places):
+                for b in places[k + 1:]:
+                    pa, pb = self._pt(a), self._pt(b)
+                    own = tuple(s for s in geo.shapes if s.contains(pa) or s.contains(pb)
+                                or s.code in (self.nodes[a].get("room"), self.nodes[b].get("room")))
+                    if geo.walkable(pa, pb, skip=own):
+                        self._edge(a, b, "open", floor=floor, zone=hall)
+                    elif hall == "foyer":
+                        # the doors along the foyer face each other across it: a
+                        # room set back from it is reached round the rooms on the way
+                        self._walk_round(floor, a, b, hall)
 
         spine_taps = sorted(self.spines[floor]["taps"], key=lambda n: self.nodes[n]["y"])
         for a, b in zip(spine_taps, spine_taps[1:]):
@@ -378,7 +409,7 @@ class Router:
     def _landmark(self, floor: int, geo: _Floor, lm: dict, block: str, at) -> None:
         kind = lm["type"]
         nid = self._node(f"{floor}:{kind}:{lm['landmark_id']}", floor, at[0], at[1], kind,
-                         name=lm["name"], landmark=lm["landmark_id"])
+                         name=lm["name"], landmark=lm["landmark_id"], mark=(round(at[0], 1), round(at[1], 1)))
         inside = tuple(s for s in geo.shapes if s.contains(at))
         wing = self.wings.get((floor, block))
         near_end = wing and _dist(wing["e"], at) <= WING_REACH and "lobby" not in lm["name"]
@@ -497,6 +528,49 @@ class Router:
         self._edge(prev, self._tap(floor, end_y), "open", floor=floor, src=nid, zone=zone)
         return True
 
+    def _walk_round(self, floor: int, a: str, b: str, zone: str) -> None:
+        """Join two places on the same open floor by the shortest walk round the
+        rooms between them, as a chain of its own."""
+        geo = self._geo[floor]
+        points, sight = self._corners["points"], self._corners["sight"]
+        pa, pb = self._pt(a), self._pt(b)
+
+        def own(n, p):
+            return tuple(s for s in geo.shapes if s.contains(p) or s.code == self.nodes[n].get("room"))
+
+        skip_a, skip_b = own(a, pa), own(b, pb)
+        best, heap, done = {}, [], set()
+        finish = (math.inf, None)
+        for i, p in enumerate(points):
+            d = _dist(pa, p)
+            if d <= OPEN_REACH and geo.walkable(pa, p, skip=skip_a):
+                best[i] = (d, None)
+                heapq.heappush(heap, (d, i))
+        while heap:
+            cost, i = heapq.heappop(heap)
+            if i in done or cost >= finish[0]:
+                continue
+            done.add(i)
+            out = _dist(points[i], pb)
+            if out <= OPEN_REACH and cost + out < finish[0] and geo.walkable(points[i], pb, skip=skip_b):
+                finish = (cost + out, i)
+            for j, d in sight[i]:
+                if j not in best or cost + d < best[j][0]:
+                    best[j] = (cost + d, i)
+                    heapq.heappush(heap, (cost + d, j))
+        if finish[1] is None:
+            return
+        trail, i = [], finish[1]
+        while i is not None:
+            trail.append(points[i])
+            i = best[i][1]
+        prev = a
+        for k, p in enumerate(reversed(trail)):
+            mid = self._node(f"{a}~{b}:v{k}", floor, p[0], p[1], "open")
+            self._edge(prev, mid, "open", floor=floor, zone=zone)
+            prev = mid
+        self._edge(prev, b, "open", floor=floor, zone=zone)
+
     def _join_floors(self) -> None:
         cores: dict[str, list] = {}
         for nid, info in self.stairs.items():
@@ -517,7 +591,7 @@ class Router:
                     "floor": self.nodes[ex["node"]]["floor"]}
         if kind == "room" and key in self.room_node:
             room = self.rooms[key]
-            return {"kind": "room", "key": key, "node": self.room_node[key], "label": display_code(room),
+            return {"kind": "room", "key": key, "node": self.room_node[key], "label": spoken(room),
                     "floor": room["floor_number"], "building_id": room["building_id"]}
         return None
 
@@ -567,6 +641,8 @@ class Router:
         _, nodes, edges = found
         legs = self._legs(nodes, edges)
         steps, signs, step_floors = self._describe(legs, start, end)
+        # a step may open on a place's name: "the restroom opens straight onto..."
+        steps = [step[0].upper() + step[1:] for step in steps]
         floors = []
         for n in nodes:
             f = self.nodes[n]["floor"]
@@ -578,15 +654,20 @@ class Router:
             if not lines or lines[-1]["floor"] != node["floor"]:
                 lines.append({"floor": node["floor"], "points": []})
             pts = lines[-1]["points"]
-            if not pts or pts[-1] != [node["x"], node["y"]]:
-                pts.append([node["x"], node["y"]])
+            pts.append([node["x"], node["y"]])
+        own = [self._shape.get((p["floor"], p["key"])) for p in (start, end) if p["kind"] == "room"]
+        for line in lines:
+            line["points"] = self._unhook(line["floor"], _line(line["points"]), [s for s in own if s])
+        # a staircase is marked where the plan draws it; the line ends where you
+        # step onto it, which is a few steps away when the plan's mark sits in
+        # the end room's drawing
         for a, b in zip(nodes, nodes[1:]):
             na, nb = self.nodes[a], self.nodes[b]
             if na["floor"] != nb["floor"]:
-                marks.append({"floor": na["floor"], "x": na["x"], "y": na["y"], "to": nb["floor"],
-                              "name": self.stairs[a]["name"]})
-                marks.append({"floor": nb["floor"], "x": nb["x"], "y": nb["y"], "to": na["floor"],
-                              "name": self.stairs[b]["name"], "arrive": True})
+                marks.append({"floor": na["floor"], "x": na["x"], "y": na["y"], "mark": list(na["mark"]),
+                              "to": nb["floor"], "name": self.stairs[a]["name"]})
+                marks.append({"floor": nb["floor"], "x": nb["x"], "y": nb["y"], "mark": list(nb["mark"]),
+                              "to": na["floor"], "name": self.stairs[b]["name"], "arrive": True})
         approx = [p["label"] for p in (start, end) if p["kind"] == "room"
                   and self.rooms[p["key"]]["source"] in APPROXIMATE_SOURCES]
         note = ("Block I isn't digitised yet, so the last part of this route is a best guess."
@@ -596,6 +677,25 @@ class Router:
         return {**base, "steps": steps, "step_floors": step_floors, "signs": signs, "legs": lines,
                 "stairs": marks, "floors": floors,
                 "note": note, "summary": f"From {start['label']} to {end['label']}{change}."}
+
+    def _unhook(self, floor: int, pts: list, own: list) -> list:
+        """A turn back sharper than a right angle, where the walk could have cut
+        straight across: the graph meets the central corridor only square on, so
+        a walk from open floor can step past the corridor's middle and turn back.
+        The line takes the straight way, when it passes through no room."""
+        geo = self._geo[floor]
+        out = list(pts)
+        i = 1
+        while i < len(out) - 1:
+            a, b, c = out[i - 1], out[i], out[i + 1]
+            ab, bc = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+            back = ab[0] * bc[0] + ab[1] * bc[1] < 0
+            if back and geo.walkable(a, c, skip=tuple(own)):
+                del out[i]
+                i = max(1, i - 1)
+            else:
+                i += 1
+        return out
 
     def _public(self, place: dict) -> dict:
         node = self.nodes[place["node"]]
@@ -673,7 +773,8 @@ class Router:
                 say(f"Come in by the {self.exits[start['key']]['name']}.")
                 signs.append({"icon": "entrance", "text": "Entrance"})
         else:
-            signs.append({"icon": "door", "text": start["label"][0].upper() + start["label"][1:]})
+            name = start["label"].removeprefix("the ")
+            signs.append({"icon": "door", "text": name[0].upper() + name[1:]})
 
         leaving = start["kind"] == "room"
         label = start["label"]
@@ -683,6 +784,11 @@ class Router:
             leg = legs[i]
             nxt = legs[i + 1] if i + 1 < len(legs) else None
             kind = leg["kind"]
+            start_room = self.rooms.get(start["key"]) if leaving else None
+            if final(i) and i == 0 and start_room and start_room["zone"] == end_room["zone"] == "north":
+                steps.append(self._foyer_walk(start_room, end_room, label))
+                step_floors.append(state["cur"])
+                break
             if final(i):
                 steps.append(self._arrival(legs, i, end_room, heading, state["floor"],
                                            label if leaving else None))
@@ -838,7 +944,7 @@ class Router:
     def _arrival(self, legs: list[dict], i: int, room: dict, heading, new_floor: int | None,
                  leaving: str | None) -> str:
         """The last step: which door it is, said from the way the walker comes in."""
-        code = display_code(room)
+        code = spoken(room)
         number = room["room_number"]
         prev = legs[i - 1] if i > 0 else None
         on_floor = f"On floor {new_floor}, " if new_floor else ""
@@ -863,7 +969,7 @@ class Router:
             same = sorted((d for d in wing["doors"] if _side(walk, d["door"], d["room"]) == mine
                            and entry_at < along(d) <= along(door) + 1e-9), key=along)
             pos = len(same)
-            before = [display_code(self.rooms[d["code"]]) for d in same[:-1]][-2:]
+            before = [spoken(self.rooms[d["code"]]) for d in same[:-1]][-2:]
             last_on_side = not any(along(d) > along(door) for d in wing["doors"]
                                    if _side(walk, d["door"], d["room"]) == mine)
             others = [d for d in wing["doors"] if _side(walk, d["door"], d["room"]) != mine and d["code"] != number]
@@ -898,7 +1004,7 @@ class Router:
             else:
                 text = f"{code} is the {ordinal(pos)} door on your {mine}, just after {human_list(before)}."
             if opposite:
-                text += f" Directly across the corridor is {display_code(self.rooms[opposite['code']])}."
+                text += f" Directly across the corridor is {spoken(self.rooms[opposite['code']])}."
             return opening + text
 
         opening = f"Leave {leaving}. " if leaving else ""
@@ -907,29 +1013,50 @@ class Router:
             walk = heading or (0.0, 1.0)
             side = _side(walk, (self.spines[node["floor"]]["x"], node["y"]), (node["x"], node["y"]))
             near = sorted((r for r in self.index.rooms if r["floor_id"] == room["floor_id"]
-                           and r["zone"] == "corridor" and display_code(r) != code
+                           and r["zone"] == "corridor" and spoken(r) != code
                            and abs(r["y"] - room["y"]) <= 90),
                           key=lambda r: abs(r["y"] - room["y"]))
             above = [r for r in near if r["y"] < room["y"]][:1]
             below = [r for r in near if r["y"] > room["y"]][:1]
             if above and below:
-                tail = f", between {display_code(above[0])} and {display_code(below[0])}."
+                tail = f", between {spoken(above[0])} and {spoken(below[0])}."
             elif near:
-                tail = f", next to {display_code(near[0])}."
+                tail = f", next to {spoken(near[0])}."
             else:
                 tail = "."
             return opening + lead(f"{code} opens straight onto the central corridor, on your {side}{tail}")
         across = self.index._across(room) if room["zone"] == "west" else None
-        if leaving and across is not None and display_code(across) == leaving:
+        if leaving and across is not None and spoken(across) == leaving:
             return f"Leave {leaving}: {code} is directly across the central corridor."
         if room["zone"] == "north":
             return opening + lead(self.index._north_step(room, [], {}))
         return opening + lead(self.index._west_step(room, f"Block {room['building_id']}", [], {}))
 
+    def _foyer_walk(self, start_room: dict, room: dict, leaving: str) -> str:
+        """From one door on the Block B foyer to another, without going back to the lobby."""
+        row = sorted((r for r in self.index.rooms if r["zone"] == "north"
+                      and r["floor_number"] == room["floor_number"]), key=lambda r: r["x"])
+        away = room["x"] > start_room["x"]          # away from the lobby, towards Red Hall
+        lead = (f"Step out of {leaving} into the Block B foyer and walk "
+                + ("away from the main lobby" if away else "back towards the main lobby"))
+        if room is row[-1] and away:
+            return f"{lead}: {spoken(room)} is at the far end of the foyer."
+        north = room["y"] < NORTH_FOYER_Y
+        side = ("left" if north else "right") if away else ("right" if north else "left")
+        lo, hi = sorted((start_room["x"], room["x"]))
+        passed = [r for r in row if r is not room and r is not start_room and lo < r["x"] < hi
+                  and (r["y"] < NORTH_FOYER_Y) == north]
+        passed.sort(key=lambda r: r["x"], reverse=not away)
+        if not passed:
+            return f"{lead}: {spoken(room)} is the next door on your {side}."
+        return (f"{lead}: {spoken(room)} is the {ordinal(len(passed) + 1)} door on your {side}, "
+                f"just after {human_list([spoken(r) for r in passed[-2:]])}.")
+
     def _arrival_signs(self, end: dict, room: dict | None) -> list[dict]:
         if room is None:
             return []
-        label = end["label"][0].upper() + end["label"][1:]
+        label = end["label"].removeprefix("the ")       # a sign says "Restroom", not "The restroom"
+        label = label[0].upper() + label[1:]
         if room["zone"] == "north":
             return [{"icon": "ahead", "text": "Block B foyer"}, {"icon": "door", "text": label}]
         if room["zone"] == "wing":

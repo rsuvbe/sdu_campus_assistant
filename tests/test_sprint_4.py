@@ -218,6 +218,81 @@ def test_us13_the_nearest_of_several_places_with_one_name():
     assert answer["directions"]["to"]["code"] == best["room_number"] == "RESTROOM-G"
 
 
+# the route as it is drawn on the plan
+def test_us13_the_drawn_line_turns_only_where_the_walk_does():
+    for a, b in PAIRS:
+        for leg in route(a, b)["legs"]:
+            pts = leg["points"]
+            for p, q, n in zip(pts, pts[1:], pts[2:]):
+                u, v = (q[0] - p[0], q[1] - p[1]), (n[0] - q[0], n[1] - q[1])
+                lu, lv = math.hypot(*u), math.hypot(*v)
+                assert lu >= 0.5 and lv >= 0.5, f"{a} -> {b}: a point twice at {q}"
+                # no corner in the middle of a straight run
+                assert abs(u[0] * v[1] - u[1] * v[0]) / math.dist(p, n) > 1.2 or u[0] * v[0] + u[1] * v[1] < 0, \
+                    f"{a} -> {b}: a bend that isn't one at {q}"
+                # no short hook out past a stairwell and back
+                if min(lu, lv) < 12:
+                    assert u[0] * v[0] + u[1] * v[1] >= -0.7 * lu * lv, f"{a} -> {b} doubles back at {q}"
+
+
+def test_us13_a_staircase_is_marked_where_the_plan_draws_it():
+    r = route("G108", "F204")
+    marks = {(lm["x"], lm["y"]) for lm in FLOORS[1]["landmarks"] + FLOORS[2]["landmarks"] if lm["type"] == "stairs"}
+    assert len(r["stairs"]) == 2
+    for m in r["stairs"]:
+        assert tuple(m["mark"]) in marks, m
+        # the line itself ends on the staircase's node, where you step onto it
+        leg = next(l for l in r["legs"] if l["floor"] == m["floor"])
+        assert [m["x"], m["y"]] in (leg["points"][0], leg["points"][-1])
+
+
+def test_us13_the_line_runs_wall_to_wall_and_is_framed_with_its_stairs():
+    # the line stops at the wall of the room it starts or ends in (never drops its last
+    # stretch, which for a hall across open floor is most of the walk), its corners
+    # are rounded, arrowheads point the way, and each staircase tag is in the frame
+    assert "fromWall(pts, r.from.code)" in APP_JS and "fromWall([...pts].reverse(), r.to.code)" in APP_JS
+    assert "roundedPath(pts, TRIP_CORNER)" in APP_JS and "chevrons(line, len, g)" in APP_JS
+    assert "pts.push([mx - 150, my], [mx + 150, my])" in APP_JS
+    # a route shown from a card pins that card's destination, not the last answer's
+    assert "showRoute(d.directions, Number(b.dataset.routeFloor), d)" in APP_JS
+
+
+def test_us13_the_line_never_steps_past_the_corridor_and_back():
+    # from the lobby to B114 the walk used to step left of the central corridor's
+    # middle and turn back; the line now takes the straight way round the corner
+    pts = router.route(ENTRANCE, room("B114"))["legs"][0]["points"]
+    for p, q, n in zip(pts, pts[1:], pts[2:]):
+        dot = (q[0] - p[0]) * (n[0] - q[0]) + (q[1] - p[1]) * (n[1] - q[1])
+        assert dot >= -0.17 * math.dist(p, q) * math.dist(q, n), f"turns back at {q}"     # sharper than 100 degrees
+
+
+def test_us13_a_walk_along_the_foyer_stays_in_the_foyer():
+    spine_x = FLOORS[1]["spines"][0]["x"]
+    for a, b in (("RESTROOM-B", "RED-HALL"), ("RED-HALL", "B114"), ("B114", "LIBRARY")):
+        r = route(a, b)
+        assert all(abs(x - spine_x) > 1 for x, _ in r["legs"][0]["points"]), f"{a} -> {b} goes out to the corridor"
+        assert len(r["steps"]) == 1 and "into the Block B foyer" in r["steps"][0]
+        assert "main lobby" not in r["steps"][0].split(":")[1]
+    assert route("RESTROOM-B", "RED-HALL")["steps"] == [
+        "Step out of the restroom into the Block B foyer and walk away from the main lobby: "
+        "Red Hall is at the far end of the foyer."]
+
+
+def test_us13_places_named_for_what_they_are_take_the():
+    steps = route("STAFF-RESTROOM-D", "D301")["steps"]
+    assert steps[0].startswith("Leave the staff restroom")
+    assert "Leave the table tennis room" in route("TABLE-TENNIS", "D301")["steps"][0]
+    last = router.route(ENTRANCE, room("RESTROOM-B"))["steps"][-1]
+    assert "The restroom is the first door on your right." in last
+    assert "you'll pass B114 and the Library" in router.route(ENTRANCE, room("RED-HALL"))["steps"][-1]
+    # a sign reads like a sign; a proper name keeps no article
+    assert route("STAFF-RESTROOM-D", "D301")["signs"][0]["text"] == "Staff restroom"
+    assert "Leave Red Hall" in route("RED-HALL", "D101")["steps"][0]
+    for a, b in PAIRS:
+        for step in route(a, b)["steps"]:
+            assert step[0].isupper(), step
+
+
 def test_us13_deferred_no_live_positioning_or_rerouting():
     assert "geolocation" not in APP_JS and "watchPosition" not in APP_JS
 
@@ -451,6 +526,15 @@ def test_us16_verified_three_times_of_day():
     assert status("Student Center", lunch)["open_now"] is False
     assert status("Student Center", evening)["open_now"] is False
     assert status("Ay Market", evening)["status"] == "Open until 20:00"
+
+
+def test_us16_hours_not_confirmed_are_marked_and_not_counted_as_open():
+    # the services page says which times are the team's guess, and counts as
+    # "open now" only services whose hours are confirmed
+    assert 'svc.hours_approximate && svc.hours?.length > 0' in APP_JS
+    assert 'svc.open_now === true && !guessed(svc)' in APP_JS and "more probably" in APP_JS
+    assert '`${guess ? "≈ " : ""}${shortStatus(svc)}`' in APP_JS
+    assert "Hours the service" in APP_JS
 
 
 def test_us16_the_services_page_shows_each_status():

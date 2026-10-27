@@ -30,6 +30,8 @@ const LOADING_DELAY = 180;
 const LIST_ROWS = 12;
 // how close a route is framed: never so far out that its turns can't be read
 const ROUTE_MAX_ZOOM = 1.3;
+const TRIP_CORNER = 18;     // how round a route's corners are drawn (plan px)
+const TRIP_CHEVRON = 64;    // about how far apart its arrowheads are
 
 const state = {
   floors: [],
@@ -37,6 +39,8 @@ const state = {
   floor: null,          // the floor currently drawn
   result: null,         // last room/service answer that has a position
   route: null,          // the walking route on show, drawn on every floor it crosses
+  routeDrawn: null,     // the route and floor last drawn, so a repaint doesn't replay its draw-in
+  routeFloor: null,
   view: { s: 1, fit: 1, tx: 0, ty: 0 },
   inView: null,         // the block at the centre of the stage
   cover: 0,             // how much of the stage the answers sheet hides (phone)
@@ -94,9 +98,11 @@ async function loadServices() {
     box.closest(".directory").hidden = true;   // the page is optional; the assistant still works
     return;
   }
-  const open = services.filter((svc) => svc.open_now === true).length;
-  $("#dir-summary").innerHTML = open
-    ? `<i class="lamp open" aria-hidden="true"></i>${open} open now`
+  // only hours a service has confirmed are counted as open; the rest are a guess
+  const open = services.filter((svc) => svc.open_now === true && !guessed(svc)).length;
+  const likely = services.filter((svc) => svc.open_now === true && guessed(svc)).length;
+  $("#dir-summary").innerHTML = open || likely
+    ? `<i class="lamp open" aria-hidden="true"></i><span>${open} open now${likely ? `<span class="likely">, ${likely} more probably</span>` : ""}</span>`
     : "All closed right now";
 
   const groups = [];
@@ -110,6 +116,10 @@ async function loadServices() {
       <h3 class="dir-group-title" id="grp-${esc(g.key)}">${esc(g.label)}<span>${g.items.length}</span></h3>
       <ul class="dir-list">${g.items.map(serviceRow).join("")}</ul>
     </section>`).join("");
+  if (services.some(guessed)) {
+    box.insertAdjacentHTML("beforeend", `<p class="dir-note"><span aria-hidden="true">≈</span> Hours the service
+      hasn't confirmed yet: the team's best reading, so check before you go.</p>`);
+  }
   box.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
 
   const filter = $("#dir-filter");
@@ -125,13 +135,18 @@ async function loadServices() {
   if (location.hash === "#services") $("#services-page").scrollIntoView({ block: "start" });
 }
 
+// hours on file that the service itself hasn't confirmed
+const guessed = (svc) => svc.kind !== "rooms" && svc.hours_approximate && svc.hours?.length > 0;
+
 function serviceRow(svc) {
   const cls = svc.open_now === true ? "open" : svc.open_now === false ? "closed" : "";
   const where = svc.location ? svc.location.text : "Not on the plans yet";
-  const aside = svc.kind === "rooms" ? `${svc.location.count} rooms` : shortStatus(svc);
+  const guess = guessed(svc);
+  const aside = svc.kind === "rooms" ? `${svc.location.count} rooms` : `${guess ? "≈ " : ""}${shortStatus(svc)}`;
+  const status = guess ? `${svc.status} (hours not confirmed yet)` : svc.status;
   // long office names are shown by their short name; the full one is in the tooltip
-  return `<li><button type="button" class="dir-row ${cls}${svc.kind === "rooms" ? " rooms" : ""}" data-ask="${esc(svc.ask)}"
-      title="${esc(svc.name)}. ${esc(svc.status)}" aria-label="${esc(svc.name)}, ${esc(where)}, ${esc(svc.status)}">
+  return `<li><button type="button" class="dir-row ${cls}${guess ? " guess" : ""}${svc.kind === "rooms" ? " rooms" : ""}" data-ask="${esc(svc.ask)}"
+      title="${esc(svc.name)}. ${esc(status)}" aria-label="${esc(svc.name)}, ${esc(where)}, ${esc(status)}">
       <i class="lamp ${cls}" aria-hidden="true"></i>
       <span class="dir-text"><b>${esc(svc.short_name || svc.name)}</b><span class="where">${esc(where)}</span></span>
       <span class="state">${esc(aside)}</span></button></li>`;
@@ -318,7 +333,7 @@ async function loadTrip(card, d, from) {
   } else {
     d.directions = r;
     trip.innerHTML = tripBody(r);
-    showRoute(r);
+    showRoute(r, undefined, d);
   }
   wireTrip(card, d);
   return r;
@@ -342,10 +357,10 @@ function wireTrip(card, d) {
   });
   trip.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => loadTrip(card, d, b.dataset.ask)));
   trip.querySelectorAll("[data-route-floor]").forEach((b) => b.addEventListener("click", () => {
-    if (d.directions) showRoute(d.directions, Number(b.dataset.routeFloor));
+    if (d.directions) showRoute(d.directions, Number(b.dataset.routeFloor), d);
   }));
   trip.querySelectorAll(".trip-steps li[data-floor]").forEach((li) => li.addEventListener("click", () => {
-    if (d.directions && Number(li.dataset.floor) !== state.floor?.floor) showRoute(d.directions, Number(li.dataset.floor));
+    if (d.directions && Number(li.dataset.floor) !== state.floor?.floor) showRoute(d.directions, Number(li.dataset.floor), d);
   }));
   markRouteFloor(trip);
 }
@@ -745,7 +760,8 @@ function paintResult() {
     if (g) g.classList.add("is-near", `hl-${h.role}`);
   });
 
-  if (map.landmark) {
+  // the landmark that says where a room is gives way to a route that walks there
+  if (map.landmark && !routeHere) {
     const l = map.landmark;
     const g = el("g", { class: "landmark-call" }, layer);
     // start clear of the room's own label, so the dashes never strike through it
@@ -775,49 +791,154 @@ function paintResult() {
   el("text", { x: 0, y: -6 }, flag).textContent = label;
 }
 
-/* The walk itself: a line down the corridors on each floor it crosses, a dot
-   where it starts, and a tag at each staircase saying which floor it leads to. */
+/* The walk itself: one line down the corridors on each floor it crosses, from
+   the wall of the room it starts in to the wall of the room it ends in, with
+   chevrons pointing the way you walk and a tag at each staircase saying which
+   floor it leads to. */
 function paintRoute(layer) {
   const r = state.route;
   if (!r || !state.floor) return false;
   const f = state.floor.floor;
   const legs = r.legs.filter((l) => l.floor === f);
   if (!legs.length) return false;
-  const g = el("g", { class: "trip-path" }, layer);
-  // the line runs door to door: a room it starts or ends in is lit instead, so
-  // the line never crosses the room's name
+  // the line draws itself in when a route or a floor of it is first shown, not
+  // every time the plan is repainted
+  const fresh = state.routeDrawn !== r || state.routeFloor !== f;
+  state.routeDrawn = r;
+  state.routeFloor = f;
+  const g = el("g", { class: `trip-path${fresh ? " fresh" : ""}` }, layer);
   const first = r.legs[0], last = r.legs[r.legs.length - 1];
-  let startAt = null;
-  legs.forEach((l) => {
+  const lines = legs.map((l) => {
     let pts = l.points;
-    if (l === first && r.from.kind === "room" && pts.length > 1) pts = pts.slice(1);
-    if (l === last && pts.length > 1) pts = pts.slice(0, -1);
-    if (l === first) startAt = pts[0];
-    el("polyline", { class: "trip-case", points: path(pts) }, g);
-    el("polyline", { class: "trip-line", points: path(pts) }, g);
-    el("polyline", { class: "trip-flow", points: path(pts) }, g);
+    // a room the walk starts or ends in is lit instead, so the line stops at its
+    // wall, where the door is, and never crosses the room's name
+    if (l === first && r.from.kind === "room") pts = fromWall(pts, r.from.code);
+    // from an entrance, the line starts at the ring round its sign
+    if (l === first && r.from.kind === "exit") pts = cutStart(pts, 21);
+    if (l === last && r.to.kind === "room") pts = fromWall([...pts].reverse(), r.to.code).reverse();
+    return { leg: l, pts };
+  });
+  lines.forEach(({ pts }) => {
+    const d = roundedPath(pts, TRIP_CORNER);
+    const casing = el("path", { class: "trip-case", d }, g);
+    const line = el("path", { class: "trip-line", d }, g);
+    const len = line.getTotalLength();
+    [casing, line].forEach((p) => p.style.setProperty("--len", Math.ceil(len) + 2));
+    chevrons(line, len, g);
   });
   r.stairs.filter((m) => m.floor === f).forEach((m) => {
+    const [mx, my] = m.mark || [m.x, m.y];
+    // the plan draws the stairwell a few steps past the end of the corridor
+    if (Math.hypot(mx - m.x, my - m.y) > 14) el("line", { class: "trip-link", x1: m.x, y1: m.y, x2: mx, y2: my }, g);
     const text = m.arrive ? `From floor ${m.to}` : `${m.to > f ? "Up" : "Down"} to floor ${m.to}`;
-    const s = el("g", { class: "trip-stairs", transform: `translate(${m.x}, ${m.y})` }, g);
+    // the tag goes on the side away from the corridor the line comes down
+    const near = lines.map(({ pts }) => pts).filter((p) => p.length > 1).map((p) =>
+      same(p[0], [m.x, m.y]) ? p[1] : same(p[p.length - 1], [m.x, m.y]) ? p[p.length - 2] : null).find(Boolean);
     const w = 22 + text.length * 8.4;
-    el("rect", { class: "tag", x: 18, y: -15, width: w, height: 30, rx: 4 }, s);
-    el("text", { x: 18 + w / 2, y: 1 }, s).textContent = text;
+    const tagX = near && near[0] > mx + 4 ? -18 - w : 18;
+    const s = el("g", { class: "trip-stairs", transform: `translate(${mx}, ${my})` }, g);
+    el("rect", { class: "tag", x: tagX, y: -15, width: w, height: 30, rx: 4 }, s);
+    el("text", { x: tagX + w / 2, y: 1 }, s).textContent = text;
     el("rect", { class: "box", x: -13, y: -13, width: 26, height: 26, rx: 3 }, s);
     el("use", { href: "#i-stairs", x: -9, y: -9, width: 18, height: 18 }, s);
+    el("title", {}, s).textContent = m.name;
   });
-  if (r.from.floor === f && startAt) {
+  const startLine = lines.find(({ leg }) => leg === first);
+  if (startLine) {
+    const [x, y] = r.from.kind === "exit" ? startLine.leg.points[0] : startLine.pts[0];
     const s = el("g", { class: "trip-start" }, g);
-    el("circle", { cx: startAt[0], cy: startAt[1], r: 12 }, s);
-    el("circle", { class: "core", cx: startAt[0], cy: startAt[1], r: 5 }, s);
+    // an entrance keeps its own sign, with a ring round it; a room's door gets a dot
+    if (r.from.kind === "exit") el("circle", { class: "ring", cx: x, cy: y, r: 21 }, s);
+    else {
+      el("circle", { cx: x, cy: y, r: 11 }, s);
+      el("circle", { class: "core", cx: x, cy: y, r: 4.5 }, s);
+    }
     const room = r.from.code && $(`#canvas .room[data-code="${CSS.escape(r.from.code)}"]`);
     if (room) room.classList.add("is-near", "hl-start");
+  }
+  const endLine = lines.find(({ leg }) => leg === last);
+  if (endLine && r.to.kind === "room") {
+    const [x, y] = endLine.pts[endLine.pts.length - 1];
+    el("circle", { class: "trip-door", cx: x, cy: y, r: 6.5 }, g);
   }
   if (r.to.floor === f) {
     const room = $(`#canvas .room[data-code="${CSS.escape(r.to.code)}"]`);
     if (room) room.classList.add("is-target");
   }
   return true;
+}
+
+const same = (a, b) => Math.abs(a[0] - b[0]) < 0.5 && Math.abs(a[1] - b[1]) < 0.5;
+
+function inRoom(room, [x, y]) {
+  if (room.kind === "circle") return Math.hypot(x - room.cx, y - room.cy) < room.r;
+  const p = room.points;
+  let inside = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    if ((p[i][1] > y) !== (p[j][1] > y) && x < ((p[j][0] - p[i][0]) * (y - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** The walk out of a room, from the point where it crosses the room's wall. */
+function fromWall(pts, code) {
+  const room = state.floor.rooms.find((rm) => rm.code === code);
+  if (!room || pts.length < 2 || !inRoom(room, pts[0])) return pts;
+  let i = 0;
+  while (i < pts.length - 1 && inRoom(room, pts[i + 1])) i++;
+  if (i === pts.length - 1) return pts;
+  let a = pts[i], b = pts[i + 1];
+  for (let k = 0; k < 20; k++) {
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (inRoom(room, m)) a = m; else b = m;
+  }
+  return [b, ...pts.slice(i + 1)];
+}
+
+/** The polyline without its first `len` px. */
+function cutStart(pts, len) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [a, b] = [pts[i], pts[i + 1]];
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (d > len) return [[a[0] + ((b[0] - a[0]) * len) / d, a[1] + ((b[1] - a[1]) * len) / d], ...pts.slice(i + 1)];
+    len -= d;
+  }
+  return pts;
+}
+
+/** A polyline as a path whose corners are rounded the way a walker turns. */
+function roundedPath(pts, radius) {
+  const xy = (p) => `${+p[0].toFixed(1)},${+p[1].toFixed(1)}`;
+  let d = `M${xy(pts[0])}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i - 1], q = pts[i], n = pts[i + 1];
+    const l1 = Math.hypot(q[0] - p[0], q[1] - p[1]), l2 = Math.hypot(n[0] - q[0], n[1] - q[1]);
+    const k = Math.min(radius, l1 / 2, l2 / 2);
+    if (k < 1) { d += ` L${xy(q)}`; continue; }
+    const a = [q[0] + ((p[0] - q[0]) * k) / l1, q[1] + ((p[1] - q[1]) * k) / l1];
+    const b = [q[0] + ((n[0] - q[0]) * k) / l2, q[1] + ((n[1] - q[1]) * k) / l2];
+    d += ` L${xy(a)} Q${xy(q)} ${xy(b)}`;
+  }
+  return pts.length > 1 ? `${d} L${xy(pts[pts.length - 1])}` : d;
+}
+
+/** Small arrowheads along a line, spaced evenly, pointing the way you walk. */
+function chevrons(line, len, g) {
+  if (len < TRIP_CHEVRON * 1.2) return;
+  const count = Math.floor(len / TRIP_CHEVRON);
+  const gap = len / (count + 1);
+  for (let i = 1; i <= count; i++) {
+    const p = line.getPointAtLength(gap * i);
+    const q = line.getPointAtLength(Math.min(len, gap * i + 2));
+    const deg = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+    el("path", {
+      class: "trip-chev", d: "M-2.8,-4 L1.6,0 L-2.8,4",
+      transform: `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${deg.toFixed(0)})`,
+      style: `--at: ${(i / (count + 1)).toFixed(3)}`,
+    }, g);
+  }
 }
 
 function showResultOnMap(d) {
@@ -843,8 +964,10 @@ function showResultOnMap(d) {
 
 /** Put a route on the plan, on the floor it starts on (or the one asked for),
     framed so the whole of that floor's part can be read. */
-function showRoute(r, floorNo) {
+function showRoute(r, floorNo, card = null) {
   state.route = r;
+  // the destination pinned on the plan is the one this route goes to
+  if (card) state.result = card;
   // on a phone the sheet makes room, so the route can be seen above the steps
   if (handset() && $("#sheet").dataset.snap === "full") setSnap("half");
   const f = floorNo ?? r.floors[0];
@@ -855,6 +978,11 @@ function showRoute(r, floorNo) {
 function fitRoute(f, animate) {
   const pts = (state.route?.legs || []).filter((l) => l.floor === f).flatMap((l) => l.points);
   if (!pts.length) return;
+  // the staircase tags are part of the route: framed with it, not under the rail
+  (state.route.stairs || []).filter((m) => m.floor === f).forEach((m) => {
+    const [mx, my] = m.mark || [m.x, m.y];
+    pts.push([mx - 150, my], [mx + 150, my]);
+  });
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const r = stageRect();

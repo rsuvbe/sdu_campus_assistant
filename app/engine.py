@@ -194,6 +194,23 @@ def display_code(room: dict) -> str:
     return room["name"] if is_named(room) else room["room_number"]
 
 
+# Places whose name says what they are rather than what they are called: in a
+# sentence they take "the" ("leave the staff restroom", not "leave Staff restroom").
+SPOKEN = {
+    "Restroom": "the restroom", "Staff restroom": "the staff restroom", "Cafeteria": "the cafeteria",
+    "Wardrobe": "the wardrobe", "Information desk": "the information desk",
+    "Table tennis": "the table tennis room", "Administration": "the Administration",
+    "Library": "the Library", "Advising Desk": "the Advising Desk", "Study Space": "the Study Space",
+}
+
+
+def spoken(room: dict, start: bool = False) -> str:
+    """A room's name as it is said in a sentence: "the restroom", "Red Hall", "D103"."""
+    name = display_code(room)
+    name = SPOKEN.get(name, name)
+    return name[0].upper() + name[1:] if start else name
+
+
 def ask_text(room: dict) -> str:
     """What to type to get exactly this room back: "Study Space 2", "Red Hall", "D103"."""
     if room["room_number"].startswith("MEDCENTER"):
@@ -939,13 +956,13 @@ class CampusIndex:
         below = sorted([r for r in peers if r["y"] > room["y"]], key=lambda r: r["y"] - room["y"])[:1]
         for r in above + below:
             highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
-        code = display_code(room)
+        code = spoken(room)
         base = (f"When you reach {block_label}, look along the central corridor itself — "
                 f"{code} opens straight onto it rather than into a wing.")
         if above and below:
-            return base + f" It's between {display_code(above[0])} and {display_code(below[0])}."
+            return base + f" It's between {spoken(above[0])} and {spoken(below[0])}."
         if above or below:
-            return base + f" It's right next to {display_code((above or below)[0])}."
+            return base + f" It's right next to {spoken((above or below)[0])}."
         return base
 
     def _across(self, room: dict) -> dict | None:
@@ -960,7 +977,7 @@ class CampusIndex:
 
     def _west_step(self, room: dict, block_label: str, highlights: list[dict],
                    door: dict | None = None) -> str:
-        code = display_code(room)
+        code = spoken(room)
         opposite = self._across(room)
         if opposite:
             highlights.append({"room_number": opposite["room_number"], "x": opposite["x"],
@@ -968,14 +985,14 @@ class CampusIndex:
             if door is not None:
                 door["opposite"] = display_code(opposite)
             return (f"When you reach {block_label}, keep to the left-hand wall of the central corridor — "
-                    f"{code} is right there, directly across from {display_code(opposite)}.")
+                    f"{code} is right there, directly across from {spoken(opposite)}.")
         if room["building_id"] == "C" and room["floor_number"] == 1:
             near = sorted((r for r in self._peers(room) if r["zone"] == "west" and r["building_id"] == "C"),
                           key=lambda r: (r["x"] - room["x"]) ** 2 + (r["y"] - room["y"]) ** 2)[:1]
             for r in near:
                 highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
-            return (f"{code} is in the main lobby itself, on the entrance side"
-                    + (f", next to the {display_code(near[0])}." if near else "."))
+            return (f"{spoken(room, start=True)} is in the main lobby itself, on the entrance side"
+                    + (f", next to {spoken(near[0])}." if near else "."))
         if room["building_id"] in ("D", "E") and room["floor_number"] in (1, 2):
             place = "the round lecture halls (the \"barrels\")"
         elif room["building_id"] in ("D", "E") and room["floor_number"] == 3:
@@ -1002,7 +1019,7 @@ class CampusIndex:
         for r in near:
             highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
         if near:
-            sentence += f" Look for it next to {human_list([display_code(r) for r in near])}."
+            sentence += f" Look for it next to {human_list([spoken(r) for r in near])}."
         return sentence
 
     def _twins(self, room: dict) -> list[dict]:
@@ -1018,7 +1035,7 @@ class CampusIndex:
         """Blocks A and B: count the doors along the foyer that runs east from the lobby."""
         row = sorted((r for r in self.rooms if r["zone"] == "north"
                       and r["floor_number"] == room["floor_number"]), key=lambda r: r["x"])
-        code = display_code(room)
+        code = spoken(room, start=True)       # it starts the sentence after the intro
         intro = ("From the lobby, go through to the Block B foyer — the wide hall that runs east "
                  "from the lobby's north-east side.")
         if room is row[-1] and len(row) > 1:
@@ -1028,7 +1045,7 @@ class CampusIndex:
             for r in before:
                 highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "passed"})
             return (f"{intro} {code} is at the far end of it; you'll pass "
-                    f"{human_list([display_code(r) for r in before])} on the way.")
+                    f"{human_list([spoken(r) for r in before])} on the way.")
         north = room["y"] < NORTH_FOYER_Y
         side = "left" if north else "right"
         same = [r for r in row[:-1] if (r["y"] < NORTH_FOYER_Y) == north]
@@ -1041,7 +1058,7 @@ class CampusIndex:
         if pos == 1:
             return f"{intro} {code} is the first door on your {side}."
         return (f"{intro} {code} is the {ordinal(pos)} door on your {side}, just after "
-                f"{human_list([display_code(r) for r in before])}.")
+                f"{human_list([spoken(r) for r in before])}.")
 
     def _fallback_landmark(self, room: dict) -> str:
         """US1 wants a recognisable landmark with every answer. Where no exit or
