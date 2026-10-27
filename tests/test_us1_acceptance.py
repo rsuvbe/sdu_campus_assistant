@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from app.main import DB_PATH, index
+from app.main import BASE_DIR, DB_PATH, index
 
 
 # ====================================================== US1QATest, Scenario 1
@@ -96,7 +96,7 @@ def test_department_and_building_names_are_understood(query, block):
     ("Where can I get coffee?", "Red Coffee"),
     ("где донер", "Doner House"),
     # the more specific name wins over the generic "canteen"
-    ("Where is the Red Canteen?", "Red Canteen (1st floor)"),
+    ("Where is the Red Canteen on the 1st floor?", "Red Canteen (1st floor)"),
 ])
 def test_facility_types_are_understood(query, service):
     answer = index.search(query)
@@ -116,23 +116,31 @@ def test_services_on_the_plans_come_with_a_route(query, block, floor):
     assert any(step.startswith("Landmark:") for step in answer["steps"])
 
 
-def test_a_name_several_rooms_share_shows_the_first_and_lists_the_rest():
+def test_a_name_several_rooms_share_lists_them_all():
+    """Four halls are called Study Space: all four are listed and lit on the plan,
+    each by its own number, never just the first."""
     answer = index.search("Where can I find a study space?")
-    assert answer["kind"] == "room" and answer["title"] == "Study Space"
-    assert answer["room"]["floor_number"] == 3
-    assert answer["suggestions"] == ["Study Space 1", "Study Space 2", "Study Space 3", "Study Space 4"]
+    assert answer["kind"] == "list" and answer["title"] == "4 places called Study Space"
+    names = [r["room_number"] for r in answer["results"]]
+    assert names == ["Study Space 1", "Study Space 2", "Study Space 3", "Study Space 4"]
+    assert all(r["floor_number"] == 3 for r in answer["results"])
     lit = {h["room_number"] for h in answer["map"]["highlights"]}
     assert {"STUDY-SPACE-2", "STUDY-SPACE-3", "STUDY-SPACE-4"} <= lit
-    # each suggestion brings back exactly that hall
-    for n, text in enumerate(answer["suggestions"], start=1):
-        assert index.search(text)["map"]["code"] == f"STUDY-SPACE-{n}"
+    # each row brings back exactly that hall, called by its number
+    for n, row in enumerate(answer["results"], start=1):
+        one = index.search(row["ask"])
+        assert one["map"]["code"] == f"STUDY-SPACE-{n}" and one["title"] == f"Study Space {n}"
 
 
-def test_the_red_canteen_points_at_its_other_floor():
+def test_the_red_canteen_lists_both_floors():
     answer = index.search("Red Canteen")
-    assert answer["room"]["floor_number"] == 1 and "floor 3" in answer["note"]
-    upstairs = index.search(answer["suggestions"][0])
+    assert answer["kind"] == "list"
+    assert [(r["room_number"], r["floor_number"]) for r in answer["results"]] == [
+        ("Red Canteen (1st floor)", 1), ("Red Canteen (3rd floor)", 3)]
+    upstairs = index.search(answer["results"][1]["ask"])
     assert upstairs["kind"] == "room" and upstairs["room"]["floor_number"] == 3
+    # a word other places' names share too: the Cafeteria and both Red Canteens
+    assert [r["code"] for r in index.search("canteen")["results"]] == ["CAFETERIA", "RED-CANTEEN", "RED-CANTEEN-3"]
 
 
 def test_red_hall_is_block_a_reached_through_the_block_b_foyer():
@@ -143,16 +151,22 @@ def test_red_hall_is_block_a_reached_through_the_block_b_foyer():
     assert "central corridor to Block B" not in route
 
 
-@pytest.mark.parametrize("query, block", [
-    ("Where is the toilet?", "B"),          # the first one from the lobby
-    ("toilet in block G", "G"),
-    ("туалет в блоке F", "F"),
-    ("staff toilet", "D"),
+@pytest.mark.parametrize("query, blocks", [
+    ("Where is the toilet?", "BDEFG"),      # every one, in walking order
+    ("staff toilet", "DEFG"),
 ])
-def test_restrooms_are_found_and_the_named_block_wins(query, block):
+def test_every_restroom_is_listed(query, blocks):
+    answer = index.search(query)
+    assert answer["kind"] == "list"
+    assert "".join(r["building_id"] for r in answer["results"]) == blocks
+    assert all(", Block " in r["room_number"] for r in answer["results"]), "each says which block"
+
+
+@pytest.mark.parametrize("query, block", [("toilet in block G", "G"), ("туалет в блоке F", "F")])
+def test_the_named_block_wins(query, block):
     answer = index.search(query)
     assert answer["kind"] == "room" and answer["room"]["building_id"] == block
-    assert len(answer["suggestions"]) >= 4, "the other restrooms are offered too"
+    assert answer["title"] == f"Restroom, Block {block}"
 
 
 @pytest.mark.parametrize("query, title", [
@@ -387,3 +401,20 @@ def test_naming_the_school_or_its_block_picks_its_dean_office(query, office):
     answer = index.search(query)
     assert answer["kind"] == "service" and answer["title"] == office
     assert answer["service"]["category_label"] == "Dean's office"
+
+
+def test_places_that_share_a_name_are_told_apart_everywhere():
+    """On the plan, in the list, on the card and in the steps, each of several
+    places with one name says which it is."""
+    from app.main import campus_map
+    halls = {r["code"]: r for f in campus_map.floor_list() for r in f["rooms"] if r["code"].startswith("STUDY")}
+    assert [halls[f"STUDY-SPACE-{n}"]["barrel"] for n in range(1, 5)] == ["No. 1", "No. 2", "No. 3", "No. 4"]
+    assert index.search("Restroom D")["title"] == "Restroom, Block D"
+    assert index.search("Study Space 4")["map"]["room_number"] == "Study Space 4"
+    steps = " ".join(index.search("from D101 to Study Space 2")["directions"]["steps"])
+    assert "Study Space 2" in steps
+    # a route asked for from a start goes to the nearest of them
+    assert index.search("nearest restroom to G101")["directions"]["to"]["code"] == "RESTROOM-G"
+    # the list shows each by its full name, with where it is and whether it is open
+    app_js = (BASE_DIR / "static" / "app.js").read_text()
+    assert 'class="hit named"' in app_js and "state.result.several" in app_js

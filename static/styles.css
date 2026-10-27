@@ -679,6 +679,11 @@ input { caret-color: var(--dest); }
   transition: background var(--fast) var(--ease);
 }
 .hit .what { font-size: var(--t-14); font-weight: 600; min-width: 0; }
+.hit.named { grid-template-columns: minmax(0, 1fr) auto; padding-top: 9px; padding-bottom: 9px; }
+.hit.named .name { display: grid; gap: 2px; min-width: 0; }
+.hit.named b { font-size: var(--t-15); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit.named .sub { font-size: var(--t-13); color: var(--ink-2); }
+.hit.named .sub .open { color: var(--exit); font-weight: 600; }
 .hit .loc { font-size: var(--t-13); color: var(--ink-2); white-space: nowrap; }
 .hit .i { color: var(--ink-3); transition: transform var(--fast) var(--ease), color var(--fast) var(--ease); }
 .hit:hover { background: var(--stock-2); }

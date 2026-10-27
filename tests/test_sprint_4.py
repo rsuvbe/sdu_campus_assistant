@@ -463,8 +463,12 @@ def test_us15_fail_no_service_is_filed_under_the_wrong_category():
 def test_us15_scenario_2_a_service_opens_on_the_plan_with_its_room_lit():
     for svc in SERVICES:
         answer = index.search(svc["ask"])
-        assert answer["kind"] in ("service", "room"), svc["name"]
         assert answer["map"], f"{svc['name']} does not open on the plan"
+        if answer["kind"] == "list":
+            # a service in several rooms (the restrooms) opens with every one of them listed
+            assert "code" not in svc["location"] and len(answer["results"]) == svc["location"]["count"]
+            continue
+        assert answer["kind"] in ("service", "room"), svc["name"]
         if "code" in svc["location"]:
             assert answer["map"]["code"] == svc["location"]["code"]
             assert answer["title"] == svc["name"]          # the name is shown in the result area

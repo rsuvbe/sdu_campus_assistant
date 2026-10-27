@@ -90,6 +90,10 @@ CYR_TO_LAT = str.maketrans({"б": "b", "с": "c", "д": "d", "е": "e", "ф": "f
 CODE_RE = re.compile(r"(?<![^\W\d_])([b-i])\s?-?\s?(\d{3})(?!\d)")
 BARE_NUMBER_RE = re.compile(r"(?<!\d)(\d{3})(?!\d)")
 # "block F", "в блоке F", "корпус Д": a block named by its letter inside a sentence
+# "on the 3rd floor", "floor 3", "3 этаж", "на третьем этаже"
+FLOOR_WORD_RE = re.compile(r"\b([1-3])(?:st|nd|rd|th)?\s*(?:floor|этаж)|\b(?:floor|этаж[а-яё]*)\s*([1-3])\b"
+                           r"|\b(first|second|third|перв|втор|трет)\w*\s+(?:floor|этаж)")
+FLOOR_WORDS = {"first": 1, "second": 2, "third": 3, "перв": 1, "втор": 2, "трет": 3}
 BLOCK_WORD_RE = re.compile(r"(?:\bblock|блок[а-яё]*|корпус[а-яё]*)\s*-?\s*([a-iабсдефгни])(?![\w])")
 BLOCK_LETTER = str.maketrans({"а": "a", "б": "b", "с": "c", "д": "d", "е": "e", "ф": "f",
                               "г": "g", "н": "h", "и": "i"})
@@ -204,10 +208,18 @@ SPOKEN = {
 }
 
 
+def distinct_name(room: dict) -> str:
+    """A room's name, told apart from the others that share it: "Study Space 2",
+    "Restroom, Block D". Any other room keeps its own name."""
+    return room.get("distinct") or display_code(room)
+
+
 def spoken(room: dict, start: bool = False) -> str:
-    """A room's name as it is said in a sentence: "the restroom", "Red Hall", "D103"."""
+    """A room's name as it is said in a sentence: "the restroom", "Red Hall", "D103",
+    "Study Space 2"."""
     name = display_code(room)
-    name = SPOKEN.get(name, name)
+    twin = room.get("distinct")
+    name = twin if twin and ", Block " not in twin else SPOKEN.get(name, name)
     return name[0].upper() + name[1:] if start else name
 
 
@@ -292,6 +304,17 @@ class CampusIndex:
         for room in sorted(self.rooms, key=self._walk_order):
             if is_named(room):
                 self.named.setdefault(normalize(base_name(room["name"])), []).append(room)
+        # rooms that share a name are told apart wherever they are named: the four
+        # study spaces by their number (from the lobby end), the restrooms by block
+        for twins in self.named.values():
+            if len(twins) < 2:
+                continue
+            for room in twins:
+                if room["name"] != base_name(room["name"]):
+                    continue                    # "Red Canteen (3rd floor)" already says which
+                number = re.search(r"-(\d+)$", room["room_number"])
+                room["distinct"] = (f"{room['name']} {number.group(1)}" if number
+                                    else f"{room['name']}, Block {room['building_id']}")
 
         by_id = {room["room_id"]: room for room in self.rooms}
         for r in conn.execute("SELECT ra.alias, ra.room_id FROM room_aliases ra"):
@@ -431,8 +454,10 @@ class CampusIndex:
         return self.router.place("exit", MAIN_ENTRANCE)
 
     def _place_of(self, answer: dict) -> dict | None:
-        """The room an answer puts on the plan, as a place a route can end at."""
-        if not self.router or answer.get("kind") not in ("room", "service", "block"):
+        """The room an answer puts on the plan, as a place a route can end at
+        (of several places with one name, the first; a start picks the nearest)."""
+        if not self.router or (answer.get("kind") not in ("room", "service", "block")
+                               and not answer.get("several")):
             return None
         code = (answer.get("map") or {}).get("code")
         return self.router.place("room", code) if code else None
@@ -498,10 +523,15 @@ class CampusIndex:
             origin = self.entrance()
             note = (f"I couldn't tell where \u201c{frm.strip(' ,.?')}\u201d is, so the route starts at "
                     f"the main entrance. Pick your start under the route to change it.")
+        elif answer.get("several"):
+            dest, answer = self._nearest_of_several(origin, answer["several"], now)
         else:
             dest, nearer = self._nearest_of_name(origin, dest, now, PLACE_FILLER_RE.sub("", to.strip()))
             if nearer:
                 answer = nearer
+        if answer.get("several"):
+            # no start to measure from: the first of them, on a card of its own
+            answer = self._room_or_service(next(r for r in self.rooms if r["room_number"] == dest["key"]), now)
         answer["directions"] = self.router.route(origin, dest)
         if note:
             answer["directions"]["note"] = " ".join(filter(None, [note, answer["directions"].get("note")]))
@@ -523,17 +553,38 @@ class CampusIndex:
                     "summary": "Start from a room code like D103, a named place like the Library, "
                                "or the main entrance.",
                     "suggestions": (failed or {}).get("suggestions", [])}
-        dest, _ = self._nearest_of_name(origin, dest, None, PLACE_FILLER_RE.sub("", (to or "").strip()))
+        if dest_answer.get("several"):
+            dest, _ = self._nearest_of_several(origin, dest_answer["several"], None)
+        else:
+            dest, _ = self._nearest_of_name(origin, dest, None, PLACE_FILLER_RE.sub("", (to or "").strip()))
         return self.router.route(origin, dest)
+
+    def _nearest_of_several(self, origin: dict, codes: list[str], now: datetime | None) -> tuple[dict, dict]:
+        """Of several places that answer a question, the one nearest the start, and
+        its card, which says there are others."""
+        places = [p for p in (self.router.place("room", c) for c in codes) if p]
+        best = min(places, key=lambda p: self.router.distance(origin, p))
+        room = next(r for r in self.rooms if r["room_number"] == best["key"])
+        answer = self._room_or_service(room, now)
+        others = [ask_text(r) for r in self.rooms if r["room_number"] in codes]
+        answer["note"] = " ".join(filter(None, [
+            answer.get("note"), f"The plans mark {len(codes)} places like this; "
+                                f"this is the nearest one to {origin['label']}."]))
+        answer["suggestions"] = others
+        return best, answer
 
     # --------------------------------------------------------------- search
     def _search(self, query: str, now: datetime | None, context: str | None = None) -> dict:
         lowered = query.lower().translate(CYR_TO_LAT)
         qn = normalize(query)
 
-        # exactly a room's code or alias: "D103", "A1", "Red Hall", "Study Space 2"
+        # exactly a room's code or alias: "D103", "A1", "Red Hall", "Study Space 2" —
+        # unless it is the name several places share ("Red Canteen"): then all of them
         room = self.by_code.get(qn)
         if room:
+            twins = self.named.get(qn, []) if is_named(room) else []
+            if len(twins) > 1 and room in twins and query.strip().upper() != room["room_number"]:
+                return self._named_answer(twins, now, floors=self._floors_in(query))
             return self._room_or_service(room, now)
 
         m = self._target(lowered, list(CODE_RE.finditer(lowered)))
@@ -566,11 +617,11 @@ class CampusIndex:
                 return self._not_found(f"{blocks[0]}{digits}")
 
         # the most specific service wins: "red canteen" before "canteen"
-        best, best_len = None, 0
+        best, best_len, best_alias = None, 0, ""
         for svc in self.services.values():
             for alias in svc["aliases"] + [normalize(svc["name"])]:
                 if alias in qn and len(alias) > best_len:
-                    best, best_len = svc, len(alias)
+                    best, best_len, best_alias = svc, len(alias), alias
         # a named room asked for more exactly than any service: "how do I get to red
         # canteen 3rd floor" is the 3rd-floor hall, not the 1st-floor Red Canteen
         named_room, named_len = None, best_len
@@ -586,12 +637,25 @@ class CampusIndex:
         if best:
             if not best.get("room_id") and normalize(best["name"]) in self.named:
                 # restrooms: one service, a room in almost every block
-                return self._named_answer(self.named[normalize(best["name"])], now, blocks)
+                return self._named_answer(self.named[normalize(best["name"])], now, blocks,
+                                          self._floors_in(query))
+            home = next((r for r in self.rooms if r["room_id"] == best.get("room_id")), None)
+            if home is not None and is_named(home) and not blocks:
+                twins = self.named.get(normalize(base_name(home["name"])), [home])
+                # a word that is also part of other places' names: "canteen" is the
+                # Cafeteria, and the two Red Canteens too
+                alike = [] if best_alias == normalize(base_name(home["name"])) else [
+                    r for key, rooms in self.named.items() if best_alias in key for r in rooms if r not in twins]
+                if alike:
+                    return self._several(twins + alike, now, f"{len(twins + alike)} places for \u201c{query.strip(' ?.!')}\u201d")
+                if len(twins) > 1:
+                    # "Red Canteen": one on floor 1, one on floor 3
+                    return self._named_answer(twins, now, blocks, self._floors_in(query))
             return self._service_answer(best, now)
 
         names = [name for name in self.named if name in qn]
         if names:
-            return self._named_answer(self.named[max(names, key=len)], now, blocks)
+            return self._named_answer(self.named[max(names, key=len)], now, blocks, self._floors_in(query))
 
         if found_number:
             matches = [r for r in self.rooms
@@ -633,6 +697,17 @@ class CampusIndex:
             "summary": f"There are {len(offices)}: {human_list(where)}. Which school are you in?",
             "suggestions": [s["name"] for s in offices],
         }
+
+    @staticmethod
+    def _floors_in(query: str) -> list[int]:
+        """Which floors a question names: "on the 3rd floor", "floor 1", "3 этаж"."""
+        found = []
+        for m in FLOOR_WORD_RE.finditer(query.lower()):
+            digit = m.group(1) or m.group(2)
+            n = int(digit) if digit else FLOOR_WORDS[m.group(3)]
+            if n not in found:
+                found.append(n)
+        return found
 
     def _buildings_in(self, qn: str, latin: str, raw: str = "") -> list[str]:
         """Which blocks a question names, most specific alias first."""
@@ -848,13 +923,14 @@ class CampusIndex:
                              "x": landmark["x"], "y": landmark["y"]} if landmark else None,
             }
 
+        name = distinct_name(room)
         return {
             "kind": "room",
             "map": self._map_payload(room, highlights, landmark),
-            "title": code,
-            "summary": (f"{code}{f' (hall {hall})' if hall else ''} is on floor {floor} "
+            "title": name,
+            "summary": (f"{name}{f' (hall {hall})' if hall else ''} is on floor {floor} "
                         f"of {building_name}."),
-            "room": {"room_number": code, "building_id": bid, "building_name": building_name,
+            "room": {"room_number": name, "building_id": bid, "building_name": building_name,
                      "purpose": room.get("purpose"),
                      "floor_number": floor, "zone": zone, "facts": facts, "source": room["source"]},
             "steps": steps, "route": route, "note": note, "plan": plan, "suggestions": [],
@@ -867,7 +943,7 @@ class CampusIndex:
         here = self.map.room_point(room["room_number"])
         if here is None:
             return None
-        payload = {"floor": room["floor_number"], "room_number": display_code(room),
+        payload = {"floor": room["floor_number"], "room_number": distinct_name(room),
                    "code": room["room_number"],
                    "x": here["x"], "y": here["y"], "radius": here["r"],
                    "highlights": [], "landmark": None}
@@ -1217,31 +1293,53 @@ class CampusIndex:
         return self._service_answer(svc, now) if svc else self._room_answer(room)
 
     def _named_answer(self, rooms: list[dict], now: datetime | None,
-                      blocks: list[str] | None = None) -> dict:
+                      blocks: list[str] | None = None, floors: list[int] | None = None) -> dict:
         """A place asked for by name. Several rooms can share one ("Study Space",
-        "Restroom"): the one in the block the question names, or else the first
-        along the walk from the lobby, is shown and the rest are named."""
+        "Restroom", "Red Canteen"): the ones in the block or on the floor the
+        question names, or else every one of them, so none is missed."""
+        inside = [r for r in rooms if r["building_id"] in (blocks or [])]
+        rooms = inside or rooms
+        rooms = [r for r in rooms if r["floor_number"] in (floors or [])] or rooms
         if len(rooms) == 1:
             return self._room_or_service(rooms[0], now)
-        first = next((r for r in rooms if r["building_id"] in (blocks or [])), rooms[0])
-        result = self._room_or_service(first, now)
-        name = base_name(first["name"])
+        name = base_name(rooms[0]["name"])
+        where = f" in Block {human_list(blocks)}" if inside else ""
+        return self._several(rooms, now, f"{len(rooms)} places called {name}{where}")
+
+    def _several(self, rooms: list[dict], now: datetime | None, title: str) -> dict:
+        """Several places that answer one question, all of them: a short list, each
+        with where it is (and whether it is open), and every one on the first's
+        floor lit on the plan. A tap on one opens it, with the way there."""
+        first = rooms[0]
         floors = sorted({r["floor_number"] for r in rooms})
-        where = (f"all on floor {floors[0]}" if len(floors) == 1
-                 else f"on floors {human_list([str(f) for f in floors])}")
-        which = (f"This is the one in Block {first['building_id']}" if first is not rooms[0]
-                 else "This is the first one from the lobby")
-        note = (f"The plans mark {len(rooms)} places called {name}, {where}. {which}; "
-                f"the others are listed below.")
-        result["note"] = f"{result['note']} {note}" if result.get("note") else note
-        result["suggestions"] = [ask_text(r) for r in rooms]
-        if result.get("map"):
-            shown = {h["room_number"] for h in result["map"]["highlights"]}
-            for r in rooms:
-                if r is first:
-                    continue
+        blocks = sorted({r["building_id"] for r in rooms})
+        where = ("All on floor " + str(floors[0]) if len(floors) == 1
+                 else "On floors " + human_list([str(f) for f in floors]))
+        where += f", in Block{'s' if len(blocks) > 1 else ''} {human_list(blocks)}"
+        answer = self._room_or_service(first, now)
+        if answer.get("map"):
+            shown = {h["room_number"] for h in answer["map"]["highlights"]}
+            for r in rooms[1:]:
                 point = self.map.room_point(r["room_number"])
                 if point and point["floor"] == first["floor_number"] and r["room_number"] not in shown:
-                    result["map"]["highlights"].append({"room_number": r["room_number"], "role": "neighbour",
+                    answer["map"]["highlights"].append({"room_number": r["room_number"], "role": "neighbour",
                                                         "x": point["x"], "y": point["y"]})
-        return result
+        results = []
+        for r in rooms:
+            svc = self.service_of(r)
+            status = self._service_payload(svc, now) if svc else None
+            results.append({"room_number": distinct_name(r).removeprefix("the ").capitalize()
+                            if r["room_number"].startswith("MEDCENTER") else distinct_name(r),
+                            "code": r["room_number"], "ask": ask_text(r), "purpose": r.get("purpose"),
+                            "status": status["status"] if status and status["hours"] else None,
+                            "open": status["open_now"] if status and status["hours"] else None,
+                            "building_id": r["building_id"], "floor_number": r["floor_number"]})
+        shown_floor = (f" The plan shows the ones on floor {first['floor_number']}."
+                       if len(floors) > 1 and answer.get("map") else "")
+        return {
+            "kind": "list", "title": title,
+            "summary": f"{where}. Tap one to see it on the plan and the way there.{shown_floor}",
+            "results": results, "several": [r["room_number"] for r in rooms],
+            "map": answer.get("map"), "route": answer.get("route"), "room": answer.get("room"),
+            "suggestions": [],
+        }

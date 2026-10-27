@@ -503,11 +503,16 @@ function renderCard(d) {
       ${foot(d, !!d.map)}`;
   } else if (d.kind === "list") {
     // every room with that purpose: a short directory, closest match first
+    // places that share a name ("Study Space 2", "Restroom, Block D") are listed by
+    // that name in full, with where each is and whether it is open under it
     const rows = d.results.map((r, i) => `
-      <li${i >= LIST_ROWS ? ' class="more"' : ""}><button type="button" class="hit" data-ask="${esc(r.ask)}">
+      <li${i >= LIST_ROWS ? ' class="more"' : ""}>${d.several ? `<button type="button" class="hit named" data-ask="${esc(r.ask)}">
+        <span class="name"><b>${esc(r.room_number)}</b>
+          <span class="sub">${r.status ? `<span class="${r.open === true ? "open" : ""}">${esc(r.status)}</span> · ` : ""}Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span></span>${icon("right")}</button>`
+      : `<button type="button" class="hit" data-ask="${esc(r.ask)}">
         <span class="tag">${esc(r.room_number)}</span>
         <span class="what">${esc(r.purpose || "")}</span>
-        <span class="loc">Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span>${icon("right")}</button></li>`).join("");
+        <span class="loc">Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span>${icon("right")}</button>`}</li>`).join("");
     card.classList.add("listing");
     card.innerHTML = `
       <header class="listing-head">
@@ -1188,10 +1193,12 @@ function focusOn(x, y, scale, animate) {
     `keep` holds a closer zoom the reader chose, as long as the room still fits. */
 function focusRoom(map, animate, keep = 0) {
   const r = stageRect();
-  const shape = state.floor?.rooms.find((rm) => rm.code === (map.code || map.room_number));
-  if (!shape) { focusOn(map.x, map.y, Math.max(keep, ROOM_ZOOM), animate); return; }
-  const pts = shape.kind === "circle"
-    ? [[shape.cx - shape.r, shape.cy - shape.r], [shape.cx + shape.r, shape.cy + shape.r]] : shape.points;
+  // an answer that lists several places frames every one of them on this floor
+  const codes = (state.result?.map === map && state.result.several) || [map.code || map.room_number];
+  const shapes = (state.floor?.rooms || []).filter((rm) => codes.includes(rm.code));
+  if (!shapes.length) { focusOn(map.x, map.y, Math.max(keep, ROOM_ZOOM), animate); return; }
+  const pts = shapes.flatMap((shape) => shape.kind === "circle"
+    ? [[shape.cx - shape.r, shape.cy - shape.r], [shape.cx + shape.r, shape.cy + shape.r]] : shape.points);
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y1 = Math.max(...ys);
   // the flag stands over the room's outline (or the ping round a small one)

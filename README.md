@@ -56,6 +56,15 @@ is drawn on the floor-2 plan from its sheet, with the passage and the bridge
 that lead to it from the corridor. A place asked for by its floor ("Red Canteen
 3rd floor") is routed to that one, not to the nearer place of the same name.
 
+**Places that share a name.** Four halls are called Study Space, five rooms
+Restroom, four Staff restroom, and two Red Canteen. Asked for by that name, every
+one of them is listed (and lit on the plan), each told apart wherever it is
+named: Study Space 1 to 4 (numbered from the lobby end, "No. 2" on the plan),
+Restroom, Block D, and the canteens by their floor. A block or a floor in the
+question narrows the list ("toilet in block G", "red canteen on the 3rd floor"),
+and a route from a start goes to the nearest. A word that is part of other
+places' names lists them too: "canteen" is the Cafeteria and both Red Canteens.
+
 **Still to do by hand (US13, Verified):** walk three of the generated routes on
 campus and check each step. A program cannot do this, so it is left for the
 team.

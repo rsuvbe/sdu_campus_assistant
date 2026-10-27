@@ -25,6 +25,7 @@ a room's position on the vector map.
 from __future__ import annotations
 
 import math
+import re
 
 from .engine import APPROXIMATE_SOURCES, BLOCK_ORDER, NORTH_BLOCKS, barrel_name, base_name, display_code, ask_text
 
@@ -248,6 +249,12 @@ WEST_HALLS = {
                      (224, 540), (122, 540), (122, 506), (20, 506), (20, 417), (38, 400),
                      (98, 305), (105, 235), (129, 206)])],
 }
+def _twin_number(room: dict) -> str | None:
+    """"No. 2" for the second of several rooms sharing one name, as the answers call it."""
+    m = re.search(r" (\d+)$", room.get("distinct") or "")
+    return f"No. {m.group(1)}" if m else None
+
+
 # Rooms whose name the plans print level even though the room is turned.
 LEVEL_LABELS = {"H109", "H110", "H111", "H212", "H213", "H214"}
 LABEL_CHAR_W = 8.5   # rough width of one label character at the plan's font size
@@ -829,7 +836,9 @@ class CampusMap:
             "code": room["room_number"], "label": label, "sub": sub, "ask": ask_text(room),
             "service": self._service_label(room),
             "block": room["building_id"],
-            "barrel": barrel_name(room),
+            # a round hall's campus name (A1), or which of several halls of one name
+            # it is (the four study spaces are numbered from the lobby end)
+            "barrel": barrel_name(room) or _twin_number(room),
             "type": room["type"], "department": room["department"],
             "approx": room["source"] in APPROXIMATE_SOURCES,
             "x": center[0] if center else room["_x"],
