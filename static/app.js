@@ -857,7 +857,7 @@ function paintRoute(layer) {
     if (room) room.classList.add("is-near", "hl-start");
   }
   const endLine = lines.find(({ leg }) => leg === last);
-  if (endLine && r.to.kind === "room") {
+  if (endLine && r.to.kind === "room" && endLine.pts.length > 1) {
     const [x, y] = endLine.pts[endLine.pts.length - 1];
     el("circle", { class: "trip-door", cx: x, cy: y, r: 6.5 }, g);
   }
@@ -888,7 +888,8 @@ function fromWall(pts, code) {
   if (!room || pts.length < 2 || !inRoom(room, pts[0])) return pts;
   let i = 0;
   while (i < pts.length - 1 && inRoom(room, pts[i + 1])) i++;
-  if (i === pts.length - 1) return pts;
+  // stairs that come up inside the room: nothing to draw across it
+  if (i === pts.length - 1) return [pts[pts.length - 1]];
   let a = pts[i], b = pts[i + 1];
   for (let k = 0; k < 20; k++) {
     const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];

@@ -238,6 +238,16 @@ WEST_OUTLINES = {
     ("S2_I_APPROX", "I"): [(203, 928), (380, 928), (380, 1265), (203, 1265)],
     ("S3_I_APPROX", "I"): [(183, 949), (360, 949), (360, 1214), (183, 1214)],
 }
+# Floor 2 has no rooms west of the corridor at Block F, but the sheet draws a
+# hall there over the food court, with the staircases up to the 3rd-floor Red
+# Canteen: the hall with its stair rooms, the passage along its top to the
+# corridor, and the bridge from its middle. Back-sheet pixels.
+WEST_HALLS = {
+    2: [("S2_BACK", [(129, 137), (178, 137), (178, 165), (372, 165), (372, 182), (290, 182),
+                     (290, 374), (372, 374), (372, 414), (290, 414), (290, 506), (224, 506),
+                     (224, 540), (122, 540), (122, 506), (20, 506), (20, 417), (38, 400),
+                     (98, 305), (105, 235), (129, 206)])],
+}
 # Rooms whose name the plans print level even though the room is turned.
 LEVEL_LABELS = {"H109", "H110", "H111", "H212", "H213", "H214"}
 LABEL_CHAR_W = 8.5   # rough width of one label character at the plan's font size
@@ -635,6 +645,8 @@ class CampusMap:
                                      [spine["x"] + SPINE_HALF, spine["y1"]],
                                      [spine["x"] - SPINE_HALF, spine["y1"]]]})
         areas.extend({"points": list(a["points"])} for a in circulation + volumes + fixtures)
+        for sheet_id, outline in WEST_HALLS.get(floor, []):
+            areas.append({"points": [list(self.to_map(sheet_id, x, y)) for x, y in outline], "hall": True})
 
         return self._normalise({
             "floor": floor, "rooms": shapes, "fixtures": fixtures,

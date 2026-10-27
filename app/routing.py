@@ -350,7 +350,8 @@ class Router:
                 open_rooms.append(shape)
 
         # ---- open floor: the west side, the lobby, the foyer
-        self._corners = self._visibility(floor, geo, open_rooms)
+        halls = [a["points"] for a in plan["areas"] if a.get("hall")]
+        self._corners = self._visibility(floor, geo, open_rooms, halls)
         for shape in open_rooms:
             code = shape["code"]
             room = self._node(f"{floor}:r:{code}", floor, shape["x"], shape["y"], "room", room=code)
@@ -442,8 +443,15 @@ class Router:
         if kind == "exit":
             self.exits[lm["landmark_id"]] = {"name": lm["name"], "node": nid}
         else:
-            core = "lobby" if "lobby" in lm["name"] else f"wing:{block}"
+            # one staircase is the marks of the same name on each floor it joins
+            core = ("lobby" if "lobby" in lm["name"] else f"wing:{block}" if "far end" in lm["name"]
+                    else lm["name"])
             self.stairs[nid] = {"core": core, "name": lm["name"], "block": block}
+            # a staircase that comes up inside a hall (the Red Canteen) opens into it
+            for shape in inside:
+                room = self.room_node.get(shape.code) if shape.code else None
+                if room and self.nodes[room]["floor"] == floor:
+                    self._edge(nid, room, "open", floor=floor, src=nid, zone="west")
 
     def _passage(self, floor: int, geo: _Floor, nid: str, at, zone: str) -> bool:
         """A side exit drawn outside the building's outline, at the end of a short
@@ -458,13 +466,25 @@ class Router:
         self._edge(nid, self._tap(floor, at[1]), "open", floor=floor, src=nid, zone=zone)
         return True
 
-    def _visibility(self, floor: int, geo: _Floor, open_rooms: list[dict]) -> dict:
-        """Corners of the rooms on open floor, and which of them see each other."""
+    def _visibility(self, floor: int, geo: _Floor, open_rooms: list[dict], halls=()) -> dict:
+        """Corners of the rooms on open floor, and which of them see each other.
+        A hall with no rooms in it (the one over the food court on floor 2) adds
+        its own corners, so a walk can bend round its walls out to the corridor."""
         codes = {s["code"] for s in open_rooms}
         points = []
         for shape in geo.shapes:
             if shape.code is None or shape.code in codes:
                 points += [p for p in shape.corners() if geo.free(p)]
+        for hall in halls:
+            for i, v in enumerate(hall):
+                p, n = hall[i - 1], hall[(i + 1) % len(hall)]
+                a = _unit(v[0] - p[0], v[1] - p[1])
+                b = _unit(n[0] - v[0], n[1] - v[1])
+                bx, by = _unit(a[0] - b[0], a[1] - b[1])
+                for k in (1, -1):
+                    q = (v[0] + k * bx * CLEAR * 1.4, v[1] + k * by * CLEAR * 1.4)
+                    if geo.free(q):
+                        points.append(q)
         sight = {i: [] for i in range(len(points))}
         for i, a in enumerate(points):
             for j in range(i + 1, len(points)):
@@ -813,9 +833,14 @@ class Router:
                 if nxt and nxt["kind"] == "stairs":
                     up, to_floor = climb(i + 1)
                     name = self.stairs[nxt["nodes"][0]]["name"]
-                    lead = (f"Leave {label} and go" if leaving else
-                            "Cross the main lobby" if leg["zone"] == "lobby" else "Go")
-                    say(f"{lead} to the {name} and take it {up} to floor {to_floor}.")
+                    if not leaving and leg["zone"] == "west" and first["kind"] == "spine":
+                        # a staircase in a hall off the corridor (up to the Red Canteen)
+                        say(f"Cross to the hall on the west side of the central corridor and take the "
+                            f"{name} {up} to floor {to_floor}.")
+                    else:
+                        lead = (f"Leave {label}, go" if leaving else
+                                "Cross the main lobby" if leg["zone"] == "lobby" else "Go")
+                        say(f"{lead} to the {name} and take it {up} to floor {to_floor}.")
                     state["floor"] = state["cur"] = to_floor
                     leaving, heading = False, None
                     i += 2
@@ -952,6 +977,11 @@ class Router:
         def lead(text: str) -> str:
             text = on_floor + (text[0].lower() + text[1:] if on_floor else text)
             return text
+
+        came_up = self.nodes[legs[i]["nodes"][0]]
+        hall = self._shape.get((came_up["floor"], number))
+        if came_up["kind"] == "stairs" and hall and hall.contains(self._pt(legs[i]["nodes"][0])):
+            return lead(f"The stairs come up inside {code}.")
 
         if number in self.doors and prev is not None and prev["kind"] == "wing":
             door = self.doors[number]

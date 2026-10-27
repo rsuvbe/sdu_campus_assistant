@@ -453,10 +453,16 @@ class CampusIndex:
         place = self._place_of(answer)
         return place, (None if place else answer)
 
-    def _nearest_of_name(self, origin: dict, dest: dict, now: datetime | None) -> tuple[dict, dict | None]:
+    def _nearest_of_name(self, origin: dict, dest: dict, now: datetime | None,
+                         asked: str = "") -> tuple[dict, dict | None]:
         """Several rooms share a name (restrooms, study spaces): from a known start,
-        the one to walk to is the nearest, not the first from the lobby."""
+        the one to walk to is the nearest, not the first from the lobby. A question
+        that names which one ("Red Canteen 3rd floor", RED-CANTEEN-3) gets that one."""
         room = next(r for r in self.rooms if r["room_number"] == dest["key"])
+        if is_named(room) and room["name"] != base_name(room["name"]) and asked and (
+                asked.strip().upper() == room["room_number"]
+                or normalize(asked) != normalize(base_name(room["name"]))):
+            return dest, None
         same = self.named.get(normalize(base_name(room.get("name") or ""))) if is_named(room) else None
         if not same or len(same) < 2:
             return dest, None
@@ -493,7 +499,7 @@ class CampusIndex:
             note = (f"I couldn't tell where \u201c{frm.strip(' ,.?')}\u201d is, so the route starts at "
                     f"the main entrance. Pick your start under the route to change it.")
         else:
-            dest, nearer = self._nearest_of_name(origin, dest, now)
+            dest, nearer = self._nearest_of_name(origin, dest, now, PLACE_FILLER_RE.sub("", to.strip()))
             if nearer:
                 answer = nearer
         answer["directions"] = self.router.route(origin, dest)
@@ -517,7 +523,7 @@ class CampusIndex:
                     "summary": "Start from a room code like D103, a named place like the Library, "
                                "or the main entrance.",
                     "suggestions": (failed or {}).get("suggestions", [])}
-        dest, _ = self._nearest_of_name(origin, dest, None)
+        dest, _ = self._nearest_of_name(origin, dest, None, PLACE_FILLER_RE.sub("", (to or "").strip()))
         return self.router.route(origin, dest)
 
     # --------------------------------------------------------------- search
@@ -565,6 +571,14 @@ class CampusIndex:
             for alias in svc["aliases"] + [normalize(svc["name"])]:
                 if alias in qn and len(alias) > best_len:
                     best, best_len = svc, len(alias)
+        # a named room asked for more exactly than any service: "how do I get to red
+        # canteen 3rd floor" is the 3rd-floor hall, not the 1st-floor Red Canteen
+        named_room, named_len = None, best_len
+        for alias, room in self.by_code.items():
+            if len(alias) > named_len and is_named(room) and alias in qn:
+                named_room, named_len = room, len(alias)
+        if named_room:
+            return self._room_or_service(named_room, now)
         generic = max((len(normalize(w)) for w in DEANERY_WORDS if normalize(w) in qn), default=0)
         # a school named in the question settles whose dean's office it is
         if generic and (best is None or best["category"] != DEANERY):
