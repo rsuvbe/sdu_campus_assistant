@@ -59,7 +59,8 @@ that lead to it from the corridor. A place asked for by its floor ("Red Canteen
 **Places that share a name.** Four halls are called Study Space, five rooms
 Restroom, four Staff restroom, and two Red Canteen. Asked for by that name, every
 one of them is listed (and lit on the plan), each told apart wherever it is
-named: Study Space 1 to 4 (numbered from the lobby end, "No. 2" on the plan),
+named: Study Space 1 to 4 (numbered from the lobby end, "No. 2" on the plan, and
+found however the number is written: "study space 4", "No. 4", "№4", "fourth"),
 Restroom, Block D, and the canteens by their floor. A block or a floor in the
 question narrows the list ("toilet in block G", "red canteen on the 3rd floor"),
 and a route from a start goes to the nearest. A word that is part of other

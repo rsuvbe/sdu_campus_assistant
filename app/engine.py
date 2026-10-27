@@ -90,6 +90,15 @@ CYR_TO_LAT = str.maketrans({"б": "b", "с": "c", "д": "d", "е": "e", "ф": "f
 CODE_RE = re.compile(r"(?<![^\W\d_])([b-i])\s?-?\s?(\d{3})(?!\d)")
 BARE_NUMBER_RE = re.compile(r"(?<!\d)(\d{3})(?!\d)")
 # "block F", "в блоке F", "корпус Д": a block named by its letter inside a sentence
+# which of several numbered places: "4", "No. 4", "№4", "#4", "four", "fourth"
+TWIN_NUMBER_RE = re.compile(r"(?:\bno\.?|№|#|\bnumber|\bномер)?\s*(?<![\d])(?<!floor )(?<!floor)(?<!этаж )(?<!этаже )"
+                            r"([1-9])(?!\s*(?:st|nd|rd|th)?\s*(?:floor|этаж))(?![\d])"
+                            r"|\b(one|two|three|four|first|second|third|fourth|один|два|три|четыре|перв\w*|втор\w*|трет\w*|четв[её]рт\w*)\b"
+                            r"(?!\s*(?:floor|этаж))")
+TWIN_WORDS = {"one": 1, "first": 1, "один": 1, "перв": 1, "two": 2, "second": 2, "два": 2, "втор": 2,
+              "three": 3, "third": 3, "три": 3, "трет": 3, "four": 4, "fourth": 4, "четыре": 4, "четв": 4}
+# "No. 4" on its own: what the plan prints in a numbered hall
+TWIN_ALONE_RE = re.compile(r"^\s*(?:no\.?|№|#|number|номер)\s*([1-9])\s*[?.!]*\s*$")
 # "on the 3rd floor", "floor 3", "3 этаж", "на третьем этаже"
 FLOOR_WORD_RE = re.compile(r"\b([1-3])(?:st|nd|rd|th)?\s*(?:floor|этаж)|\b(?:floor|этаж[а-яё]*)\s*([1-3])\b"
                            r"|\b(first|second|third|перв|втор|трет)\w*\s+(?:floor|этаж)")
@@ -484,9 +493,10 @@ class CampusIndex:
         the one to walk to is the nearest, not the first from the lobby. A question
         that names which one ("Red Canteen 3rd floor", RED-CANTEEN-3) gets that one."""
         room = next(r for r in self.rooms if r["room_number"] == dest["key"])
-        if is_named(room) and room["name"] != base_name(room["name"]) and asked and (
-                asked.strip().upper() == room["room_number"]
-                or normalize(asked) != normalize(base_name(room["name"]))):
+        # "Study Space 4", STUDY-SPACE-4, "Red Canteen 3rd floor" name which one:
+        # only a name any of them answers to ("study space") is the nearest
+        if not is_named(room) or asked.strip().upper() == room["room_number"] or (
+                asked and normalize(asked) != normalize(base_name(room["name"]))):
             return dest, None
         same = self.named.get(normalize(base_name(room.get("name") or ""))) if is_named(room) else None
         if not same or len(same) < 2:
@@ -584,7 +594,7 @@ class CampusIndex:
         if room:
             twins = self.named.get(qn, []) if is_named(room) else []
             if len(twins) > 1 and room in twins and query.strip().upper() != room["room_number"]:
-                return self._named_answer(twins, now, floors=self._floors_in(query))
+                return self._named_answer(twins, now, floors=self._floors_in(query), query=query)
             return self._room_or_service(room, now)
 
         m = self._target(lowered, list(CODE_RE.finditer(lowered)))
@@ -626,7 +636,9 @@ class CampusIndex:
         # canteen 3rd floor" is the 3rd-floor hall, not the 1st-floor Red Canteen
         named_room, named_len = None, best_len
         for alias, room in self.by_code.items():
-            if len(alias) > named_len and is_named(room) and alias in qn:
+            if len(alias) > named_len and is_named(room) and alias in qn \
+                    and not re.search(re.escape(alias) + r"(?<=\d)(?:\d|st|nd|rd|th)", qn):
+                # "studyspace3" is not in "study space 3rd floor"
                 named_room, named_len = room, len(alias)
         if named_room:
             return self._room_or_service(named_room, now)
@@ -638,7 +650,7 @@ class CampusIndex:
             if not best.get("room_id") and normalize(best["name"]) in self.named:
                 # restrooms: one service, a room in almost every block
                 return self._named_answer(self.named[normalize(best["name"])], now, blocks,
-                                          self._floors_in(query))
+                                          self._floors_in(query), query)
             home = next((r for r in self.rooms if r["room_id"] == best.get("room_id")), None)
             if home is not None and is_named(home) and not blocks:
                 twins = self.named.get(normalize(base_name(home["name"])), [home])
@@ -650,12 +662,12 @@ class CampusIndex:
                     return self._several(twins + alike, now, f"{len(twins + alike)} places for \u201c{query.strip(' ?.!')}\u201d")
                 if len(twins) > 1:
                     # "Red Canteen": one on floor 1, one on floor 3
-                    return self._named_answer(twins, now, blocks, self._floors_in(query))
+                    return self._named_answer(twins, now, blocks, self._floors_in(query), query)
             return self._service_answer(best, now)
 
         names = [name for name in self.named if name in qn]
         if names:
-            return self._named_answer(self.named[max(names, key=len)], now, blocks, self._floors_in(query))
+            return self._named_answer(self.named[max(names, key=len)], now, blocks, self._floors_in(query), query)
 
         if found_number:
             matches = [r for r in self.rooms
@@ -666,8 +678,21 @@ class CampusIndex:
             if matches:
                 return self._ambiguous(found_number.group(1), matches)
 
+        alone = TWIN_ALONE_RE.match(lowered)
+        if alone:
+            n = alone.group(1)
+            halls = [r for r in self.rooms if re.search(rf" {n}$", r.get("distinct") or "")]
+            if len(halls) == 1:
+                return self._room_or_service(halls[0], now)
+
         listing = self._purpose_answer(lowered, blocks)
         if listing:
+            # every match one of several places with one name ("No4 study"): that group
+            codes = {r["code"] for r in listing["results"]}
+            group = next((rooms for rooms in self.named.values()
+                          if len(rooms) > 1 and codes == {r["room_number"] for r in rooms}), None)
+            if group:
+                return self._named_answer(group, now, blocks, self._floors_in(query), query)
             return listing
 
         if blocks:
@@ -1292,11 +1317,32 @@ class CampusIndex:
         svc = self.hosted_service(room)
         return self._service_answer(svc, now) if svc else self._room_answer(room)
 
+    @staticmethod
+    def _twin_numbers_in(query: str) -> list[int]:
+        """The numbers a question gives for one of several numbered places."""
+        found = []
+        for m in TWIN_NUMBER_RE.finditer(query.lower()):
+            if m.group(1):
+                n = int(m.group(1))
+            else:
+                word = m.group(2)
+                n = TWIN_WORDS.get(word) or next((v for k, v in TWIN_WORDS.items() if word.startswith(k)), None)
+            if n and n not in found:
+                found.append(n)
+        return found
+
     def _named_answer(self, rooms: list[dict], now: datetime | None,
-                      blocks: list[str] | None = None, floors: list[int] | None = None) -> dict:
+                      blocks: list[str] | None = None, floors: list[int] | None = None,
+                      query: str = "") -> dict:
         """A place asked for by name. Several rooms can share one ("Study Space",
-        "Restroom", "Red Canteen"): the ones in the block or on the floor the
-        question names, or else every one of them, so none is missed."""
+        "Restroom", "Red Canteen"): the one whose number the question gives
+        ("study space No. 4"), the ones in the block or on the floor it names,
+        or else every one of them, so none is missed."""
+        numbered = {int(re.search(r"(\d+)$", r["distinct"]).group(1)): r for r in rooms
+                    if re.search(r" \d+$", r.get("distinct") or "")}
+        picked = [numbered[n] for n in self._twin_numbers_in(query) if n in numbered]
+        if len(picked) == 1:
+            return self._room_or_service(picked[0], now)
         inside = [r for r in rooms if r["building_id"] in (blocks or [])]
         rooms = inside or rooms
         rooms = [r for r in rooms if r["floor_number"] in (floors or [])] or rooms

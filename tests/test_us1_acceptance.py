@@ -418,3 +418,25 @@ def test_places_that_share_a_name_are_told_apart_everywhere():
     # the list shows each by its full name, with where it is and whether it is open
     app_js = (BASE_DIR / "static" / "app.js").read_text()
     assert 'class="hit named"' in app_js and "state.result.several" in app_js
+
+
+@pytest.mark.parametrize("query", ["No4 Study", "No. 4", "№4", "study space No. 4", "study space #4",
+                                   "study space four", "fourth study space", "where is study space 4",
+                                   "how do I get to study space no. 4"])
+def test_a_numbered_study_space_is_found_however_its_number_is_written(query):
+    answer = index.search(query)
+    assert answer["kind"] == "room" and answer["map"]["code"] == "STUDY-SPACE-4", query
+
+
+@pytest.mark.parametrize("query", ["study space 3rd floor", "study space floor 3", "study space on the third floor"])
+def test_a_floor_number_is_not_taken_for_the_hall_number(query):
+    assert index.search(query)["kind"] == "list"
+
+
+def test_the_way_to_a_chosen_study_space_goes_to_that_one():
+    # "How do I get there?" on Study Space 4 used to lead to Study Space 2, the nearest
+    for start in (None, "D101", "E317"):
+        assert index.directions("STUDY-SPACE-4", start)["to"]["code"] == "STUDY-SPACE-4"
+    assert index.directions("RESTROOM-B", "G101")["to"]["code"] == "RESTROOM-B"
+    # a name any of them answers to still goes to the nearest
+    assert index.directions("restroom", "G101")["to"]["code"] == "RESTROOM-G"
