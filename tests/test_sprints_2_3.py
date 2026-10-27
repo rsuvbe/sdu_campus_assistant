@@ -293,7 +293,7 @@ def test_us10_the_client_switches_floor_highlights_clears_and_centres():
     assert "openFloor(d.map.floor, { focus:" in APP_JS            # switch to the room's floor
     assert 'classList.remove("is-target"' in APP_JS               # clear the old highlight
     assert 'target.classList.add("is-target")' in APP_JS          # highlight the new one
-    assert "focusOn(focus.x, focus.y, ROOM_ZOOM, true)" in APP_JS  # bring it into view
+    assert "focusRoom(focus, true)" in APP_JS                      # bring it into view, flag and all
 
 
 def test_us10_an_answer_without_a_room_clears_the_old_highlight():
@@ -316,7 +316,8 @@ def test_us11_zoom_is_bounded():
 
 
 def test_us11_dragging_cannot_lose_the_plan():
-    assert "function clampView()" in APP_JS and "clampView();" in APP_JS
+    # clamped on every move, with the stage measured once for the frame
+    assert "function clampView(r = stageRect())" in APP_JS and "clampView(r);" in APP_JS
 
 
 def test_us11_two_fingers_pinch_to_zoom():

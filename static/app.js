@@ -960,7 +960,7 @@ function showResultOnMap(d) {
   if (d.directions) { showRoute(d.directions); return; }
   state.route = null;
   const changed = state.floor?.floor !== d.map.floor;
-  openFloor(d.map.floor, { focus: { x: d.map.x, y: d.map.y }, fitFirst: changed });
+  openFloor(d.map.floor, { focus: d.map, fitFirst: changed });
 }
 
 /** Put a route on the plan, on the floor it starts on (or the one asked for),
@@ -988,8 +988,15 @@ function fitRoute(f, animate) {
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const r = stageRect();
   const pad = 70;
-  const s = Math.min(r.width / (x1 - x0 + pad * 2), r.height / (y1 - y0 + pad * 2), ROUTE_MAX_ZOOM);
-  focusOn((x0 + x1) / 2, (y0 + y1) / 2, s, animate);
+  // on a phone the zoom buttons stand over the plan's right edge: the route keeps clear of them
+  const right = handset() ? 58 : 0;
+  const w = r.width - right;
+  const s = Math.max(Math.min(w / (x1 - x0 + pad * 2), r.height / (y1 - y0 + pad * 2), ROUTE_MAX_ZOOM),
+                     state.view.fit);
+  state.view.s = s;
+  state.view.tx = w / 2 - ((x0 + x1) / 2) * s;
+  state.view.ty = r.height / 2 - ((y0 + y1) / 2) * s;
+  applyView(animate);
 }
 
 // a route's floor chips say which of its floors the plan is showing
@@ -1012,7 +1019,7 @@ function openFloor(number, { focus = null, fitFirst = true, clearResult = false 
 
   if (focus) {
     if (fitFirst || changed) fitView(false);
-    requestAnimationFrame(() => focusOn(focus.x, focus.y, ROOM_ZOOM, true));
+    requestAnimationFrame(() => focusRoom(focus, true));
   } else if (changed) {
     const r = stageRect();
     const zoomed = before && before.s > before.fit * 1.05;
@@ -1054,9 +1061,8 @@ function renderControls() {
 }
 
 /** Which block sits at the centre of the stage: filled on the rail, named in the bar. */
-function markInView() {
+function markInView(r = stageRect()) {
   if (!state.floor) return;
-  const r = stageRect();
   const v = state.view;
   let id = null;
   if (v.s > v.fit * 1.15) {
@@ -1093,9 +1099,8 @@ const KEEP_IN_VIEW = 140;
 const MIN_ZOOM = 0.8;   // x "whole floor"
 const MAX_ZOOM = 12;
 
-function clampView() {
+function clampView(r = stageRect()) {
   if (!state.floor) return;
-  const r = stageRect();
   const v = state.view;
   const w = state.floor.width * v.s, h = state.floor.height * v.s;
   const keepX = Math.min(KEEP_IN_VIEW, r.width / 3, w), keepY = Math.min(KEEP_IN_VIEW, r.height / 3, h);
@@ -1104,18 +1109,29 @@ function clampView() {
 }
 
 function applyView(animate) {
+  // the stage is measured before anything is written, so moving the plan never
+  // makes the browser lay the page out again in the middle of a frame
+  const r = stageRect();
   const c = $("#canvas");
   c.classList.toggle("animate", !!animate);
-  clampView();
+  clampView(r);
   const v = state.view;
   c.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.s})`;
-  c.style.setProperty("--inv", (1 / v.s).toFixed(4));
-  updateDetail();
+  updateDetail(r);
 }
 
-function updateDetail() {
-  $("#canvas").classList.toggle("far", state.view.s < LABEL_SCALE);
-  markInView();
+// A drag or a pinch moves the plan once a frame, however often the finger reports.
+let viewFrame = 0;
+function scheduleView() {
+  if (viewFrame) return;
+  viewFrame = requestAnimationFrame(() => { viewFrame = 0; applyView(false); });
+}
+
+function updateDetail(r) {
+  const far = state.view.s < LABEL_SCALE;
+  const c = $("#canvas");
+  if (c.classList.contains("far") !== far) c.classList.toggle("far", far);
+  markInView(r);
 }
 
 // The part of the stage you can see: on a phone the sheet lies over its bottom,
@@ -1166,13 +1182,32 @@ function focusOn(x, y, scale, animate) {
   applyView(animate);
 }
 
+/** Centre the plan on an answer's room: close enough to read, and far enough
+    out that the whole room and the flag over it fit the part of the plan the
+    stage shows (on a narrow phone a big hall like the Library would fill it).
+    `keep` holds a closer zoom the reader chose, as long as the room still fits. */
+function focusRoom(map, animate, keep = 0) {
+  const r = stageRect();
+  const shape = state.floor?.rooms.find((rm) => rm.code === (map.code || map.room_number));
+  if (!shape) { focusOn(map.x, map.y, Math.max(keep, ROOM_ZOOM), animate); return; }
+  const pts = shape.kind === "circle"
+    ? [[shape.cx - shape.r, shape.cy - shape.r], [shape.cx + shape.r, shape.cy + shape.r]] : shape.points;
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y1 = Math.max(...ys);
+  // the flag stands over the room's outline (or the ping round a small one)
+  const y0 = Math.min(Math.min(...ys) - 40, map.y - Math.max(40, (map.radius || 0) + 14) - 36);
+  const fits = Math.min((r.width - 48) / (x1 - x0), (r.height - 24) / (y1 - y0));
+  const s = Math.min(Math.max(keep, ROOM_ZOOM), fits);
+  focusOn((x0 + x1) / 2, (y0 + y1) / 2, s, animate);
+}
+
 /** Zoom to an absolute scale, keeping the plan point under (mx, my) where it is. */
-function zoomTo(scale, mx, my, animate) {
+function zoomTo(scale, mx, my, animate, defer = false) {
   const v = state.view;
   const ns = Math.min(Math.max(scale, v.fit * MIN_ZOOM), v.fit * MAX_ZOOM);
   const px = (mx - v.tx) / v.s, py = (my - v.ty) / v.s;
   v.s = ns; v.tx = mx - px * ns; v.ty = my - py * ns;
-  applyView(animate);
+  if (defer) scheduleView(); else applyView(animate);
 }
 
 function zoomBy(k, cx, cy) {
@@ -1221,7 +1256,7 @@ function setupPanZoom() {
       state.view.ty = pinch.ty + (my - pinch.my);
       const factor = Math.hypot(b.x - a.x, b.y - a.y) / pinch.dist;
       const ratio = (pinch.s * factor) / state.view.s;
-      zoomTo(state.view.s * ratio, mx, my, false);
+      zoomTo(state.view.s * ratio, mx, my, false, true);
       pinch.tx = state.view.tx; pinch.ty = state.view.ty; pinch.mx = mx; pinch.my = my;
       pinch.s = state.view.s; pinch.dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     } else if (drag) {
@@ -1234,7 +1269,7 @@ function setupPanZoom() {
       }
       state.view.tx = drag.tx + (p.x - drag.x);
       state.view.ty = drag.ty + (p.y - drag.y);
-      applyView(false);
+      scheduleView();
     }
   });
   const end = (e) => {
@@ -1260,7 +1295,8 @@ function setupPanZoom() {
   stage.addEventListener("wheel", (e) => {
     e.preventDefault();
     const r = stageRect();
-    zoomBy(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+    const v = state.view;
+    zoomTo(v.s * Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top, false, true);
   }, { passive: false });
 
   $("#zoom-in").addEventListener("click", () => zoomBy(1.4));
@@ -1273,7 +1309,7 @@ function setupPanZoom() {
     resizeT = setTimeout(() => {
       const map = state.result?.map;
       if (state.route?.floors.includes(state.floor?.floor)) { fitView(false); fitRoute(state.floor.floor, false); }
-      else if (map && map.floor === state.floor?.floor) { fitView(false); focusOn(map.x, map.y, ROOM_ZOOM, false); }
+      else if (map && map.floor === state.floor?.floor) { fitView(false); focusRoom(map, false); }
       else if (state.view.s > state.view.fit * 1.05) overview(false);
       else fitView(false);
     }, 120);
@@ -1309,7 +1345,10 @@ function setSnap(snap, animate = true) {
   const stage = $("#stage").getBoundingClientRect();
   const sheetTop = $(".app").getBoundingClientRect().bottom - sheet.offsetHeight + off;
   state.cover = Math.max(0, stage.bottom - sheetTop);
+  const zoom = $(".zoom");
+  if (!animate) zoom.style.transition = "none";
   $("#map").style.setProperty("--cover", `${state.cover}px`);
+  if (!animate) requestAnimationFrame(() => zoom.style.removeProperty("transition"));
   const handle = $("#sheet-handle");
   handle.setAttribute("aria-label", snap === "full" ? "Show the plan" : "Show more of the answers");
   handle.setAttribute("aria-expanded", String(snap === "full"));
@@ -1317,7 +1356,7 @@ function setSnap(snap, animate = true) {
   // the answer's room stays in sight above the sheet
   const map = state.result?.map;
   if (prev !== snap && snap !== "full" && map && map.floor === state.floor?.floor) {
-    focusOn(map.x, map.y, Math.max(state.view.s, ROOM_ZOOM), animate);
+    focusRoom(map, animate, state.view.s);
   }
 }
 
@@ -1333,7 +1372,8 @@ function setupSheet() {
     swallowClick = false;
     // the field and the Find button keep their own taps
     if (e.target.closest("input, .btn-go")) return;
-    drag = { id: e.pointerId, y0: e.clientY, off0: offsetNow(), moved: false, last: e.clientY, t: e.timeStamp, v: 0 };
+    drag = { id: e.pointerId, y0: e.clientY, off0: offsetNow(), moved: false, last: e.clientY, t: e.timeStamp, v: 0,
+             max: snapOffset("peek") };
   };
   const move = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -1344,8 +1384,7 @@ function setupSheet() {
       sheet.classList.add("dragging");
       e.target.setPointerCapture?.(e.pointerId);
     }
-    const max = snapOffset("peek");
-    const off = Math.min(Math.max(drag.off0 + dy, 0), max);
+    const off = Math.min(Math.max(drag.off0 + dy, 0), drag.max);
     sheet.style.setProperty("--sheet-y", `${off}px`);
     const dt = e.timeStamp - drag.t;
     if (dt > 0) drag.v = (e.clientY - drag.last) / dt;
@@ -1391,6 +1430,12 @@ function setupSheet() {
 
 /* ------------------------------------------------------------ boot */
 async function boot() {
+  // on a phone the frame is fixed to the screen; a field brought into view or an
+  // answer scrolled to must never slide it (and the bar with it) up
+  const frame = $(".app");
+  frame.addEventListener("scroll", () => { if (frame.scrollTop || frame.scrollLeft) frame.scrollTo(0, 0); });
+  // the full hint is cut mid-word on the narrowest phones
+  if (matchMedia("(max-width: 374px)").matches) $("#q").placeholder = "Room, hall or office";
   renderExamples();
   setupSheet();
   setupPanZoom();

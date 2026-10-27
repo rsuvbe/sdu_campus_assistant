@@ -564,3 +564,32 @@ def test_us16_hours_not_confirmed_are_marked_and_not_counted_as_open():
 
 def test_us16_the_services_page_shows_each_status():
     assert "lamp ${cls}" in APP_JS and "shortStatus(svc)" in APP_JS
+
+
+# ============================================================ on a phone
+STYLES = (BASE_DIR / "static" / "styles.css").read_text()
+
+
+def test_phone_moving_the_plan_does_no_extra_work_per_touch():
+    # the plan moves once a frame, and nothing is written that makes the browser
+    # restyle every room on the plan as the finger moves
+    assert "--inv" not in APP_JS
+    assert "scheduleView();" in APP_JS and "zoomTo(state.view.s * ratio, mx, my, false, true)" in APP_JS
+    # the sheet is measured when a drag starts, not on every move
+    assert 'max: snapOffset("peek")' in APP_JS and "drag.max" in APP_JS
+    # the ping round a found room stops after three
+    assert "animation: ping 2s ease-out 3;" in STYLES and "ping 2s ease-out infinite" not in STYLES
+
+
+def test_phone_the_frame_never_scrolls_off_the_bar():
+    assert "overflow: hidden; overflow: clip;" in STYLES
+    assert 'frame.addEventListener("scroll"' in APP_JS
+
+
+def test_static_files_are_cached_and_pages_are_not(client):
+    versioned = client.get("/static/app.js?v=1")
+    assert versioned.status_code == 200
+    assert "immutable" in versioned.headers["cache-control"] and "s-maxage" in versioned.headers["cache-control"]
+    plain = client.get("/static/img/favicon.png")
+    assert plain.headers["cache-control"] == "public, max-age=3600, s-maxage=86400"
+    assert client.get("/").headers.get("cache-control") == "no-cache"

@@ -903,7 +903,9 @@ input { caret-color: var(--dest); }
 .plan .target .pulse {
   fill: color-mix(in srgb, var(--dest) 12%, transparent); stroke: var(--dest); stroke-width: 2.5;
   transform-box: fill-box; transform-origin: center;
-  animation: ping 2s ease-out infinite;
+  /* three pings, then still: a ping that never stops repaints the whole plan
+     every frame, which a phone feels */
+  animation: ping 2s ease-out 3;
 }
 .plan .target .pulse.wide { animation-name: ping-wide; }
 /* the pin is a small card: navy band, white code, the peach stripe */
@@ -999,7 +1001,9 @@ input { caret-color: var(--dest); }
     --composer-h: 0px;
   }
   .app-body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-  .app { display: block; position: fixed; inset: 0; height: auto; min-height: 0; overflow: hidden; }
+  /* clip, not just hidden: a hidden box can still be scrolled by a script or a
+     focused field, which slid the whole frame, bar and all, up the screen */
+  .app { display: block; position: fixed; inset: 0; height: auto; min-height: 0; overflow: hidden; overflow: clip; }
 
   /* the bar: one line, the mark and the name, the theme and who you are */
   .app .bar {
@@ -1014,7 +1018,7 @@ input { caret-color: var(--dest); }
   .bar-end { gap: 6px; }
   .bar .theme-btn, .bar #signout, .bar .icon-btn.square { width: 40px; min-width: 40px; min-height: 40px; height: 40px; padding: 0; }
   .bar #signout-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .who.pass { padding: 4px 8px; font-size: 11px; letter-spacing: .06em; }
+  .who.pass { padding: 4px 8px; font-size: 12px; letter-spacing: .05em; }
   .who.pass .pass-word { display: none; }
 
   /* the theme menu becomes a full-width list under the bar, never off the edge */

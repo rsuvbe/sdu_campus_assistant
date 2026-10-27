@@ -277,7 +277,24 @@ def services(user: dict = Depends(current_user)):
 
 
 # ---------------------------------------------------------------------- site
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class CachedStatic(StaticFiles):
+    """Static files the CDN and the browser keep, so a page opens without asking
+    the server for each of them again. A script or a stylesheet the pages name
+    with a version (app.js?v=44) never changes under that name: kept for a year.
+    Anything else (the logo, the plans) for an hour in the browser and a day at
+    the edge. Vercel empties its edge cache on every deploy."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            versioned = b"v=" in scope.get("query_string", b"")
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, s-maxage=31536000, immutable" if versioned
+                else "public, max-age=3600, s-maxage=86400")
+        return response
+
+
+app.mount("/static", CachedStatic(directory=STATIC_DIR), name="static")
 
 # The pages name their scripts and styles with a version (app.js?v=44), so a
 # browser must ask again for the page itself to pick up a new release.
