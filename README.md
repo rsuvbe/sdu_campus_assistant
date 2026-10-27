@@ -52,8 +52,8 @@ of the Block D to H wings, which `campus.db` already had on floors 2 and 3.
 Two more join floors 2 and 3 west of the corridor at Block F: the Red Canteen
 staircase and the north Red Canteen staircase, which come up inside the
 3rd-floor Red Canteen from the hall over the food court on floor 2. That hall
-is drawn on the floor-2 plan from its sheet, with the passage and the bridge
-that lead to it from the corridor. A place asked for by its floor ("Red Canteen
+is drawn on the floor-2 plan from its sheet, with the passage along its top
+that leads to it from the corridor. A place asked for by its floor ("Red Canteen
 3rd floor") is routed to that one, not to the nearer place of the same name.
 
 **Places that share a name.** Four halls are called Study Space, five rooms

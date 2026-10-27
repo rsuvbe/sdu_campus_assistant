@@ -241,11 +241,11 @@ WEST_OUTLINES = {
 }
 # Floor 2 has no rooms west of the corridor at Block F, but the sheet draws a
 # hall there over the food court, with the staircases up to the 3rd-floor Red
-# Canteen: the hall with its stair rooms, the passage along its top to the
-# corridor, and the bridge from its middle. Back-sheet pixels.
+# Canteen: the hall with its stair rooms and the passage along its top to the
+# corridor, the one way in from it. Back-sheet pixels.
 WEST_HALLS = {
     2: [("S2_BACK", [(129, 137), (178, 137), (178, 165), (372, 165), (372, 182), (290, 182),
-                     (290, 374), (372, 374), (372, 414), (290, 414), (290, 506), (224, 506),
+                     (290, 506), (224, 506),
                      (224, 540), (122, 540), (122, 506), (20, 506), (20, 417), (38, 400),
                      (98, 305), (105, 235), (129, 206)])],
 }
