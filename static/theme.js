@@ -11,10 +11,11 @@
     { id: "", label: "Match device", icon: "device", note: "Light or dark, as your device is set" },
     { id: "light", label: "Light", icon: "sun", note: "SDU navy on white card stock" },
     { id: "dark", label: "Dark", icon: "moon", note: "The same card at night" },
-    { id: "steppe", label: "Steppe", icon: "steppe", note: "Sky teal and sun gold" },
+    { id: "steppe", label: "Teal", icon: "steppe", note: "Teal with gold and terracotta" },
+    { id: "violet", label: "Violet", icon: "violet", note: "Violet with lemon and magenta" },
   ];
   // the browser's own chrome follows the band colour of the theme
-  const BAR = { light: "#2F345C", dark: "#2F345C", steppe: "#0D4A5C" };
+  const BAR = { light: "#2F345C", dark: "#2F345C", steppe: "#0D4A5C", violet: "#3B2462" };
 
   const read = () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } };
   const write = (id) => { try { id ? localStorage.setItem(KEY, id) : localStorage.removeItem(KEY); } catch { /* private mode */ } };

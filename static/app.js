@@ -98,11 +98,9 @@ async function loadServices() {
     box.closest(".directory").hidden = true;   // the page is optional; the assistant still works
     return;
   }
-  // only hours a service has confirmed are counted as open; the rest are a guess
-  const open = services.filter((svc) => svc.open_now === true && !guessed(svc)).length;
-  const likely = services.filter((svc) => svc.open_now === true && guessed(svc)).length;
-  $("#dir-summary").innerHTML = open || likely
-    ? `<i class="lamp open" aria-hidden="true"></i><span>${open} open now${likely ? `<span class="likely">, ${likely} more probably</span>` : ""}</span>`
+  const open = services.filter((svc) => svc.open_now === true).length;
+  $("#dir-summary").innerHTML = open
+    ? `<i class="lamp open" aria-hidden="true"></i><span>${open} open now</span>`
     : "All closed right now";
 
   const groups = [];
@@ -116,10 +114,6 @@ async function loadServices() {
       <h3 class="dir-group-title" id="grp-${esc(g.key)}">${esc(g.label)}<span>${g.items.length}</span></h3>
       <ul class="dir-list">${g.items.map(serviceRow).join("")}</ul>
     </section>`).join("");
-  if (services.some(guessed)) {
-    box.insertAdjacentHTML("beforeend", `<p class="dir-note"><span aria-hidden="true">≈</span> Hours the service
-      hasn't confirmed yet: the team's best reading, so check before you go.</p>`);
-  }
   box.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
 
   const filter = $("#dir-filter");
@@ -135,17 +129,13 @@ async function loadServices() {
   if (location.hash === "#services") $("#services-page").scrollIntoView({ block: "start" });
 }
 
-// hours on file that the service itself hasn't confirmed
-const guessed = (svc) => svc.kind !== "rooms" && svc.hours_approximate && svc.hours?.length > 0;
-
 function serviceRow(svc) {
   const cls = svc.open_now === true ? "open" : svc.open_now === false ? "closed" : "";
   const where = svc.location ? svc.location.text : "Not on the plans yet";
-  const guess = guessed(svc);
-  const aside = svc.kind === "rooms" ? `${svc.location.count} rooms` : `${guess ? "≈ " : ""}${shortStatus(svc)}`;
-  const status = guess ? `${svc.status} (hours not confirmed yet)` : svc.status;
+  const aside = svc.kind === "rooms" ? `${svc.location.count} rooms` : shortStatus(svc);
+  const status = svc.status;
   // long office names are shown by their short name; the full one is in the tooltip
-  return `<li><button type="button" class="dir-row ${cls}${guess ? " guess" : ""}${svc.kind === "rooms" ? " rooms" : ""}" data-ask="${esc(svc.ask)}"
+  return `<li><button type="button" class="dir-row ${cls}${svc.kind === "rooms" ? " rooms" : ""}" data-ask="${esc(svc.ask)}"
       title="${esc(svc.name)}. ${esc(status)}" aria-label="${esc(svc.name)}, ${esc(where)}, ${esc(status)}">
       <i class="lamp ${cls}" aria-hidden="true"></i>
       <span class="dir-text"><b>${esc(svc.short_name || svc.name)}</b><span class="where">${esc(where)}</span></span>

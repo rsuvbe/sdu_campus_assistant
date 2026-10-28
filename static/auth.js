@@ -42,6 +42,14 @@ function nameParts(email) {
   return m ? `${m[1]}.${m[2]}`.split(/[.-]/).filter((part) => part.length >= 3) : [];
 }
 
+// Signed in (or let in as a visitor) on this visit: the pages behind the door
+// check for this mark, so a reload keeps the session and a new visit starts at
+// this page again (see the first script in index.html).
+function enter() {
+  try { sessionStorage.setItem("sdu-visit", "1"); } catch { /* storage off: the session still works */ }
+  window.location.replace("/");
+}
+
 /* ------------------------------------------------------------ mode switch */
 function setMode(next) {
   mode = next;
@@ -171,7 +179,7 @@ async function submit(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.ok) { window.location.replace("/"); return; }
+    if (res.ok) { enter(); return; }
     const data = await res.json().catch(() => ({}));
     const detail = data.detail;
     if (detail && typeof detail === "object") showError(detail.message, detail.field);
@@ -261,7 +269,7 @@ async function saveNewPassword(password) {
   button.textContent = "Saving…";
   try {
     const { res, data } = await postJSON("/api/auth/reset", { token: resetToken, password });
-    if (res.ok) { window.location.replace("/"); return; }
+    if (res.ok) { enter(); return; }
     serverError(data);
   } catch (err) {
     showError(`Couldn't reach the server (${err.message}).`);
@@ -277,7 +285,7 @@ async function enterAsVisitor() {
   button.innerHTML = `<svg class="i" aria-hidden="true"><use href="#i-entrance"/></svg>Opening…`;
   try {
     const res = await fetch("/api/auth/guest", { method: "POST" });
-    if (res.ok) { window.location.replace("/"); return; }
+    if (res.ok) { enter(); return; }
     showError("Couldn't open the campus assistant. Try again.");
   } catch (err) {
     showError(`Couldn't reach the server (${err.message}).`);

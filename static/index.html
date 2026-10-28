@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SDU Campus Assistant</title>
 <meta name="description" content="Ask where any room or service is at SDU University and see it on the floor plan.">
+<!-- A new visit (a new tab, the browser opened again) starts at the sign-in page,
+     for an account and a visitor alike; a reload keeps the session. The mark is
+     set by the sign-in page and lives as long as the tab. -->
+<script>try{if(!sessionStorage.getItem("sdu-visit")){document.documentElement.style.visibility="hidden";fetch("/api/auth/logout",{method:"POST"}).finally(function(){location.replace("/login")})}}catch(e){}</script>
 <script>try{var t=localStorage.getItem("sdu-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <meta name="color-scheme" content="light dark">
 <meta name="darkreader-lock">
@@ -13,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=90">
+<link rel="stylesheet" href="/static/styles.css?v=92">
 </head>
 <body class="app-body">
 <a class="skip" href="#q">Skip to search</a>
@@ -26,6 +30,7 @@
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
   <symbol id="i-steppe" viewBox="0 0 24 24"><path d="M2.5 17.5h19M5 21h14"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5V9M6 9.5l1.6 1.6M18 9.5l-1.6 1.6"/></symbol>
+  <symbol id="i-violet" viewBox="0 0 24 24"><path d="M12 3.5c3.4 4.3 5.75 7.4 5.75 10.25a5.75 5.75 0 0 1-11.5 0C6.25 10.9 8.6 7.8 12 3.5z"/><path d="M9.3 14.2a2.8 2.8 0 0 0 2.4 2.6"/></symbol>
   <symbol id="i-device" viewBox="0 0 24 24"><path d="M3.5 5h17v11h-17zM9 20h6M12 16v4"/></symbol>
   <symbol id="i-entrance" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M3 12h11M9.5 7.5 14 12l-4.5 4.5"/></symbol>
   <symbol id="i-stairs" viewBox="0 0 24 24"><path d="M3 20h5v-5h5v-5h5V5h3"/></symbol>
@@ -145,7 +150,7 @@
   </section>
 
 </div>
-<script src="/static/theme.js?v=5"></script>
-<script src="/static/app.js?v=76"></script>
+<script src="/static/theme.js?v=7"></script>
+<script src="/static/app.js?v=77"></script>
 </body>
 </html>

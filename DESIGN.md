@@ -179,7 +179,7 @@ Every answer is issued as a card in SDU's own card language: a navy band with a 
 
 Density is that of a printed ID: small, labelled, tabular, with hierarchy carried by scale contrast alone (a 44–56px room code over 12–15px fields). Depth is flat, with hairline seams between fields and around card objects; only things floating over the plan lift. Evacuation-plan green marks exits and things that are open, because the floor plans are redrawn from SDU's own evacuation sheets. SDU navy and peach come off the university mark and are a brand commitment.
 
-Three complete themes share the same card: **Light** (default), **Dark** ("the same card at night": bands stay SDU navy, stock turns ink-blue) and **Steppe** (sky teal `#0D4A5C` replaces navy, sun gold `#E8B23A` takes the stripe, terracotta `#A8431A` the destination). A fourth menu option, **Match device**, follows `prefers-color-scheme` between Light and Dark. The choice is stored in `localStorage` (`sdu-theme`), set as `data-theme` on `<html>` before first paint, and the browser `theme-color` follows the band.
+Four complete themes share the same card: **Light** (default), **Dark** ("the same card at night": bands stay SDU navy, stock turns ink-blue), **Teal** (stored as `steppe`; teal `#0D4A5C` replaces navy, gold `#E8B23A` takes the stripe, terracotta `#A8431A` the destination) and **Violet** (violet `#3B2462` on the bands, lemon `#EED23F` on the stripe and the lit room, magenta `#A3166F` for the destination, on lavender-tinted paper `#F4F1F9`). A fifth menu option, **Match device**, follows `prefers-color-scheme` between Light and Dark. The choice is stored in `localStorage` (`sdu-theme`), set as `data-theme` on `<html>` before first paint, and the browser `theme-color` follows the band.
 
 **Key Characteristics:**
 - The destination card: navy guilloche band, 4px peach stripe, portrait of the lit room, room code as sole headline, labelled two-up fields on hairline seams.
@@ -194,7 +194,7 @@ Three complete themes share the same card: **Light** (default), **Dark** ("the s
 A committed navy shell over cool paper and white card stock, one warm accent with two jobs, and green and red reserved for state.
 
 ### Primary
-- **SDU Navy** (`sdu-navy`): the top bar, the search well that continues it into the answer column, every card band, code tags, the current floor in the floor switch, the current block on the rail, the plan pin's face, the main button on card stock, and the room code itself in Light and Steppe. Hover on navy steps to **Navy Hover** (`navy-hover`). Text on navy is white, with secondaries tinted from navy (`on-navy-2`, `on-navy-3`), never grey. In Dark the bands stay SDU navy but the main button on stock lifts to `#4A5196` (hover `#5860A8`) so it reads against ink-blue stock.
+- **SDU Navy** (`sdu-navy`): the top bar, the search well that continues it into the answer column, every card band, code tags, the current floor in the floor switch, the current block on the rail, the plan pin's face, the main button on card stock, and the room code itself in Light, Teal and Violet. Hover on navy steps to **Navy Hover** (`navy-hover`). Text on navy is white, with secondaries tinted from navy (`on-navy-2`, `on-navy-3`), never grey. In Dark the bands stay SDU navy but the main button on stock lifts to `#4A5196` (hover `#5860A8`) so it reads against ink-blue stock.
 
 ### Secondary
 - **SDU Peach** (`sdu-peach`): the 4px stripe under every card band and under the search well, the visitor-pass chip and the pass band's stripe, the destination sign at the end of the route strip, the lit room in the portrait, the foot stripe on the destination's block in the rail, and the stripe on the plan pin. On the plan the lit room uses **Target Fill** (`target-fill`, peach mixed 55% into white; `#F4B98F` in Dark). Text on peach is **On Peach** (`on-peach`).
@@ -255,7 +255,7 @@ A fixed app grid, not a page. On desktop the shell is `minmax(380px, 420px) | 1f
 Flat by default. Depth is drawn with 1px hairline seams and with inset shadows that paint stripes and outlines (the peach stripe under bands and the search well is `inset 0 -4px 0`). One drop shadow exists, and it belongs only to things floating over the plan or the page.
 
 ### Shadow Vocabulary
-- **Lift** (`box-shadow: 0 1px 2px rgba(31,36,72,.10), 0 8px 20px -8px rgba(31,36,72,.30)`): the zoom stack, the stage message over the plan, the theme menu. Navy-tinted in Light, black in Dark, teal-tinted in Steppe. Never combined with a border.
+- **Lift** (`box-shadow: 0 1px 2px rgba(31,36,72,.10), 0 8px 20px -8px rgba(31,36,72,.30)`): the zoom stack, the stage message over the plan, the theme menu. Navy-tinted in Light, black in Dark, teal-tinted in Teal, violet-tinted in Violet. Never combined with a border.
 
 ### Named Rules
 **The Float Only Rule.** Cards, rows and controls sit flat on hairlines. A drop shadow means the thing floats over the plan or opens over the page.
@@ -348,4 +348,4 @@ One authored moment, **the card is issued**: the card rises 10px over 420ms on `
 | `static/img/sdu-entrance-night.jpg` | [Sdu_night.jpg](https://commons.wikimedia.org/wiki/File:Sdu_night.jpg), Wikimedia Commons, by Tunceribrahim | CC0 1.0 (credited on the page anyway) |
 | `static/img/sdu-logo.png`, `sdu-mark.png`, `favicon.png` | SDU University's own mark | university brand assets |
 
-The entrance photo is the sign-in backdrop in its own colours under a navy dusk (a navy wash at 28% plus darker top and bottom gradients; teal in Steppe). The SDU mark always sits on a white tile.
+The entrance photo is the sign-in backdrop in its own colours under a navy dusk (a navy wash at 28% plus darker top and bottom gradients; teal in Teal, violet in Violet). The SDU mark always sits on a white tile.

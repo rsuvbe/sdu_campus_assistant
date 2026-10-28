@@ -412,7 +412,7 @@ class CampusIndex:
                 "category": rtype.lower(), "category_label": label,
                 "group": key, "group_label": group_label, "group_order": order,
                 "open_now": None, "status": f"{len(rooms)} rooms, booked for classes", "hours": [],
-                "hours_approximate": False, "notes": None, "ask": ask,
+                "notes": None, "ask": ask,
                 "location": self._spread(rooms),
             })
         # services first within a group, the kinds of room after them
@@ -1253,14 +1253,12 @@ class CampusIndex:
                 "category": svc["category"], "category_label": CATEGORY_LABELS.get(svc["category"]),
                 "group": group, "group_label": group_label, "group_order": order,
                 "open_now": open_now, "status": status, "hours": table,
-                "hours_approximate": not svc.get("hours_confirmed"),
                 "notes": svc.get("notes"), "ask": svc["name"],
                 "location": self._service_location(svc)}
 
     def _service_answer(self, svc: dict, now: datetime | None) -> dict:
         payload = self._service_payload(svc, now)
-        notes = (["These opening hours are the team's best reading and not yet confirmed by the service itself."]
-                 if payload["hours"] and payload["hours_approximate"] else [])
+        notes = []
         room = next((r for r in self.rooms if r["room_id"] == svc.get("room_id")), None)
         more = [r for r in self.rooms if r["room_id"] in svc["more_rooms"]]
         if room and more:

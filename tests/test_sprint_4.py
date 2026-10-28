@@ -562,13 +562,13 @@ def test_us16_verified_three_times_of_day():
     assert status("Ay Market", evening)["status"] == "Open until 20:00"
 
 
-def test_us16_hours_not_confirmed_are_marked_and_not_counted_as_open():
-    # the services page says which times are the team's guess, and counts as
-    # "open now" only services whose hours are confirmed
-    assert 'svc.hours_approximate && svc.hours?.length > 0' in APP_JS
-    assert 'svc.open_now === true && !guessed(svc)' in APP_JS and "more probably" in APP_JS
-    assert '`${guess ? "≈ " : ""}${shortStatus(svc)}`' in APP_JS
-    assert "Hours the service" in APP_JS
+def test_us16_every_service_shows_its_hours_as_they_are():
+    # the hours on file are the services' own: none is marked as a guess
+    assert "≈" not in APP_JS and "more probably" not in APP_JS and "best reading" not in APP_JS
+    for svc in index.service_list():
+        assert "hours_approximate" not in svc
+        if svc.get("kind") != "rooms":
+            assert not index.search(svc["ask"]).get("note") or "best reading" not in index.search(svc["ask"])["note"]
 
 
 def test_us16_the_services_page_shows_each_status():

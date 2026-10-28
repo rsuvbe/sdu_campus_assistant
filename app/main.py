@@ -80,8 +80,11 @@ def require_account(user: dict = Depends(current_user)) -> dict:
 
 
 def _set_session(response: Response, user: dict | None) -> None:
-    token, max_age = users.start_session(user)
-    response.set_cookie(SESSION_COOKIE, token, max_age=max_age, httponly=True,
+    # a cookie for this browser session only: closing the browser ends the visit,
+    # and the next one starts at the sign-in page (the server still lets a
+    # session lapse after SESSION_DAYS)
+    token, _ = users.start_session(user)
+    response.set_cookie(SESSION_COOKIE, token, httponly=True,
                         samesite="lax", secure=SECURE_COOKIES, path="/")
 
 

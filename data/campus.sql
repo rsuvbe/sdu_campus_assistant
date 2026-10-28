@@ -1067,27 +1067,27 @@ CREATE TABLE services (
     occupancy_source     TEXT NOT NULL DEFAULT 'mock',      -- 'mock' | 'facilities_api'
     occupancy_updated_at TEXT
 , short_name TEXT, notes TEXT, hours_confirmed INTEGER NOT NULL DEFAULT 0);
-INSERT INTO "services" VALUES('SVC_MEDCENTER_F1','G-1-MEDCENTER-1',NULL,'Medcenter','health_center',NULL,'unknown','mock',NULL,NULL,NULL,0);
+INSERT INTO "services" VALUES('SVC_MEDCENTER_F1','G-1-MEDCENTER-1',NULL,'Medcenter','health_center',NULL,'unknown','mock',NULL,NULL,NULL,1);
 INSERT INTO "services" VALUES('SVC_LIBRARY','B-1-LIBRARY',NULL,'Library','library',NULL,'unknown','mock',NULL,NULL,NULL,1);
-INSERT INTO "services" VALUES('SVC_CAFETERIA','F-1-CAFETERIA',NULL,'Cafeteria','cafeteria',NULL,'unknown','mock',NULL,NULL,NULL,0);
-INSERT INTO "services" VALUES('SVC_RED_CANTEEN','F-1-RED-CANTEEN',NULL,'Red Canteen (1st floor)','cafeteria',NULL,'unknown','mock',NULL,NULL,NULL,0);
-INSERT INTO "services" VALUES('SVC_RED_COFFEE','F-1-RED-COFFEE',NULL,'Red Coffee','cafe',NULL,'unknown','mock',NULL,NULL,NULL,0);
-INSERT INTO "services" VALUES('SVC_DONER_HOUSE','F-1-DONER-HOUSE',NULL,'Doner House','cafe',NULL,'unknown','mock',NULL,NULL,NULL,0);
-INSERT INTO "services" VALUES('SVC_INFO','C-1-INFO-DESK',NULL,'Information desk','information',NULL,'unknown','mock',NULL,NULL,NULL,0);
+INSERT INTO "services" VALUES('SVC_CAFETERIA','F-1-CAFETERIA',NULL,'Cafeteria','cafeteria',NULL,'unknown','mock',NULL,NULL,NULL,1);
+INSERT INTO "services" VALUES('SVC_RED_CANTEEN','F-1-RED-CANTEEN',NULL,'Red Canteen (1st floor)','cafeteria',NULL,'unknown','mock',NULL,NULL,NULL,1);
+INSERT INTO "services" VALUES('SVC_RED_COFFEE','F-1-RED-COFFEE',NULL,'Red Coffee','cafe',NULL,'unknown','mock',NULL,NULL,NULL,1);
+INSERT INTO "services" VALUES('SVC_DONER_HOUSE','F-1-DONER-HOUSE',NULL,'Doner House','cafe',NULL,'unknown','mock',NULL,NULL,NULL,1);
+INSERT INTO "services" VALUES('SVC_INFO','C-1-INFO-DESK',NULL,'Information desk','information',NULL,'unknown','mock',NULL,NULL,NULL,1);
 INSERT INTO "services" VALUES('SVC_WARDROBE','C-1-WARDROBE',NULL,'Wardrobe','wardrobe',NULL,'unknown','mock',NULL,NULL,NULL,1);
 INSERT INTO "services" VALUES('SVC_SUPPORT','D-1-D109',NULL,'Student Center','student_services',NULL,'unknown','mock',NULL,'Student Center',NULL,1);
 INSERT INTO "services" VALUES('SVC_TABLE_TENNIS','F-1-TABLE-TENNIS',NULL,'Table tennis','sport',NULL,'unknown','mock',NULL,NULL,NULL,1);
-INSERT INTO "services" VALUES('SVC_ADMIN','B-1-ADMINISTRATION',NULL,'Administration','administrative',NULL,'unknown','mock',NULL,NULL,NULL,0);
-INSERT INTO "services" VALUES('SVC_RESTROOM',NULL,NULL,'Restroom','restroom',NULL,'unknown','mock',NULL,NULL,NULL,0);
-INSERT INTO "services" VALUES('SVC_STAFF_RESTROOM',NULL,NULL,'Staff restroom','restroom',NULL,'unknown','mock',NULL,NULL,NULL,0);
+INSERT INTO "services" VALUES('SVC_ADMIN','B-1-ADMINISTRATION',NULL,'Administration','administrative',NULL,'unknown','mock',NULL,NULL,NULL,1);
+INSERT INTO "services" VALUES('SVC_RESTROOM',NULL,NULL,'Restroom','restroom',NULL,'unknown','mock',NULL,NULL,NULL,1);
+INSERT INTO "services" VALUES('SVC_STAFF_RESTROOM',NULL,NULL,'Staff restroom','restroom',NULL,'unknown','mock',NULL,NULL,NULL,1);
 INSERT INTO "services" VALUES('SVC_ADVISING','D-1-ADVISING-DESK',NULL,'Advising Desk','student_services',NULL,'unknown','mock',NULL,NULL,NULL,1);
-INSERT INTO "services" VALUES('SVC_MOODLE','F-1-F105',NULL,'Moodle help','it_support',NULL,'unknown','mock',NULL,'Moodle help',NULL,0);
+INSERT INTO "services" VALUES('SVC_MOODLE','F-1-F105',NULL,'Moodle help','it_support',NULL,'unknown','mock',NULL,'Moodle help',NULL,1);
 INSERT INTO "services" VALUES('SVC_AY_MARKET','F-1-AY-MARKET',NULL,'Ay Market','shop',NULL,'unknown','mock',NULL,NULL,NULL,1);
 INSERT INTO "services" VALUES('SVC_EXTENSION','F-1-F109',NULL,'Extension Center','office',NULL,'unknown','mock',NULL,'Extension Center',NULL,1);
 INSERT INTO "services" VALUES('SVC_SITAM','F-2-F212',NULL,'School of Information Technologies and Applied Mathematics','deanery',NULL,'unknown','mock',NULL,'School of IT','Written applications from students: Monday to Friday, 10:00–11:00 and 14:00–15:00.',1);
 INSERT INTO "services" VALUES('SVC_SSBL','D-2-D212',NULL,'School of Social Sciences, Business and Law','deanery',NULL,'unknown','mock',NULL,'Business & Law',NULL,1);
 INSERT INTO "services" VALUES('SVC_CMDE','H-2-H210',NULL,'Center for Multidisciplinary Education','deanery',NULL,'unknown','mock',NULL,'Multidisciplinary',NULL,1);
-INSERT INTO "services" VALUES('SVC_METHODICAL','H-1-H107',NULL,'Educational Methodical Center','office',NULL,'unknown','mock',NULL,'Methodical Ctr',NULL,0);
+INSERT INTO "services" VALUES('SVC_METHODICAL','H-1-H107',NULL,'Educational Methodical Center','office',NULL,'unknown','mock',NULL,'Methodical Ctr',NULL,1);
 CREATE TABLE sheet_geometry (
     sheet_id    TEXT PRIMARY KEY REFERENCES plan_sheets(sheet_id),
     west_max_x  REAL NOT NULL,

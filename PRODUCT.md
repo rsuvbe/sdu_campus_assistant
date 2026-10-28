@@ -22,7 +22,8 @@ what is opposite, the nearest exit or stairwell. Nothing is invented.
   for ambiguous numbers; "not found" with real suggestions.
 - Floor plan: 3 floors, pan/zoom, floor and block switching, tap a room to ask about it.
 - Services strip with open/closed status in Almaty time.
-- Accounts: SDU address (9 digits + @sdu.edu.kz), visitor entry, forgot/reset password.
+- Accounts: SDU address (a student's 9 digits, or staff name.surname, + @sdu.edu.kz), visitor
+  entry, forgot/reset password; a new visit starts at the sign-in page.
 
 ## Brand commitments
 - SDU navy #2F345C and peach #E89A64 come off the university mark; the SDU logo files in

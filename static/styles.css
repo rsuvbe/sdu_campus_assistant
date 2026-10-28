@@ -118,8 +118,8 @@
   color-scheme: dark;
 }
 
-/* Steppe: the Kazakh sky and the sun over it. Sky teal takes navy's place on the
-   bands, sun gold takes the stripe, and the destination turns terracotta. */
+/* Teal (stored as "steppe"): teal takes navy's place on the bands, gold takes the
+   stripe, and the destination turns terracotta. */
 :root[data-theme="steppe"] {
   --navy: #0D4A5C; --navy-deep: #0A3C4B; --navy-hi: #17637A;
   --on-navy-2: #C2E2EA; --on-navy-3: #93C1CD;
@@ -136,6 +136,28 @@
   --lamp-off: #8FA9B0;
   --target-fill: color-mix(in srgb, #E8B23A 60%, #FFFFFF);
   --lift: 0 1px 2px rgba(13, 74, 92, .12), 0 8px 20px -8px rgba(13, 74, 92, .35);
+  color-scheme: only light;
+}
+
+/* Violet: violet takes navy's place on the bands, lemon takes the stripe and the
+   lit room, and the destination turns magenta, on lavender-tinted paper. Exits stay
+   evacuation green and errors stay red, as in every theme. */
+:root[data-theme="violet"] {
+  --navy: #3B2462; --navy-deep: #2D1A4D; --navy-hi: #4E3380;
+  --on-navy-2: #DCD1F1; --on-navy-3: #B9A9DC;
+  --peach: #EED23F; --peach-hi: #F5E173; --on-peach: #2A2302;
+  --dest: #A3166F; --dest-soft: #FBE4F1;
+  --exit: #0B7A47; --exit-soft: #DEF0E6;
+  --alarm: #B8322B; --alarm-soft: #F9E2DF;
+  --ground: #EAE6F2; --paper: #F4F1F9; --stock: #FFFFFF; --stock-2: #F8F5FB;
+  --ink: #1E1432; --ink-2: #4A3E62; --ink-3: #62567B;
+  --line: #E4DEEE; --line-2: #CCC2DD;
+  --focus: #A3166F;
+  --map-bg: #E5E0EF; --map-slab: #FBFAFD; --map-hall: #EFEBF6; --map-room: #FFFFFF;
+  --map-wall: #9A8EB4; --map-ink: #3B2462;
+  --lamp-off: #A79DBE;
+  --target-fill: color-mix(in srgb, #EED23F 62%, #FFFFFF);
+  --lift: 0 1px 2px rgba(59, 36, 98, .12), 0 8px 20px -8px rgba(59, 36, 98, .36);
   color-scheme: only light;
 }
 
@@ -320,6 +342,7 @@ input { caret-color: var(--dest); }
 .sw-light { background: linear-gradient(#2F345C 0 40%, #E89A64 40% 52%, #FFFFFF 52% 100%); }
 .sw-dark { background: linear-gradient(#2F345C 0 40%, #E89A64 40% 52%, #181C38 52% 100%); }
 .sw-steppe { background: linear-gradient(#0D4A5C 0 40%, #E8B23A 40% 52%, #FFFFFF 52% 100%); }
+.sw-violet { background: linear-gradient(#3B2462 0 40%, #EED23F 40% 52%, #FFFFFF 52% 100%); }
 .sw-auto { background: linear-gradient(#2F345C 0 40%, #E89A64 40% 52%, transparent 52%), linear-gradient(90deg, #FFFFFF 0 50%, #181C38 50% 100%); }
 
 /* ---------------------------------------------------------------- the search well */
@@ -435,11 +458,6 @@ input { caret-color: var(--dest); }
 .dir-row.open .state { color: var(--exit); font-weight: 600; }
 .dir-row.closed b { color: var(--ink-2); font-weight: 500; }
 .dir-row.closed .state { color: var(--ink-3); }
-/* hours not confirmed by the service: the lamp is lit only faintly, the time is a guess */
-.dir-row.open.guess .state { color: var(--ink-2); font-weight: 500; }
-.dir-row.open.guess .lamp { background: color-mix(in srgb, var(--exit) 40%, transparent); box-shadow: inset 0 0 0 1.5px var(--exit); }
-.dir-summary .likely { font-weight: 500; color: var(--ink-3); }
-.dir-note { margin: var(--s3) 0 0; font-size: var(--t-12); color: var(--ink-3); }
 .dir-row.rooms .lamp { border-radius: 2px; box-shadow: inset 0 0 0 1.5px var(--map-wall); }
 .dir-row:hover b { color: var(--dest); }
 .dir-skel { height: 54px; position: relative; }

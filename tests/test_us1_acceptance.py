@@ -307,7 +307,7 @@ def test_the_lunch_break_is_part_of_the_status(moment, status):
 
 def test_the_library_has_no_lunch_break_and_exact_hours():
     svc = index.search("library", now=_at(0, 13, 0))["service"]
-    assert svc["status"] == "Open until 17:30" and not svc["hours_approximate"]
+    assert svc["status"] == "Open until 17:30"
     assert svc["hours"][0] == {"day": "Monday", "open": "08:30", "close": "17:30", "break": None}
 
 
@@ -328,7 +328,7 @@ def test_ay_market_is_the_shop_by_the_food_court(query):
 @pytest.mark.parametrize("query", ["wardrobe", "table tennis"])
 def test_the_wardrobe_and_table_tennis_stay_open_until_half_past_eight(query):
     svc = index.search(query, now=_at(1, 19, 0))["service"]
-    assert svc["status"] == "Open until 20:30" and not svc["hours_approximate"]
+    assert svc["status"] == "Open until 20:30"
     assert {h["day"]: (h["open"], h["close"]) for h in svc["hours"]} == {
         day: ("08:30", "20:30") for day in
         ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")}
