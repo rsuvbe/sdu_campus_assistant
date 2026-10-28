@@ -41,6 +41,10 @@ WING_REACH = 160.0      # an exit or stairwell this close to a wing's far end be
 SHORT_LEG = 30.0        # a stretch of corridor shorter than this is just crossed
 OPPOSITE_REACH = 45.0   # a door this close along the wing is "directly across"
 SPIKE = 12.0            # a turn back sharper than 135 degrees this short is not drawn
+WEST_JOIN = 450.0       # rooms west of the corridor this close are walked between directly
+SLANT_STEP = 25.0       # how finely a slanting way out to the corridor is tried
+SLANT_STEPS = 14        # and how far along the corridor it may reach
+SLANT_SLACK = 250.0     # a way out this much longer than the straight one may still slant
 
 
 # ------------------------------------------------------------------ geometry
@@ -378,18 +382,22 @@ class Router:
         # the lobby and the Block B foyer are each one open hall: what stands in
         # one (its entrance, its staircase, its desks, the doors along the foyer)
         # is also joined straight to the rest of it wherever nothing stands between
-        for hall in ("lobby", "foyer"):
-            places = [n for n, node in self.nodes.items() if node["floor"] == floor and node.get("zone") == hall]
+        for hall in ("lobby", "foyer", "west"):
+            places = [n for n, node in self.nodes.items() if node["floor"] == floor and node.get("zone") == hall
+                      and (hall != "west" or node["kind"] == "room")]
             for k, a in enumerate(places):
                 for b in places[k + 1:]:
                     pa, pb = self._pt(a), self._pt(b)
+                    if hall == "west" and _dist(pa, pb) > WEST_JOIN:
+                        continue
                     own = tuple(s for s in geo.shapes if s.contains(pa) or s.contains(pb)
                                 or s.code in (self.nodes[a].get("room"), self.nodes[b].get("room")))
                     if geo.walkable(pa, pb, skip=own):
                         self._edge(a, b, "open", floor=floor, zone=hall)
-                    elif hall == "foyer":
-                        # the doors along the foyer face each other across it: a
-                        # room set back from it is reached round the rooms on the way
+                    elif hall != "lobby":
+                        # the doors along the foyer face each other across it, and the
+                        # halls west of the corridor stand on one open floor: a room set
+                        # back is reached round the rooms on the way, not via the corridor
                         self._walk_round(floor, a, b, hall)
 
         spine_taps = sorted(self.spines[floor]["taps"], key=lambda n: self.nodes[n]["y"])
@@ -545,19 +553,51 @@ class Router:
                     heapq.heappush(heap, (cost + d, j))
         if finish[0] == math.inf:
             return False
-        trail = []
-        i = finish[1]
-        while i is not None:
-            trail.append(points[i])
-            i = best[i][1]
-        trail.reverse()
-        end_y = trail[-1][1] if trail else start[1]
-        prev = nid
-        for k, p in enumerate(trail):
-            mid = self._node(f"{nid}:v{k}", floor, p[0], p[1], "open")
-            self._edge(prev, mid, "open", floor=floor, src=nid, zone=zone)
-            prev = mid
-        self._edge(prev, self._tap(floor, end_y), "open", floor=floor, src=nid, zone=zone)
+        def chain(i, join_y, tag):
+            trail = []
+            while i is not None:
+                trail.append(points[i])
+                i = best[i][1]
+            trail.reverse()
+            prev = nid
+            for k, p in enumerate(trail):
+                mid = self._node(f"{nid}:{tag}{k}", floor, p[0], p[1], "open")
+                self._edge(prev, mid, "open", floor=floor, src=nid, zone=zone)
+                prev = mid
+            self._edge(prev, self._tap(floor, join_y), "open", floor=floor, src=nid, zone=zone)
+
+        level = points[finish[1]][1] if finish[1] is not None else start[1]
+        chain(finish[1], level, "v")
+
+        # Straight across to the corridor is the way to a door level with it. A door
+        # far up or down the corridor is nearer by a slant: from the points on the
+        # way out, as far along the corridor as a straight line reaches, one way to
+        # walk north and one to walk south, and the route takes whichever is shorter.
+        def reach(p, skip_, way):
+            far = None
+            for k in range(0, SLANT_STEPS + 1):
+                y = p[1] + way * SLANT_STEP * k
+                if not spine["y0"] <= y <= spine["y1"] or not geo.walkable(p, (spine["x"], y), skip=skip_):
+                    break
+                far = y
+            return far
+
+        settled = [(None, start, 0.0, skip)] + [(i, points[i], best[i][0], ()) for i in done
+                                                if best[i][0] <= finish[0] + SLANT_SLACK]
+        for way, tag in ((-1, "n"), (1, "s")):
+            # walking `way` along the corridor afterwards, every px of it costs one:
+            # a join further that way saves that much
+            score = finish[0] - way * level
+            pick = None
+            for i, p, cost, skip_ in settled:
+                y = reach(p, skip_, way)
+                if y is None:
+                    continue
+                total = cost + _dist(p, (spine["x"], y)) - way * y
+                if total < score - 1.0:
+                    score, pick = total, (i, y)
+            if pick:
+                chain(pick[0], pick[1], tag)
         return True
 
     def _walk_round(self, floor: int, a: str, b: str, zone: str) -> None:
@@ -721,7 +761,8 @@ class Router:
         while i < len(out) - 1:
             a, b, c = out[i - 1], out[i], out[i + 1]
             ab, bc = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
-            back = ab[0] * bc[0] + ab[1] * bc[1] < 0
+            # a real turn back, sharper than 100 degrees, not a square corner a hair off
+            back = ab[0] * bc[0] + ab[1] * bc[1] < -0.17 * _dist(a, b) * _dist(b, c)
             if back and geo.walkable(a, c, skip=tuple(own)):
                 del out[i]
                 i = max(1, i - 1)
@@ -819,6 +860,17 @@ class Router:
             start_room = self.rooms.get(start["key"]) if leaving else None
             if final(i) and i == 0 and start_room and start_room["zone"] == end_room["zone"] == "north":
                 steps.append(self._foyer_walk(start_room, end_room, label))
+                step_floors.append(state["cur"])
+                break
+            if final(i) and i == 0 and start_room and start_room["zone"] == end_room["zone"] == "west":
+                a, b = self._pt(self.room_node[start_room["room_number"]]), self._pt(self.room_node[end_room["room_number"]])
+                if abs(b[1] - a[1]) < 80:
+                    steps.append(f"Leave {label}: {spoken(end_room)} is right beside it, on the same side "
+                                 f"of the central corridor.")
+                else:
+                    lobby_way = "back towards" if b[1] < a[1] else "away from"
+                    steps.append(f"Leave {label} and, keeping to the west side of the central corridor, "
+                                 f"walk {lobby_way} the main lobby to {spoken(end_room)}.")
                 step_floors.append(state["cur"])
                 break
             if final(i):

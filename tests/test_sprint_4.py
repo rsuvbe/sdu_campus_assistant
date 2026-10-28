@@ -602,3 +602,55 @@ def test_static_files_are_cached_and_pages_are_not(client):
     plain = client.get("/static/img/favicon.png")
     assert plain.headers["cache-control"] == "public, max-age=3600, s-maxage=86400"
     assert client.get("/").headers.get("cache-control") == "no-cache"
+
+
+def _free_walk(floor, a, b, skip):
+    """The shortest walk between two points through free floor: straight where
+    nothing stands between, else round the corners of the rooms."""
+    import heapq
+    geo = router._geo[floor]
+    corners = [p for s in geo.shapes for p in s.corners() if geo.free(p)]
+    nodes = [a] + corners + [b]
+    best, heap, done = {0: 0.0}, [(0.0, 0)], set()
+    while heap:
+        cost, i = heapq.heappop(heap)
+        if i in done:
+            continue
+        done.add(i)
+        if i == len(nodes) - 1:
+            return cost
+        for j in range(1, len(nodes)):
+            if j in done:
+                continue
+            d = math.dist(nodes[i], nodes[j])
+            if cost + d < best.get(j, math.inf) and geo.walkable(
+                    nodes[i], nodes[j], skip=skip if i == 0 or j == len(nodes) - 1 else ()):
+                best[j] = cost + d
+                heapq.heappush(heap, (cost + d, j))
+    return math.inf
+
+
+@pytest.mark.parametrize("a, b", [("RESTROOM-D", "DONER-HOUSE"), ("D104", "DONER-HOUSE"), ("C111", "DONER-HOUSE"),
+                                  ("G219", "H202"), ("H213", "G219"), ("D128", "E118"), ("G114", "G113"),
+                                  ("D101", "F104"), ("E102", "F107")])
+def test_us13_the_walk_is_close_to_the_shortest_through_free_floor(a, b):
+    """Door to door, the route is within a tenth of the shortest walk the floor
+    allows (the rest is walking down the middle of a corridor, not hugging its
+    walls); it used to step out to the corridor straight across and back."""
+    r = route(a, b)
+    pts = r["legs"][0]["points"]
+    if len(pts) == 2:
+        return                       # straight from one room to the other
+    inner = pts[1:-1]
+    got = sum(math.dist(p, q) for p, q in zip(inner, inner[1:]))
+    floor = r["floors"][0]
+    skip = tuple(s for s in router._geo[floor].shapes if s.code in (a, b))
+    assert got <= _free_walk(floor, inner[0], inner[-1], skip) * 1.1 + 20, f"{a} -> {b}"
+
+
+def test_us13_rooms_west_of_the_corridor_are_walked_between_directly():
+    r = route("D128", "E118")
+    spine_x = FLOORS[1]["spines"][0]["x"]
+    assert all(abs(x - spine_x) > 1 for x, _ in r["legs"][0]["points"])
+    assert r["steps"] == ["Leave D128 and, keeping to the west side of the central corridor, "
+                          "walk away from the main lobby to E118."]
