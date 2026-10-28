@@ -149,7 +149,7 @@ INSERT INTO "landmarks" VALUES('STAIRS_E1','E-1','stairwell at the far end of th
 INSERT INTO "landmarks" VALUES('STAIRS_F1','F-1','stairwell at the far end of the Block F wing','stairs',715.0,293.0);
 INSERT INTO "landmarks" VALUES('STAIRS_G1','G-1','stairwell at the far end of the Block G wing','stairs',722.0,692.0);
 INSERT INTO "landmarks" VALUES('STAIRS_H1','H-1','stairwell at the far end of the Block H wing','stairs',737.0,1103.0);
-INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN2','F-2','Red Canteen staircase','stairs',205.0,343.0);
+INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN1','F-1','Red Canteen staircase','stairs',236.0,493.0);
 INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN3','F-3','Red Canteen staircase','stairs',215.0,348.0);
 INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN_N2','F-2','north Red Canteen staircase','stairs',166.0,189.0);
 INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN_N3','F-3','north Red Canteen staircase','stairs',169.0,201.0);

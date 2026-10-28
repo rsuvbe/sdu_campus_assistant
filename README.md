@@ -49,11 +49,12 @@ and the maintenance tasks a program can check.
 evacuation sheets. Seven were added to `campus.sql` from the sheets: the main
 lobby staircase (floors 1–2) and the floor-1 foot of the stairwell at the far end
 of the Block D to H wings, which `campus.db` already had on floors 2 and 3.
-Two more join floors 2 and 3 west of the corridor at Block F: the Red Canteen
-staircase and the north Red Canteen staircase, which come up inside the
-3rd-floor Red Canteen from the hall over the food court on floor 2. That hall
-is drawn on the floor-2 plan from its sheet, with the passage along its top
-that leads to it from the corridor. A place asked for by its floor ("Red Canteen
+Two more come up inside the 3rd-floor Red Canteen, west of the corridor at
+Block F: the north Red Canteen staircase, from the hall over the food court on
+floor 2 (the way up from floor 2), and the Red Canteen staircase, which runs
+from beside the table tennis on floor 1 straight to floor 3 with no way off at
+floor 2. The floor-2 hall is drawn on its plan from the sheet, with the passage
+along its top that leads to it from the corridor. A place asked for by its floor ("Red Canteen
 3rd floor") is routed to that one, not to the nearer place of the same name.
 
 **Places that share a name.** Four halls are called Study Space, five rooms

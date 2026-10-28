@@ -452,6 +452,18 @@ class Router:
                 room = self.room_node.get(shape.code) if shape.code else None
                 if room and self.nodes[room]["floor"] == floor:
                     self._edge(nid, room, "open", floor=floor, src=nid, zone="west")
+            # one out on the open floor west of the corridor (by the table tennis) is
+            # reached from the places round it without going out to the corridor
+            if not near_end and self.nodes[nid].get("zone") == "west":
+                for room_id in [n for n, node in self.nodes.items() if node["floor"] == floor
+                                and node["kind"] == "room" and node.get("zone") == "west"
+                                and _dist(self._pt(n), at) <= OPEN_REACH / 2]:
+                    pa, pb = self._pt(room_id), at
+                    own = tuple(s for s in geo.shapes if s.code == self.nodes[room_id].get("room")) + inside
+                    if geo.walkable(pa, pb, skip=own):
+                        self._edge(room_id, nid, "open", floor=floor, zone="west")
+                    else:
+                        self._walk_round(floor, room_id, nid, "west")
 
     def _passage(self, floor: int, geo: _Floor, nid: str, at, zone: str) -> bool:
         """A side exit drawn outside the building's outline, at the end of a short
@@ -834,8 +846,8 @@ class Router:
                     up, to_floor = climb(i + 1)
                     name = self.stairs[nxt["nodes"][0]]["name"]
                     if not leaving and leg["zone"] == "west" and first["kind"] == "spine":
-                        # a staircase in a hall off the corridor (up to the Red Canteen)
-                        say(f"Cross to the hall on the west side of the central corridor and take the "
+                        # a staircase off the corridor's west side (up to the Red Canteen)
+                        say(f"Cross to the west side of the central corridor and take the "
                             f"{name} {up} to floor {to_floor}.")
                     else:
                         lead = (f"Leave {label}, go" if leaving else

@@ -178,7 +178,9 @@ def test_us13_task_stairs_join_only_the_staircases_on_the_sheets():
         cores.setdefault(info["core"], set()).add(router.nodes[nid]["floor"])
     assert cores == {"lobby": {1, 2}, **{f"wing:{b}": {1, 2, 3} for b in "DEFGH"},
                      # up from the hall over the food court into the 3rd-floor Red Canteen
-                     "Red Canteen staircase": {2, 3}, "north Red Canteen staircase": {2, 3}}
+                     "north Red Canteen staircase": {2, 3},
+                     # from beside the table tennis on floor 1 straight up, no way off at floor 2
+                     "Red Canteen staircase": {1, 3}}
 
 
 # task: the shortest path over the graph
@@ -305,7 +307,10 @@ def test_us13_the_3rd_floor_red_canteen_is_reached_by_its_own_stairs_from_floor_
         "main lobby staircase", "north Red Canteen staircase"]
     assert "take the north Red Canteen staircase up to floor 3" in r["steps"][-2]
     assert r["steps"][-1] == "On floor 3, the stairs come up inside Red Canteen (3rd floor)."
-    assert "Red Canteen staircase" in " ".join(route("F212", "RED-CANTEEN-3")["steps"])
+    assert "north Red Canteen staircase up to floor 3" in " ".join(route("F212", "RED-CANTEEN-3")["steps"])
+    # from the table tennis, the staircase beside it runs straight up to the canteen
+    r = route("TABLE-TENNIS", "RED-CANTEEN-3")
+    assert r["floors"] == [1, 3] and [m["name"] for m in r["stairs"]] == ["Red Canteen staircase"] * 2
 
 
 def test_us13_a_place_asked_for_by_its_floor_is_that_one():
