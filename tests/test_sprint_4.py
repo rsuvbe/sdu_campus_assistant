@@ -587,7 +587,7 @@ def test_phone_moving_the_plan_does_no_extra_work_per_touch():
     # the sheet is measured when a drag starts, not on every move
     assert 'max: snapOffset("peek")' in APP_JS and "drag.max" in APP_JS
     # the ping round a found room stops after three
-    assert "animation: ping 2s ease-out 3;" in STYLES and "ping 2s ease-out infinite" not in STYLES
+    assert "animation: ping 2s ease-out 3 forwards;" in STYLES and "ping 2s ease-out infinite" not in STYLES
 
 
 def test_phone_the_frame_never_scrolls_off_the_bar():
@@ -654,3 +654,33 @@ def test_us13_rooms_west_of_the_corridor_are_walked_between_directly():
     assert all(abs(x - spine_x) > 1 for x, _ in r["legs"][0]["points"])
     assert r["steps"] == ["Leave D128 and, keeping to the west side of the central corridor, "
                           "walk away from the main lobby to E118."]
+
+
+def test_us13_fail_no_drawn_line_passes_through_a_room_or_leaves_the_building():
+    """What the plan draws, after the line is simplified, not just the graph: from
+    the entrance to every room, and between the sample pairs. A staircase that
+    comes up inside the 3rd-floor Red Canteen used to be a way onto floor 3 for
+    any route, straight through the canteen."""
+    walks = [(ENTRANCE, room(code)) for code in ROOMS] + [(room(a), room(b)) for a, b in PAIRS]
+    for start, end in walks:
+        r = router.route(start, end)
+        own = {start.get("key"), end.get("key")}
+        for leg in r["legs"]:
+            geo, shapes = router._geo[leg["floor"]], _shapes(leg["floor"])
+            for p, q in zip(leg["points"], leg["points"][1:]):
+                through = [code for code, poly in shapes if code not in own and _passes_through(p, q, poly)]
+                assert not through, f"{start['label']} -> {end['label']} crosses {through}"
+                mx, my = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+                assert any(geo.indoors(pt) for pt in [(mx, my), (mx + 4, my), (mx - 4, my), (mx, my + 4), (mx, my - 4)])
+
+
+def test_us13_the_canteen_stairs_lead_only_to_the_canteen():
+    for code in ("E316", "H301", "G322"):
+        names = {m["name"] for m in router.route(ENTRANCE, room(code))["stairs"]}
+        assert not any("Red Canteen" in n for n in names), code
+
+
+@pytest.mark.parametrize("question", ["health centre", "Where is the health center?", "clinic", "first aid"])
+def test_us15_the_health_centre_is_found_by_the_name_the_story_uses(question):
+    answer = index.search(question)
+    assert answer["kind"] == "service" and answer["title"] == "Medcenter" and answer["map"]

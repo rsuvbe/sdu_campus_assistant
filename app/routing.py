@@ -445,7 +445,11 @@ class Router:
                     self._edge(nid, start, "open", floor=floor, src=nid, zone=zone)
                     inside = ()
             self.nodes[start]["zone"] = zone
-            if not self._attach(floor, start, skip=inside, zone=zone) and not (
+            # a staircase that comes up inside a hall (the Red Canteen) leads into that
+            # hall and nowhere else: a walk to anywhere else never crosses the hall
+            hall = [s.code for s in inside if kind == "stairs" and s.code in self.room_node
+                    and self.nodes[self.room_node[s.code]]["floor"] == floor]
+            if not hall and not self._attach(floor, start, skip=inside, zone=zone) and not (
                     kind == "exit" and self._passage(floor, geo, nid, at, zone)):
                 return
         if kind == "exit":
@@ -462,7 +466,7 @@ class Router:
                     self._edge(nid, room, "open", floor=floor, src=nid, zone="west")
             # one out on the open floor west of the corridor (by the table tennis) is
             # reached from the places round it without going out to the corridor
-            if not near_end and self.nodes[nid].get("zone") == "west":
+            if not near_end and not inside and self.nodes[nid].get("zone") == "west":
                 for room_id in [n for n, node in self.nodes.items() if node["floor"] == floor
                                 and node["kind"] == "room" and node.get("zone") == "west"
                                 and _dist(self._pt(n), at) <= OPEN_REACH / 2]:

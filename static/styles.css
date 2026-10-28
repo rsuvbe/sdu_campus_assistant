@@ -389,8 +389,8 @@ input { caret-color: var(--dest); }
 
 /* campus services: everything the campus offers, by category, open or not */
 .directory { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s3); scroll-margin-top: var(--s4); }
-.dir-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
-.dir-summary { display: inline-flex; align-items: center; gap: 7px; font-size: var(--t-13); font-weight: 600; color: var(--ink-2); }
+.dir-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px var(--s3); }
+.dir-summary { display: inline-flex; align-items: center; gap: 7px; font-size: var(--t-13); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .dir-intro { margin: -4px 0 0; font-size: var(--t-14); color: var(--ink-2); }
 .welcome-tip a { color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
 .welcome-tip a:hover { color: var(--dest); }
@@ -910,7 +910,7 @@ input { caret-color: var(--dest); }
   transform-box: fill-box; transform-origin: center;
   /* three pings, then still: a ping that never stops repaints the whole plan
      every frame, which a phone feels */
-  animation: ping 2s ease-out 3;
+  animation: ping 2s ease-out 3 forwards;     /* and it ends gone, not frozen over the name */
 }
 .plan .target .pulse.wide { animation-name: ping-wide; }
 /* the pin is a small card: navy band, white code, the peach stripe */

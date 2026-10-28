@@ -906,6 +906,12 @@ INSERT INTO "service_aliases" VALUES(141,'SVC_CMDE','деканат мульти
 INSERT INTO "service_aliases" VALUES(142,'SVC_CMDE','центр мультидисциплинарного образования');
 INSERT INTO "service_aliases" VALUES(143,'SVC_AY_MARKET','shop');
 INSERT INTO "service_aliases" VALUES(144,'SVC_AY_MARKET','ай-маркет');
+INSERT INTO "service_aliases" VALUES(145,'SVC_MEDCENTER_F1','health centre');
+INSERT INTO "service_aliases" VALUES(146,'SVC_MEDCENTER_F1','health center');
+INSERT INTO "service_aliases" VALUES(147,'SVC_MEDCENTER_F1','health');
+INSERT INTO "service_aliases" VALUES(148,'SVC_MEDCENTER_F1','clinic');
+INSERT INTO "service_aliases" VALUES(149,'SVC_MEDCENTER_F1','first aid');
+INSERT INTO "service_aliases" VALUES(150,'SVC_MEDCENTER_F1','infirmary');
 CREATE TABLE service_hours (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     service_id  TEXT NOT NULL REFERENCES services(service_id) ON DELETE CASCADE,
