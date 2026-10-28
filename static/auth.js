@@ -4,7 +4,9 @@
    checks here only make the form quicker to fill in. */
 
 const $ = (sel) => document.querySelector(sel);
-const EMAIL_RE = /^\d{9}@sdu\.edu\.kz$/;
+const EMAIL_RE = /^\d{9}@sdu\.edu\.kz$/;                                  // a student's number
+const STAFF_RE = /^([a-z]+(?:-[a-z]+)*)\.([a-z]+(?:-[a-z]+)*)@sdu\.edu\.kz$/;  // staff: name.surname
+const EMAIL_HINT = "Use your SDU address: your student number (240103048@sdu.edu.kz), or for staff your name and surname (aidana.serikova@sdu.edu.kz).";
 const SPECIALS = "!@#$%^&*()-_=+[]{};:,.<>?/\\|`~'\"";
 
 const RULES = {
@@ -13,7 +15,8 @@ const RULES = {
   lower: (pw) => /[a-z]/.test(pw),
   digit: (pw) => /\d/.test(pw),
   special: (pw) => [...pw].some((c) => SPECIALS.includes(c)),
-  notid: (pw, email) => !/\s/.test(pw) && !(idOf(email) && pw.includes(idOf(email))),
+  notid: (pw, email) => !/\s/.test(pw) && !(idOf(email) && pw.includes(idOf(email)))
+    && !nameParts(email).some((part) => pw.toLowerCase().includes(part)),
 };
 
 const COPY = {
@@ -28,9 +31,15 @@ let mode = "login";
 // which never reaches a server log. It is read once and wiped from the address bar.
 let resetToken = null;
 
+// a student's number, from their address (staff have none)
 function idOf(email) {
-  const at = (email || "").indexOf("@");
-  return at > 0 ? email.slice(0, at) : "";
+  return EMAIL_RE.test(email || "") ? email.slice(0, email.indexOf("@")) : "";
+}
+
+// a member of staff's name and surname, from their address, which a password may not hold
+function nameParts(email) {
+  const m = STAFF_RE.exec(email || "");
+  return m ? `${m[1]}.${m[2]}`.split(/[.-]/).filter((part) => part.length >= 3) : [];
 }
 
 /* ------------------------------------------------------------ mode switch */
@@ -66,13 +75,15 @@ function checkEmail(showProblem) {
   const value = $("#email").value.trim().toLowerCase();
   const field = $("#email").closest(".field");
   const hint = $("#email-hint");
-  const ok = EMAIL_RE.test(value);
+  const staff = STAFF_RE.test(value);
+  const ok = EMAIL_RE.test(value) || staff;
   field.classList.toggle("good", ok);
   field.classList.toggle("bad", !ok && showProblem && value !== "");
   hint.classList.toggle("bad", !ok && showProblem && value !== "");
+  const who = staff ? "staff member" : "student";
   hint.innerHTML = ok
-    ? `${{ forgot: "The link goes to student", register: "Registering student" }[mode] || "Signing in as student"} <b>${idOf(value)}</b>.`
-    : 'Nine digits and <b>@sdu.edu.kz</b>, the address printed on your student card.';
+    ? `${{ forgot: `The link goes to ${who}`, register: `Registering ${who}` }[mode] || `Signing in as ${who}`} <b>${staff ? value.slice(0, value.indexOf("@")) : idOf(value)}</b>.`
+    : 'Your student number, or for staff your <b>name.surname</b>, and <b>@sdu.edu.kz</b>.';
   return ok;
 }
 
@@ -89,7 +100,7 @@ function checkName(showProblem) {
   hint.classList.toggle("bad", !ok && showProblem);
   hint.textContent = !ok && showProblem && value
     ? "Use letters only, as your name is written: Aidana Serikova."
-    : !ok && showProblem ? "Enter your full name." : "As it is written in your student records.";
+    : !ok && showProblem ? "Enter your full name." : "As it is written in your university records.";
   return ok;
 }
 
@@ -136,10 +147,10 @@ async function submit(event) {
   if (mode === "reset") return saveNewPassword(password);
 
   if (mode === "register" && !checkName(true)) {
-    return showError("Enter your full name, as it is written in your student records.", "full_name");
+    return showError("Enter your full name, as it is written in your university records.", "full_name");
   }
   if (!checkEmail(true)) {
-    return showError("Use your SDU address: nine digits and @sdu.edu.kz, for example 240103048@sdu.edu.kz.", "email");
+    return showError(EMAIL_HINT, "email");
   }
   if (!checkPassword()) {
     return showError(mode === "register"
@@ -192,7 +203,7 @@ const RESEND_AFTER = 60;   // seconds; the server refuses a second link sooner a
 
 async function requestReset(email) {
   if (!checkEmail(true)) {
-    return showError("Use your SDU address: nine digits and @sdu.edu.kz, for example 240103048@sdu.edu.kz.", "email");
+    return showError(EMAIL_HINT, "email");
   }
   const button = $("#submit");
   button.disabled = true;

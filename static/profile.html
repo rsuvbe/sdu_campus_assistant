@@ -58,7 +58,7 @@
 
   <div class="profile-grid" id="member" hidden>
     <section class="id-card" aria-labelledby="p-title">
-      <div class="card-band"><span>SDU University</span><span class="band-where">Student</span></div>
+      <div class="card-band"><span>SDU University</span><span class="band-where" id="p-band-role">Student</span></div>
       <div class="id-card-body">
         <div class="id-photo" id="p-initials" aria-hidden="true"></div>
         <div class="id-who">
@@ -102,7 +102,7 @@
             <li data-rule="lower">a lowercase letter</li>
             <li data-rule="digit">a digit</li>
             <li data-rule="special">a special character (!&nbsp;@&nbsp;#&nbsp;…)</li>
-            <li data-rule="notid">not your student ID, no spaces</li>
+            <li data-rule="notid">not your student ID or name, no spaces</li>
           </ul>
         </div>
         <div class="field" id="field-confirm">
@@ -117,6 +117,6 @@
   </div>
 </main>
 <script src="/static/theme.js?v=5"></script>
-<script src="/static/profile.js?v=2"></script>
+<script src="/static/profile.js?v=3"></script>
 </body>
 </html>

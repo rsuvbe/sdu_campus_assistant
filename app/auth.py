@@ -1,9 +1,11 @@
 """
 Accounts for the campus assistant.
 
-Only SDU students and staff get in: the login is the university address, which
-is exactly nine digits and the university domain (240103048@sdu.edu.kz), and
-the password has to pass the usual strength rules. Both checks run here, on
+Only SDU students and staff get in: the login is the university address. A
+student's is their nine-digit number and the university domain
+(240103048@sdu.edu.kz); a member of staff's is their name and surname in Latin
+letters (aidana.serikova@sdu.edu.kz), and that account has the staff role. The
+password has to pass the usual strength rules. Both checks run here, on
 the server, so the browser form is a convenience and not the gate.
 
 Storage is a database of its own — campus.db stays read-only. Locally that is a
@@ -32,7 +34,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
-EMAIL_RE = re.compile(r"^(\d{9})@sdu\.edu\.kz$", re.IGNORECASE)
+EMAIL_RE = re.compile(r"^(\d{9})@sdu\.edu\.kz$", re.IGNORECASE)          # a student's
+STAFF_RE = re.compile(r"^([a-z]+(?:-[a-z]+)*)\.([a-z]+(?:-[a-z]+)*)@sdu\.edu\.kz$", re.IGNORECASE)
 
 # US1 is written for students, staff AND visitors. A visitor has no university
 # address, so they get a session without an account: same door, no sign-up.
@@ -40,6 +43,7 @@ EMAIL_RE = re.compile(r"^(\d{9})@sdu\.edu\.kz$", re.IGNORECASE)
 # anything added later that is personal (a saved route, a timetable) should ask
 # for an account through require_account() in app/main.py.
 ROLE_MEMBER = "student"
+ROLE_STAFF = "staff"
 ROLE_VISITOR = "visitor"
 GUEST = {"user_id": None, "email": None, "student_id": None,
          "full_name": None, "role": ROLE_VISITOR}
@@ -59,8 +63,8 @@ BANNED_PASSWORDS = {
     "sdu12345!", "student1!", "welcome1!", "passw0rd!", "letmein1!",
 }
 
-EMAIL_HINT = ("Use your SDU address: nine digits and @sdu.edu.kz, "
-              "for example 240103048@sdu.edu.kz.")
+EMAIL_HINT = ("Use your SDU address: your student number (240103048@sdu.edu.kz), "
+              "or for staff your name and surname (aidana.serikova@sdu.edu.kz).")
 
 
 class AuthError(Exception):
@@ -79,9 +83,14 @@ def normalise_email(raw: str) -> str:
         raise AuthError("Enter your university email.", "email")
     if " " in email:
         raise AuthError("An email address cannot contain spaces.", "email")
-    if not EMAIL_RE.match(email):
+    if not EMAIL_RE.match(email) and not STAFF_RE.match(email):
         raise AuthError(EMAIL_HINT, "email")
     return email
+
+
+def role_of(email: str) -> str:
+    """Staff sign in with name.surname@sdu.edu.kz, students with their number."""
+    return ROLE_STAFF if STAFF_RE.match(email or "") else ROLE_MEMBER
 
 
 # A name as people write it: letters of any script (Kazakh and Russian included),
@@ -127,6 +136,10 @@ def password_problems(password: str, email: str = "") -> list[str]:
     sid = student_id(email)
     if sid and sid in password:
         problems.append("something other than your student ID")
+    staff = STAFF_RE.match(email or "")
+    if staff and any(len(part) >= 3 and part.lower() in password.lower()
+                     for part in re.split(r"[.-]", staff.group(1) + "." + staff.group(2))):
+        problems.append("something other than your name")
     if password.lower() in BANNED_PASSWORDS:
         problems.append("a password that isn't on the common-password list")
     return problems
@@ -416,7 +429,7 @@ class UserStore:
     def _public(row) -> dict:
         return {"user_id": row["user_id"], "email": row["email"],
                 "student_id": row["student_id"], "full_name": row["full_name"],
-                "role": ROLE_MEMBER}
+                "role": role_of(row["email"])}
 
 
 def _token_hash(token: str) -> str:

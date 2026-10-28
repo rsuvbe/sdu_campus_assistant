@@ -74,14 +74,14 @@
               <label for="full_name">Full name</label>
               <input id="full_name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Aidana Serikova"
                      aria-describedby="name-hint">
-              <p class="hint" id="name-hint">As it is written in your student records.</p>
+              <p class="hint" id="name-hint">As it is written in your university records.</p>
             </div>
 
             <div class="field" id="field-email">
               <label for="email">University email</label>
               <input id="email" name="email" type="email" inputmode="email" autocomplete="username"
                      placeholder="240103048@sdu.edu.kz" spellcheck="false" required aria-describedby="email-hint">
-              <p class="hint" id="email-hint">Nine digits and <b>@sdu.edu.kz</b>, the address printed on your student card.</p>
+              <p class="hint" id="email-hint">Your student number, or for staff your <b>name.surname</b>, and <b>@sdu.edu.kz</b>.</p>
             </div>
 
             <div class="field" id="field-password">
@@ -100,7 +100,7 @@
                 <li data-rule="lower">a lowercase letter</li>
                 <li data-rule="digit">a digit</li>
                 <li data-rule="special">a special character (!&nbsp;@&nbsp;#&nbsp;…)</li>
-                <li data-rule="notid">not your student ID, no spaces</li>
+                <li data-rule="notid">not your student ID or name, no spaces</li>
               </ul>
             </div>
 
@@ -137,6 +137,6 @@
 
 </main>
 <script src="/static/theme.js?v=5"></script>
-<script src="/static/auth.js?v=30"></script>
+<script src="/static/auth.js?v=31"></script>
 </body>
 </html>

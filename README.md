@@ -10,7 +10,8 @@ campus offers and what is open right now.
 - Frontend: plain HTML/CSS/JS in `static/`, no build step
 - Data: 268 rooms and places, blocks A–I, 3 floors, digitised from the fire evacuation plans
   and the university's colour campus map
-- Accounts: SDU addresses (nine digits + `@sdu.edu.kz`); visitors come in without one
+- Accounts: SDU addresses — a student's nine-digit number (`240103048@sdu.edu.kz`) or a
+  member of staff's `name.surname@sdu.edu.kz`, with the staff role; visitors come in without one
 
 ---
 
@@ -226,10 +227,12 @@ reads as a drawing instead of glaring white with labels lost in it.
 
 **3. Accounts, and a door for visitors.** The map is behind a sign-in page. An
 account needs a full name (letters of any alphabet, with spaces, hyphens or
-apostrophes; required), a university address — exactly nine digits and `@sdu.edu.kz`,
-e.g. `240103048@sdu.edu.kz` — and a password that has an uppercase letter, a
+apostrophes; required), a university address — a student's nine digits and
+`@sdu.edu.kz`, e.g. `240103048@sdu.edu.kz`, or a member of staff's name and
+surname in Latin letters, e.g. `aidana.serikova@sdu.edu.kz`, which gives the
+account the staff role — and a password that has an uppercase letter, a
 lowercase letter, a digit, a special character, at least 8 characters, no
-spaces, no student ID inside it, and nothing from the common-password list.
+spaces, no student ID or name inside it, and nothing from the common-password list.
 Both checks run on the server (`app/auth.py`); the form only makes them
 quicker to see.
 
@@ -293,6 +296,7 @@ uvicorn app.main:app --reload
 
 Then open <http://127.0.0.1:8000>. You will land on the sign-in page — create
 an account with any nine-digit SDU address, for example `240103048@sdu.edu.kz`
+(or a staff one, `aidana.serikova@sdu.edu.kz`)
 and a password such as `Campus#2026`. The interactive API docs are at
 <http://127.0.0.1:8000/docs>.
 
@@ -496,11 +500,6 @@ room's own answer.
   because they share its foyer.
 - Answers are in English. Questions are understood in English and Russian;
   full multilingual answers are planned for US6.
-- **Staff cannot register yet.** The sign-up rule is exactly nine digits plus
-  `@sdu.edu.kz`, which is a student number. A lecturer's address is usually a
-  name (`aidana.serikova@sdu.edu.kz`) and is refused. Either widen the rule to
-  any `@sdu.edu.kz` address and give those accounts a staff role, or leave
-  staff on the visitor door until US2 needs to tell the two apart.
 - **Free hosting has no persistent disk.** Serverless functions and Render's
   free plan wipe their filesystem, so accounts must not live in `users.db`
   there. The live site keeps them in Postgres (`DATABASE_URL`, see Deployment).

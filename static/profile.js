@@ -7,6 +7,7 @@
 const $ = (sel) => document.querySelector(sel);
 const SPECIALS = "!@#$%^&*()-_=+[]{};:,.<>?/\\|`~'\"";
 let studentId = "";
+let nameParts = [];   // a member of staff's name and surname, which the password may not hold
 
 const RULES = {
   length: (pw) => pw.length >= 8 && pw.length <= 72,
@@ -14,7 +15,8 @@ const RULES = {
   lower: (pw) => /[a-z]/.test(pw),
   digit: (pw) => /\d/.test(pw),
   special: (pw) => [...pw].some((c) => SPECIALS.includes(c)),
-  notid: (pw) => !/\s/.test(pw) && !(studentId && pw.includes(studentId)),
+  notid: (pw) => !/\s/.test(pw) && !(studentId && pw.includes(studentId))
+    && !nameParts.some((part) => pw.toLowerCase().includes(part)),
 };
 
 function checkRules() {
@@ -50,6 +52,10 @@ async function load() {
   const { user } = await res.json();
   if (user.role === "visitor") { $("#visitor").hidden = false; return; }
   studentId = user.student_id || "";
+  const staff = user.role === "staff";
+  if (staff) nameParts = user.email.split("@")[0].split(/[.-]/).filter((part) => part.length >= 3);
+  // a member of staff signs in with their name, and has no student number
+  $("#p-band-role").textContent = staff ? "Staff" : "Student";
   $("#p-name").textContent = user.full_name || "Not given";
   // the card is headed by the name; without one on file, by the student ID.
   // The photo slot holds the initials, or the SDU mark when there is no name.
@@ -57,7 +63,7 @@ async function load() {
   headline.textContent = user.full_name || user.student_id || user.email;
   headline.classList.toggle("number", !user.full_name);
   // the ID already heads the card, so its own field would only repeat it
-  $("#p-id").parentElement.hidden = !user.full_name;
+  $("#p-id").parentElement.hidden = !user.full_name || staff;
   const initials = (user.full_name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
   if (initials) $("#p-initials").textContent = initials.toUpperCase();
   else $("#p-initials").innerHTML = '<img src="/static/img/sdu-mark.png" alt="">';

@@ -1,12 +1,13 @@
 """
-Accounts: only a 9-digit SDU address with a strong password gets in, and the
-main page stays closed until it does.
+Accounts: only an SDU address (a student's 9-digit number, or a member of
+staff's name.surname) with a strong password gets in, and the main page stays
+closed until it does.
 """
 import json
 
 import pytest
 
-from app.auth import AuthError, hash_password, normalise_email, password_problems, verify_password
+from app.auth import AuthError, hash_password, normalise_email, password_problems, role_of, verify_password
 from conftest import TEST_EMAIL, TEST_NAME, TEST_PASSWORD
 
 
@@ -15,6 +16,8 @@ from conftest import TEST_EMAIL, TEST_NAME, TEST_PASSWORD
     "240103048@sdu.edu.kz",
     "999999999@SDU.EDU.KZ",     # case does not matter
     "  240103048@sdu.edu.kz ",  # nor does stray whitespace around it
+    "aidana.serikova@sdu.edu.kz",        # staff: name and surname
+    "Aigerim.Sadykova-Nurlan@SDU.EDU.KZ",  # a double surname, any case
 ])
 def test_sdu_addresses_are_accepted(email):
     assert normalise_email(email).endswith("@sdu.edu.kz")
@@ -23,7 +26,10 @@ def test_sdu_addresses_are_accepted(email):
 @pytest.mark.parametrize("email", [
     "24010304@sdu.edu.kz",       # 8 digits
     "2401030489@sdu.edu.kz",     # 10 digits
-    "aidana@sdu.edu.kz",         # not digits
+    "aidana@sdu.edu.kz",         # neither digits nor name.surname
+    "aidana.serikova2@sdu.edu.kz",   # staff addresses are letters only
+    "айдана.серикова@sdu.edu.kz",    # in Latin letters
+    "aidana..serikova@sdu.edu.kz",
     "240103048@gmail.com",       # not SDU
     "240103048@student.sdu.edu.kz",
     "240103048sdu.edu.kz",
@@ -453,3 +459,22 @@ def test_a_brevo_refusal_is_logged_not_raised(monkeypatch, caplog):
     monkeypatch.setenv("CAMPUS_MAIL_FROM", "campus@example.org")
     assert mailer.send_reset_link("240103048@sdu.edu.kz", "https://campus.example/x", 30) is False
     assert "sender not valid" in caplog.text
+
+
+
+# ------------------------------------------------------------------ staff
+def test_staff_sign_up_with_their_name_and_get_the_staff_role(anon):
+    res = anon.post("/api/auth/register", json={"email": "aigerim.sadykova@sdu.edu.kz",
+                                                "password": "Kaskelen#42road", "full_name": "Aigerim Sadykova"})
+    assert res.status_code == 200
+    user = anon.get("/api/auth/me").json()["user"]
+    assert user["role"] == "staff" and user["student_id"] == "" and user["full_name"] == "Aigerim Sadykova"
+    # and everything a student can do on the plan, they can do
+    assert anon.get("/api/route?to=F204").status_code == 200
+    assert anon.get("/api/services").status_code == 200
+    assert role_of("240103048@sdu.edu.kz") == "student" and role_of("aigerim.sadykova@sdu.edu.kz") == "staff"
+
+
+def test_a_staff_password_may_not_hold_their_name():
+    assert "something other than your name" in password_problems("Sadykova#2026", "aigerim.sadykova@sdu.edu.kz")
+    assert "something other than your name" not in password_problems("Kaskelen#42road", "aigerim.sadykova@sdu.edu.kz")
