@@ -607,11 +607,22 @@ const el = (name, attrs = {}, parent = null) => {
 };
 const path = (points) => points.map((p) => `${p[0]},${p[1]}`).join(" ");
 
+// each floor is drawn once and kept: going back to it, or between the floors of
+// a route, puts the same drawing back instead of building it again
+const drawnFloors = new Map();
+
 function drawFloor(floor) {
   const canvas = $("#canvas");
-  canvas.innerHTML = "";
   canvas.style.width = `${floor.width}px`;
   canvas.style.height = `${floor.height}px`;
+  const kept = drawnFloors.get(floor);
+  if (kept) {
+    canvas.replaceChildren(kept.svg, kept.over);
+    state.svg = kept.svg;
+    state.focusLayer = kept.focus;
+    return;
+  }
+  canvas.innerHTML = "";
 
   const svg = el("svg", {
     class: "plan", viewBox: `0 0 ${floor.width} ${floor.height}`,
@@ -626,7 +637,15 @@ function drawFloor(floor) {
   const rooms = layer("rooms");
   const blocks = layer("blocks");
   const marks = layer("marks");
-  const focus = layer("focus");
+  // The answer and the route are drawn on a sheet of their own laid over the
+  // plan, with a layer of its own in the browser: the route drawing itself in
+  // and the target's pings then repaint only that sheet, not the whole plan
+  // under it, every frame (which a phone feels, while the plan is moving too)
+  const over = el("svg", {
+    class: "plan plan-over", viewBox: `0 0 ${floor.width} ${floor.height}`,
+    width: floor.width, height: floor.height, "aria-hidden": "true",
+  }, canvas);
+  const focus = el("g", { class: "lay-focus" }, over);
 
   // The envelope is drawn twice: once with a fat wall stroke, then again with
   // fill only, which hides the seams where the parts overlap and leaves one
@@ -721,18 +740,24 @@ function drawFloor(floor) {
 
 
   // the office name goes under the room number only where it fits between the
-  // walls; a narrow room keeps its tint and says it on hover instead
-  serviceLabels.forEach(({ g, label, room }) => {
-    const box = g.querySelector("polygon")?.getBBox();
-    if (!box) return;
+  // walls; a narrow room keeps its tint and says it on hover instead. All the
+  // names go in first and are measured together: measuring one after taking
+  // another out would make the browser lay the whole plan out again each time
+  const fitting = serviceLabels.map(({ g, label, room }) => {
+    const xs = room.points.map((p) => p[0]), ys = room.points.map((p) => p[1]);
     const sub = el("text", { class: "svc-name", x: room.x, y: room.y + 13 }, g);
     sub.textContent = room.service;
-    if (sub.getComputedTextLength() > box.width - 10 || box.height < 40) { sub.remove(); return; }
-    label.setAttribute("y", room.y - 3);
+    return { sub, label, room, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+  });
+  fitting.map((f) => f.height >= 40 && f.sub.getComputedTextLength() <= f.width - 10).forEach((fits, i) => {
+    const { sub, label, room } = fitting[i];
+    if (fits) label.setAttribute("y", room.y - 3);
+    else sub.remove();
   });
 
   state.svg = svg;
   state.focusLayer = focus;
+  drawnFloors.set(floor, { svg, over, focus });
 }
 
 /* ------------------------------------------------------------ map: answer */
@@ -813,13 +838,20 @@ function paintRoute(layer) {
     if (l === last && r.to.kind === "room") pts = fromWall([...pts].reverse(), r.to.code).reverse();
     return { leg: l, pts };
   });
-  lines.forEach(({ pts }) => {
+  // every line goes in before any is measured, and the arrowheads after all the
+  // measuring: a measurement taken after a change makes the browser lay the
+  // page out again first
+  const drawn = lines.map(({ pts }) => {
     const d = roundedPath(pts, TRIP_CORNER);
-    const casing = el("path", { class: "trip-case", d }, g);
-    const line = el("path", { class: "trip-line", d }, g);
+    return [el("path", { class: "trip-case", d }, g), el("path", { class: "trip-line", d }, g)];
+  });
+  const marks = drawn.map(([, line]) => {
     const len = line.getTotalLength();
-    [casing, line].forEach((p) => p.style.setProperty("--len", Math.ceil(len) + 2));
-    chevrons(line, len, g);
+    return { len, chev: chevrons(line, len) };
+  });
+  drawn.forEach(([casing, line], i) => {
+    [casing, line].forEach((p) => p.style.setProperty("--len", Math.ceil(marks[i].len) + 2));
+    marks[i].chev.forEach((attrs) => el("path", attrs, g));
   });
   r.stairs.filter((m) => m.floor === f).forEach((m) => {
     const [mx, my] = m.mark || [m.x, m.y];
@@ -921,20 +953,23 @@ function roundedPath(pts, radius) {
 }
 
 /** Small arrowheads along a line, spaced evenly, pointing the way you walk. */
-function chevrons(line, len, g) {
-  if (len < TRIP_CHEVRON * 1.2) return;
+/* The arrowheads along a line, as attributes: measured now, drawn by the caller. */
+function chevrons(line, len) {
+  if (len < TRIP_CHEVRON * 1.2) return [];
   const count = Math.floor(len / TRIP_CHEVRON);
   const gap = len / (count + 1);
+  const out = [];
   for (let i = 1; i <= count; i++) {
     const p = line.getPointAtLength(gap * i);
     const q = line.getPointAtLength(Math.min(len, gap * i + 2));
     const deg = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
-    el("path", {
+    out.push({
       class: "trip-chev", d: "M-2.8,-4 L1.6,0 L-2.8,4",
       transform: `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${deg.toFixed(0)})`,
       style: `--at: ${(i / (count + 1)).toFixed(3)}`,
-    }, g);
+    });
   }
+  return out;
 }
 
 function showResultOnMap(d) {
@@ -1070,11 +1105,15 @@ function markInView(r = stageRect()) {
   state.inView = id;
   const seg = $("#block-seg");
   seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.block === id)));
-  // on a phone the rail is a strip that scrolls: keep the block in view on it
+  // on a phone the rail is a strip that scrolls: keep the block in view on it.
+  // Measured in the next frame, once the page is laid out anyway, not now in
+  // the middle of redrawing the rail
   const current = id && seg.querySelector(`[data-block="${id}"]`);
-  if (current && seg.scrollWidth > seg.clientWidth) {
-    seg.scrollTo({ left: current.offsetLeft - (seg.clientWidth - current.offsetWidth) / 2, behavior: smooth() });
-  }
+  if (current) requestAnimationFrame(() => {
+    if (current.isConnected && seg.scrollWidth > seg.clientWidth) {
+      seg.scrollTo({ left: current.offsetLeft - (seg.clientWidth - current.offsetWidth) / 2, behavior: smooth() });
+    }
+  });
   $("#map-where").innerHTML = `<b>Floor ${state.floor.floor}</b><span>${id ? `Block ${id}` : "Whole floor"}</span>`;
 }
 
@@ -1130,11 +1169,21 @@ function updateDetail(r) {
 }
 
 // The part of the stage you can see: on a phone the sheet lies over its bottom,
-// so the plan centres, fits and clamps to what is left above it.
+// so the plan centres, fits and clamps to what is left above it. Its size is
+// kept up to date by a ResizeObserver: measuring it here, right after the rail
+// or the plan was rewritten, would make the browser lay the whole page out
+// again first, several times for every floor or route shown.
+const stageBox = { width: 0, height: 0 };
 function stageRect() {
-  const r = $("#stage").getBoundingClientRect();
-  return { left: r.left, top: r.top, width: r.width, height: Math.max(r.height - state.cover, 96) };
+  if (!stageBox.width) {
+    const r = $("#stage").getBoundingClientRect();
+    stageBox.width = r.width;
+    stageBox.height = r.height;
+  }
+  return { width: stageBox.width, height: Math.max(stageBox.height - state.cover, 96) };
 }
+// where the stage is on the page, for a pointer: read when the pointer moves, not while drawing
+const stageAt = () => $("#stage").getBoundingClientRect();
 
 function fitView(animate) {
   if (!state.floor) return;
@@ -1217,7 +1266,7 @@ function setupPanZoom() {
   // one finger or the mouse drags; two fingers pinch to zoom around their midpoint
   const pointers = new Map();
   let drag = null, pinch = null;
-  const local = (e) => { const r = stageRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const local = (e) => { const r = stageAt(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const startDrag = (p) => { drag = { x: p.x, y: p.y, tx: state.view.tx, ty: state.view.ty }; };
   const startPinch = () => {
     const [a, b] = [...pointers.values()];
@@ -1291,7 +1340,7 @@ function setupPanZoom() {
   stage.addEventListener("pointerleave", (e) => { if (!stage.hasPointerCapture(e.pointerId)) end(e); });
   stage.addEventListener("wheel", (e) => {
     e.preventDefault();
-    const r = stageRect();
+    const r = stageAt();
     const v = state.view;
     zoomTo(v.s * Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top, false, true);
   }, { passive: false });
@@ -1301,7 +1350,11 @@ function setupPanZoom() {
   $("#zoom-fit").addEventListener("click", () => fitView(true));
 
   let resizeT;
-  new ResizeObserver(() => {
+  new ResizeObserver(([entry]) => {
+    const box = entry.borderBoxSize?.[0];
+    const r = box ? null : stage.getBoundingClientRect();
+    stageBox.width = box ? box.inlineSize : r.width;
+    stageBox.height = box ? box.blockSize : r.height;
     clearTimeout(resizeT);
     resizeT = setTimeout(() => {
       const map = state.result?.map;

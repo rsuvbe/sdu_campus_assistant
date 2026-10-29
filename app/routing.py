@@ -196,6 +196,7 @@ class _Floor:
 
     def __init__(self, plan: dict, shapes: list[_Shape]) -> None:
         self.shapes = shapes
+        self._walks: dict[tuple, bool] = {}    # the same step is asked about again and again
         self.areas = []
         for area in plan["areas"]:
             xs = [p[0] for p in area["points"]]
@@ -211,11 +212,40 @@ class _Floor:
         return self.indoors(p) and not any(s.contains(p) for s in self.shapes)
 
     def walkable(self, a, b, skip=()) -> bool:
-        if any(s.blocks(a, b) for s in self.shapes if s not in skip):
-            return False
+        key = (a[0], a[1], b[0], b[1], frozenset(map(id, skip)))
+        known = self._walks.get(key)
+        if known is None:
+            known = self._walks[key] = self._walkable(a, b, skip)
+        return known
+
+    def _walkable(self, a, b, skip) -> bool:
+        # Called tens of thousands of times while the graph is built, so the rooms
+        # and the pieces of floor that cannot touch the step are dropped first, on
+        # their bounding boxes alone (the same test blocks() starts with)
+        lx, hx = (a[0], b[0]) if a[0] <= b[0] else (b[0], a[0])
+        ly, hy = (a[1], b[1]) if a[1] <= b[1] else (b[1], a[1])
+        for s in self.shapes:
+            x0, y0, x1, y1 = s.box
+            if hx < x0 or lx > x1 or hy < y0 or ly > y1 or s in skip:
+                continue
+            if s.blocks(a, b):
+                return False
+        # a little slack, so no sampled point is lost to rounding at the box's edge
+        areas = [(box, poly) for box, poly in self.areas
+                 if not (hx < box[0] - 1 or lx > box[2] + 1 or hy < box[1] - 1 or ly > box[3] + 1)]
         steps = max(2, int(_dist(a, b) // SAMPLE))    # a short step still has its middle checked
-        return all(self.indoors((a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps))
-                   for i in range(1, steps))
+        last = None                                    # the next point is most likely in the same piece
+        for i in range(1, steps):
+            x, y = a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps
+            if last is not None:
+                box, poly = last
+                if box[0] <= x <= box[2] and box[1] <= y <= box[3] and _inside(x, y, poly):
+                    continue
+            last = next(((box, poly) for box, poly in areas
+                         if box[0] <= x <= box[2] and box[1] <= y <= box[3] and _inside(x, y, poly)), None)
+            if last is None:
+                return False
+        return True
 
 
 # -------------------------------------------------------------------- router

@@ -257,7 +257,7 @@ def test_us13_the_line_runs_wall_to_wall_and_is_framed_with_its_stairs():
     # stretch, which for a hall across open floor is most of the walk), its corners
     # are rounded, arrowheads point the way, and each staircase tag is in the frame
     assert "fromWall(pts, r.from.code)" in APP_JS and "fromWall([...pts].reverse(), r.to.code)" in APP_JS
-    assert "roundedPath(pts, TRIP_CORNER)" in APP_JS and "chevrons(line, len, g)" in APP_JS
+    assert "roundedPath(pts, TRIP_CORNER)" in APP_JS and "chevrons(line, len)" in APP_JS
     assert "pts.push([mx - 150, my], [mx + 150, my])" in APP_JS
     # a route shown from a card pins that card's destination, not the last answer's
     assert "showRoute(d.directions, Number(b.dataset.routeFloor), d)" in APP_JS

@@ -842,6 +842,7 @@ input { caret-color: var(--dest); }
 
 /* ---------------------------------------------------------------- the redrawn plan */
 .plan { display: block; overflow: visible; font-family: var(--font); }
+.plan-over { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; }
 .plan .walls polygon { fill: var(--map-slab); stroke: var(--map-wall); stroke-width: 6; stroke-linejoin: round; }
 .plan .slab polygon { fill: var(--map-slab); stroke: none; }
 .plan .volume { fill: none; stroke: none; }
