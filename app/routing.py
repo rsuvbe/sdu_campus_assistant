@@ -16,8 +16,9 @@ are drawn from (app/floorplan.py), so it can only go where the plan has floor:
     the way: a visibility graph over the rooms' corners, checked against the
     building's outline, so no step passes through a room or leaves the building;
   * floors are joined only by staircases drawn on the evacuation sheets: the
-    main lobby staircase (floors 1-2) and the stairwells at the far end of the
-    Block D to H wings (floors 1-3).
+    main lobby staircase (floors 1-2), the stairwells at the far end of the
+    Block D to H wings (floors 1-3) and the staircases at the start of the
+    Block D to I wings, by the central corridor (floors 2-3).
 
 The graph is built once at start-up. Routing is Dijkstra over it; a route is
 then turned into steps that name corridors, blocks, turns, sides and stairs.
@@ -38,6 +39,7 @@ CLEAR = 9.0             # how far an open-floor path keeps from a room's corner
 SAMPLE = 9.0            # spacing of the indoor checks along a step
 OPEN_REACH = 560.0      # longest single straight step across open floor
 WING_REACH = 160.0      # an exit or stairwell this close to a wing's far end belongs to it
+MOUTH_REACH = 60.0      # a staircase this close to where a wing leaves the corridor stands at its start
 SHORT_LEG = 30.0        # a stretch of corridor shorter than this is just crossed
 OPPOSITE_REACH = 45.0   # a door this close along the wing is "directly across"
 SPIKE = 12.0            # a turn back sharper than 135 degrees this short is not drawn
@@ -320,7 +322,7 @@ class Router:
             mouth = self._tap(floor, m[1])
             end = self._node(f"{floor}:w:{block}:end", floor, e[0], e[1], "wing_end", block=block)
             record = {"floor": floor, "block": block, "m": self._pt(mouth), "e": e, "length": length,
-                      "doors": [], "end": end, "mouth": mouth}
+                      "doors": [], "end": end, "mouth": mouth, "chain": []}
             chain = [(0.0, mouth), (1.0, end)]
             for shape in wing["rooms"]:
                 code = shape["code"]
@@ -339,6 +341,7 @@ class Router:
             chain.sort()
             for (_, a), (_, b) in zip(chain, chain[1:]):
                 self._edge(a, b, "wing", floor=floor, block=block)
+            record["chain"] = chain
             self.wings[(floor, block)] = record
 
         # ---- rooms that open straight onto the central corridor
@@ -422,7 +425,19 @@ class Router:
         inside = tuple(s for s in geo.shapes if s.contains(at))
         wing = self.wings.get((floor, block))
         near_end = wing and _dist(wing["e"], at) <= WING_REACH and "lobby" not in lm["name"]
-        if near_end:
+        at_start = kind == "stairs" and wing and _dist(wing["m"], at) <= MOUTH_REACH
+        if at_start:
+            # the plan draws it in the corner of the wing by the corridor: it is
+            # stepped onto from the wing's corridor, level with the mark
+            mx, my = wing["m"]
+            dx, dy = wing["e"][0] - mx, wing["e"][1] - my
+            t = ((at[0] - mx) * dx + (at[1] - my) * dy) / (wing["length"] ** 2)
+            self.nodes[nid].update(x=round(mx + dx * t, 1), y=round(my + dy * t, 1), start=True, t=t)
+            chain = wing["chain"]
+            k = next(k for k in range(1, len(chain)) if chain[k][0] >= t)
+            for _, other in (chain[k - 1], chain[k]):
+                self._edge(other, nid, "wing", floor=floor, block=block)
+        elif near_end:
             if geo.walkable(wing["e"], at, skip=inside):
                 self._edge(wing["end"], nid, "landing", floor=floor, block=block)
             else:
@@ -457,7 +472,7 @@ class Router:
         else:
             # one staircase is the marks of the same name on each floor it joins
             core = ("lobby" if "lobby" in lm["name"] else f"wing:{block}" if "far end" in lm["name"]
-                    else lm["name"])
+                    else f"start:{block}" if at_start else lm["name"])
             self.stairs[nid] = {"core": core, "name": lm["name"], "block": block}
             # a staircase that comes up inside a hall (the Red Canteen) opens into it
             for shape in inside:
@@ -466,7 +481,7 @@ class Router:
                     self._edge(nid, room, "open", floor=floor, src=nid, zone="west")
             # one out on the open floor west of the corridor (by the table tennis) is
             # reached from the places round it without going out to the corridor
-            if not near_end and not inside and self.nodes[nid].get("zone") == "west":
+            if not near_end and not at_start and not inside and self.nodes[nid].get("zone") == "west":
                 for room_id in [n for n, node in self.nodes.items() if node["floor"] == floor
                                 and node["kind"] == "room" and node.get("zone") == "west"
                                 and _dist(self._pt(n), at) <= OPEN_REACH / 2]:
@@ -940,8 +955,33 @@ class Router:
                     i += 1                          # the arrival says it, from the way in
                     continue
                 block = leg["block"]
-                to_end = self.nodes[leg["nodes"][-1]]["kind"] in ("wing_end", "stairs")
+                first, last = self.nodes[leg["nodes"][0]], self.nodes[leg["nodes"][-1]]
                 turn = _turn(heading, leg["head"]) if heading else "straight"
+                if first.get("start"):
+                    # off the stairs at the start of a wing, a step from the corridor:
+                    # the next step turns into the corridor from here
+                    heading = leg["tail"]
+                    i += 1
+                    continue
+                if last.get("start") and nxt and nxt["kind"] == "stairs":
+                    up, to_floor = climb(i + 1)
+                    if leaving:
+                        lead = (f"Leave {label}, turn {turn} and walk back along the Block {block} wing"
+                                if turn in ("left", "right") else
+                                f"Leave {label} and walk back along the Block {block} wing")
+                        say(f"{lead} to the staircase at its start, by the central corridor, "
+                            f"and take it {up} to floor {to_floor}.")
+                    elif first["kind"] == "spine":
+                        lead = (f"Turn {turn} into the Block {block} wing" if turn in ("left", "right")
+                                else f"Go into the Block {block} wing")
+                        say(f"{lead}: the staircase is right at its start. Take it {up} to floor {to_floor}.")
+                    else:
+                        say(f"Take the staircase at the start of the Block {block} wing {up} to floor {to_floor}.")
+                    state["floor"] = state["cur"] = to_floor
+                    leaving, heading = False, None
+                    i += 2
+                    continue
+                to_end = last["kind"] in ("wing_end", "stairs")
                 if to_end:
                     if leaving:
                         lead = (f"Leave {label}, turn {turn} and walk to the far end of the Block {block} wing"
@@ -1062,7 +1102,8 @@ class Router:
                 return 1 - d["t"] if backwards else d["t"]
 
             entry = self.nodes[prev["nodes"][0]]
-            entry_at = along(self.doors[entry["room"]]) if entry["kind"] == "door" else -1.0
+            entry_at = (along(self.doors[entry["room"]]) if entry["kind"] == "door" else
+                        along(entry) if entry.get("start") else -1.0)
             mine = _side(walk, door["door"], door["room"])
             same = sorted((d for d in wing["doors"] if _side(walk, d["door"], d["room"]) == mine
                            and entry_at < along(d) <= along(door) + 1e-9), key=along)
@@ -1086,7 +1127,13 @@ class Router:
                 text = f"{code} is the {nth} door on your {mine}"
                 text += f", just after {human_list(before)}." if before else "."
                 return opening + text
-            if entry["kind"] in ("wing_end", "stairs"):
+            if entry.get("start"):
+                # the staircase at the wing's start: the wing runs on from it, and a
+                # door or two may be behind it, by the corridor
+                opening = lead(f"Turn back towards the central corridor: " if backwards
+                               else f"Walk on along the Block {wing['block']} wing: ")
+                first_txt = "right by the stairs"
+            elif entry["kind"] in ("wing_end", "stairs"):
                 opening = lead(f"Walk back along the Block {wing['block']} wing: ")
                 first_txt = "right by the stairwell" if entry["kind"] == "stairs" else "at the far end"
             else:

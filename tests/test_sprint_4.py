@@ -177,6 +177,8 @@ def test_us13_task_stairs_join_only_the_staircases_on_the_sheets():
     for nid, info in router.stairs.items():
         cores.setdefault(info["core"], set()).add(router.nodes[nid]["floor"])
     assert cores == {"lobby": {1, 2}, **{f"wing:{b}": {1, 2, 3} for b in "DEFGH"},
+                     # at the start of every wing, by the corridor, floors 2 and 3 only
+                     **{f"start:{b}": {2, 3} for b in "DEFGHI"},
                      # up from the hall over the food court into the 3rd-floor Red Canteen
                      "north Red Canteen staircase": {2, 3},
                      # from beside the table tennis on floor 1 straight up, no way off at floor 2
@@ -298,19 +300,43 @@ def test_us13_places_named_for_what_they_are_take_the():
 
 
 def test_us13_the_3rd_floor_red_canteen_is_reached_by_its_own_stairs_from_floor_2():
-    # from the entrance: up the lobby staircase to floor 2, along the corridor to
-    # Block F, across to the hall over the food court and up its staircase, which
-    # comes up inside the canteen
+    # from the west side of floor 2: across to the hall over the food court and up
+    # its staircase, which comes up inside the canteen
+    r = route("E221", "RED-CANTEEN-3")
+    assert r["floors"] == [2, 3]
+    assert [m["name"] for m in r["stairs"] if not m.get("arrive")] == ["north Red Canteen staircase"]
+    assert "take the north Red Canteen staircase up to floor 3" in r["steps"][-2]
+    assert r["steps"][-1] == "On floor 3, the stairs come up inside Red Canteen (3rd floor)."
+    # from the entrance: up the lobby staircase, then the one at the start of a
+    # wing, and along the floor-3 corridor to the canteen's door
     r = router.route(ENTRANCE, room("RED-CANTEEN-3"))
     assert r["floors"] == [1, 2, 3]
     assert [m["name"] for m in r["stairs"] if not m.get("arrive")] == [
-        "main lobby staircase", "north Red Canteen staircase"]
-    assert "take the north Red Canteen staircase up to floor 3" in r["steps"][-2]
-    assert r["steps"][-1] == "On floor 3, the stairs come up inside Red Canteen (3rd floor)."
-    assert "north Red Canteen staircase up to floor 3" in " ".join(route("F212", "RED-CANTEEN-3")["steps"])
+        "main lobby staircase", "staircase at the start of the Block E wing"]
     # from the table tennis, the staircase beside it runs straight up to the canteen
     r = route("TABLE-TENNIS", "RED-CANTEEN-3")
     assert r["floors"] == [1, 3] and [m["name"] for m in r["stairs"]] == ["Red Canteen staircase"] * 2
+
+
+def test_us13_floors_2_and_3_are_joined_at_the_start_of_every_wing():
+    # the sheets draw a staircase in the corner of each wing by the corridor
+    r = route("E209", "F309")
+    assert [m["name"] for m in r["stairs"] if not m.get("arrive")] == ["staircase at the start of the Block E wing"]
+    assert r["steps"][0] == ("Leave E209, turn left and walk back along the Block E wing to the staircase "
+                             "at its start, by the central corridor, and take it up to floor 3.")
+    assert r["steps"][1] == "On floor 3, turn left into the central corridor and follow it to Block F."
+    # from the corridor it is right at the wing's start; upstairs the doors are
+    # counted from the stairs
+    r = route("D213", "E309")
+    assert r["steps"][1] == "Turn left into the Block E wing: the staircase is right at its start. Take it up to floor 3."
+    assert r["steps"][2].startswith("On floor 3, walk on along the Block E wing: E309 is the fourth door on your right")
+    # and down again
+    r = route("G309", "G210")
+    assert [m["name"] for m in r["stairs"] if not m.get("arrive")] == ["staircase at the start of the Block G wing"]
+    assert "take it down to floor 2" in r["steps"][0]
+    assert r["steps"][1].startswith("On floor 2, walk on along the Block G wing: G210 is the second door on your right")
+    # the far-end stairwell still wins at the far end of a wing
+    assert "far end" in route("D205", "D305")["steps"][0]
 
 
 def test_us13_a_place_asked_for_by_its_floor_is_that_one():

@@ -153,6 +153,18 @@ INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN1','F-1','Red Canteen staircase','
 INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN3','F-3','Red Canteen staircase','stairs',215.0,348.0);
 INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN_N2','F-2','north Red Canteen staircase','stairs',166.0,189.0);
 INSERT INTO "landmarks" VALUES('STAIRS_CANTEEN_N3','F-3','north Red Canteen staircase','stairs',169.0,201.0);
+INSERT INTO "landmarks" VALUES('STAIRS_D2_START','D-2','staircase at the start of the Block D wing','stairs',429.0,744.5);
+INSERT INTO "landmarks" VALUES('STAIRS_E2_START','E-2','staircase at the start of the Block E wing','stairs',429.0,1119.5);
+INSERT INTO "landmarks" VALUES('STAIRS_F2_START','F-2','staircase at the start of the Block F wing','stairs',409.0,324.5);
+INSERT INTO "landmarks" VALUES('STAIRS_G2_START','G-2','staircase at the start of the Block G wing','stairs',409.0,675.5);
+INSERT INTO "landmarks" VALUES('STAIRS_H2_START','H-2','staircase at the start of the Block H wing','stairs',409.0,1064.5);
+INSERT INTO "landmarks" VALUES('STAIRS_I2_START','I-2','staircase at the start of the Block I wing','stairs',409.0,1064.5);
+INSERT INTO "landmarks" VALUES('STAIRS_D3_START','D-3','staircase at the start of the Block D wing','stairs',439.0,656.0);
+INSERT INTO "landmarks" VALUES('STAIRS_E3_START','E-3','staircase at the start of the Block E wing','stairs',439.0,1041.5);
+INSERT INTO "landmarks" VALUES('STAIRS_F3_START','F-3','staircase at the start of the Block F wing','stairs',389.0,338.0);
+INSERT INTO "landmarks" VALUES('STAIRS_G3_START','G-3','staircase at the start of the Block G wing','stairs',389.0,687.0);
+INSERT INTO "landmarks" VALUES('STAIRS_H3_START','H-3','staircase at the start of the Block H wing','stairs',389.0,1051.0);
+INSERT INTO "landmarks" VALUES('STAIRS_I3_START','I-3','staircase at the start of the Block I wing','stairs',389.0,1051.0);
 CREATE TABLE nav_edges (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     from_node_id  TEXT NOT NULL REFERENCES nav_nodes(node_id) ON DELETE CASCADE,

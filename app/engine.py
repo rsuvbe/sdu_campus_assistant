@@ -13,7 +13,8 @@ How directions are derived (nothing is invented):
     your LEFT and the lower row on your RIGHT;
   * door order = order along the wing, counted from the central corridor;
   * "opposite" = the room in the other row at the closest position;
-  * landmarks = exits (floor 1) and wing-end stairwells (floors 2-3);
+  * landmarks = exits (floor 1), wing-end stairwells and the staircases at the
+    start of each wing (floors 2-3);
   * Blocks A and B are the exception: they sit north of the lobby, along a
     foyer that runs east from it, so their rooms are counted along that foyer.
 """
@@ -883,7 +884,9 @@ class CampusIndex:
             steps.append("Stay on the ground floor (floor 1).")
         else:
             steps.append(f"Go up to floor {floor}. There are stairs along the central corridor "
-                         f"and at the far end of every wing.")
+                         f"and at the far end of every wing"
+                         + (", and from floor 2 also at the start of every wing, by the corridor." if floor == 3
+                            else "."))
 
         block_label = f"Block {bid}"
         if bid == "I":
