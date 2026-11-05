@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Your profile · SDU Campus Assistant</title>
-<meta name="description" content="Your SDU Campus Assistant account: change your password or sign out.">
+<meta name="description" content="Your SDU Campus Assistant account: your timetable, your password, signing out.">
 <!-- A new visit (a new tab, the browser opened again) starts at the sign-in page,
      for an account and a visitor alike; a reload keeps the session. The mark is
      set by the sign-in page and lives as long as the tab. -->
@@ -17,8 +17,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=92">
-<link rel="stylesheet" href="/static/auth.css?v=62">
+<link rel="stylesheet" href="/static/styles.css?v=96">
+<link rel="stylesheet" href="/static/auth.css?v=64">
 </head>
 <body class="profile-body">
 
@@ -31,6 +31,7 @@
   <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H5M11.5 5.5 5 12l6.5 6.5"/></symbol>
   <symbol id="i-out" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M3 12h11M7.5 7.5 3 12l4.5 4.5"/></symbol>
   <symbol id="i-entrance" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M3 12h11M9.5 7.5 14 12l-4.5 4.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
 </svg>
 
 <header class="bar">
@@ -55,7 +56,7 @@
       <div class="pass-band"><span>Visitor pass</span><span>SDU University</span></div>
       <div class="pass-body">
         <h1>No profile for visitors</h1>
-        <p class="auth-lead">You're looking around without an account. Sign in with your SDU address to have a profile and change your password.</p>
+        <p class="auth-lead">You're looking around without an account. Sign in with your SDU address to have a profile, keep your timetable and change your password.</p>
         <a class="btn-go wide" href="/login">Sign in</a>
       </div>
     </div>
@@ -119,9 +120,59 @@
         <button type="submit" class="btn-go wide" id="pw-submit">Change password</button>
       </form>
     </section>
+
+    <section class="tt-card" id="timetable" aria-labelledby="tt-title">
+      <div class="tt-head">
+        <h2 class="section-title" id="tt-title">Your timetable</h2>
+        <span class="tt-count" id="tt-count"></span>
+      </div>
+      <p class="auth-lead">Type in your week and the assistant can tell you where your next class is. Only you can see it.</p>
+      <div class="tt-body">
+        <div class="tt-week" id="tt-week" aria-live="polite"></div>
+        <form class="tt-form" id="tt-form" novalidate autocomplete="off">
+          <h3 class="tt-form-title" id="tt-form-title">Add a class</h3>
+          <div class="field" id="tt-field-subject">
+            <label for="tt-subject">Subject</label>
+            <input id="tt-subject" type="text" maxlength="80" placeholder="Calculus I" required>
+          </div>
+          <div class="field" id="tt-field-day">
+            <label for="tt-day">Day</label>
+            <select id="tt-day">
+              <option value="0">Monday</option>
+              <option value="1">Tuesday</option>
+              <option value="2">Wednesday</option>
+              <option value="3">Thursday</option>
+              <option value="4">Friday</option>
+              <option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+          </div>
+          <div class="tt-times">
+            <div class="field" id="tt-field-start">
+              <label for="tt-start">Starts</label>
+              <input id="tt-start" type="time" required>
+            </div>
+            <div class="field" id="tt-field-end">
+              <label for="tt-end">Ends</label>
+              <input id="tt-end" type="time" required>
+            </div>
+          </div>
+          <div class="field" id="tt-field-room">
+            <label for="tt-room">Room</label>
+            <input id="tt-room" type="text" list="tt-rooms" maxlength="80" placeholder="D103 or Hall A1" required>
+            <datalist id="tt-rooms"></datalist>
+          </div>
+          <p class="form-error" id="tt-error" role="alert" hidden></p>
+          <div class="tt-actions">
+            <button type="submit" class="btn-go" id="tt-submit">Add class</button>
+            <button type="button" class="btn-line" id="tt-cancel" hidden>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </section>
   </div>
 </main>
 <script src="/static/theme.js?v=7"></script>
-<script src="/static/profile.js?v=3"></script>
+<script src="/static/profile.js?v=5"></script>
 </body>
 </html>

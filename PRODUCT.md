@@ -22,6 +22,8 @@ what is opposite, the nearest exit or stairwell. Nothing is invented.
   for ambiguous numbers; "not found" with real suggestions.
 - Floor plan: 3 floors, pan/zoom, floor and block switching, tap a room to ask about it.
 - Services strip with open/closed status in Almaty time.
+- Campus events: upcoming only, soonest first, search by word and period; a press lights the room.
+- A personal timetable on the profile, and "where is my next class?" answered from it.
 - Accounts: SDU address (a student's 9 digits, or staff name.surname, + @sdu.edu.kz), visitor
   entry, forgot/reset password; a new visit starts at the sign-in page.
 

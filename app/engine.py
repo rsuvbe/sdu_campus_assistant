@@ -25,8 +25,9 @@ import math
 import re
 import sqlite3
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 def _campus_zone() -> ZoneInfo:
@@ -43,6 +44,7 @@ def _campus_zone() -> ZoneInfo:
 
 CAMPUS_TZ = _campus_zone()
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 ORDINALS = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", 6: "sixth",
             7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth"}
 
@@ -171,6 +173,13 @@ TRIP_RES = [
 # the main entrance, which is where a route starts unless told otherwise (US14).
 ROUTE_WORDS_RE = re.compile(r"how\s+(?:do|can|should)\s+i\s+get|how\s+to\s+get|directions|\broute\b|"
                             r"\bway\s+to\b|take\s+me|как\s+(?:пройти|дойти|попасть|добраться)|маршрут|дорог")
+NOT_FOR_CLASSES = {"WC", "WC_STAFF", "WARDROBE", "INFO", "SHOP"}
+# "where is my next class", "my lecture", "следующая пара", "где моя пара"
+NEXT_CLASS_RE = re.compile(r"\b(?:next|upcoming|my)\s+(?:class|lesson|lecture|seminar|lab)\b|"
+                           r"(?:следующ|ближайш|мо)[а-яё]*\s+(?:пар|урок|заняти|лекци|семинар)")
+# "events", "what's on", "мероприятия": a question about the events page, not about a place
+EVENTS_RE = re.compile(r"\bevents?\b|\bwhat(?:'s|s|\s+is)\s+(?:on|happening)\s*(?:today|tonight|this\s+week|"
+                       r"on\s+campus|at\s+sdu)?\s*\??\s*$|мероприят|событи|афиш")
 ENTRANCE_WORDS = ("entrance", "main entrance", "the main entrance", "front door", "main door", "the entrance",
                   "вход", "главный вход", "центральный вход", "кіреберіс", "басты кіреберіс")
 PLACE_FILLER_RE = re.compile(r"^(?:the|room|аудитори[яюи]|кабинет[а-я]*)\s+|[\s?!.,;:]+$")
@@ -258,6 +267,49 @@ def human_list(items: list[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
+def campus_now(now: datetime | None = None) -> datetime:
+    """Opening hours and timetables are campus time: a moment given in any other
+    zone (a UTC server clock) is turned into Almaty time first; a naive one already is."""
+    return now.astimezone(CAMPUS_TZ) if now and now.tzinfo else (now or datetime.now(CAMPUS_TZ))
+
+
+def next_class(classes: list[dict], now: datetime) -> tuple[dict | None, dict, int]:
+    """(the class on now, the next one to start, the days until it). Times are
+    'HH:MM', so they compare as strings. A class that has already begun today
+    comes round again in seven days, whichever week it is."""
+    today, hhmm = now.weekday(), now.strftime("%H:%M")
+    on_now = next((c for c in classes if c["day"] == today and c["start"] <= hhmm < c["end"]), None)
+
+    def days_until(c: dict) -> int:
+        return (c["day"] - today) % 7 or (0 if c["start"] > hhmm else 7)
+
+    upcoming = min(classes, key=lambda c: (days_until(c), c["start"]))
+    return on_now, upcoming, days_until(upcoming)
+
+
+def class_day(entry: dict, days: int) -> str:
+    """The day of a class, the way you'd say it from today."""
+    if days == 7:
+        return f"next {DAY_NAMES[entry['day']]}"
+    return {0: "today", 1: "tomorrow"}.get(days, f"on {DAY_NAMES[entry['day']]}")
+
+
+def capitalise(text: str) -> str:
+    return text[0].upper() + text[1:]
+
+
+def event_day(day: date) -> str:
+    """A date the way a notice board has it: "Thu 12 Nov"."""
+    return f"{DAY_NAMES[day.weekday()][:3]} {day.day} {MONTH_NAMES[day.month - 1]}"
+
+
+def event_times(starts_at: str, ends_at: str) -> str:
+    """The hours of an event, "14:00–16:00"; one that runs past its day says when it ends."""
+    if starts_at[:10] == ends_at[:10]:
+        return f"{starts_at[11:]}–{ends_at[11:]}"
+    return f"{starts_at[11:]} – {event_day(date.fromisoformat(ends_at[:10]))}, {ends_at[11:]}"
+
+
 class CampusIndex:
     def __init__(self) -> None:
         self.buildings: dict[str, str] = {}
@@ -269,6 +321,8 @@ class CampusIndex:
         self.services: dict[str, dict] = {}
         self.building_aliases: list[tuple[str, str]] = []   # (alias, building_id), longest first
         self.named: dict[str, list[dict]] = {}   # normalised name -> rooms that carry it
+        self.db_path: Path | None = None
+        self.event_titles: dict[str, list[dict]] = {}   # normalised title -> its events, earliest first
         self.map = None          # CampusMap, attached after load (see app/main.py)
         self.router = None       # Router, attached after the map (see app/main.py)
 
@@ -284,6 +338,7 @@ class CampusIndex:
     @classmethod
     def load(cls, db_path: str | Path) -> "CampusIndex":
         idx = cls()
+        idx.db_path = Path(db_path)
         conn = sqlite3.connect(f"file:{Path(db_path)}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         try:
@@ -352,6 +407,11 @@ class CampusIndex:
         for r in conn.execute("SELECT * FROM service_aliases"):
             self.services[r["service_id"]]["aliases"].append(normalize(r["alias"]))
 
+        # kept for one thing: a press on an event's title finds the event again.
+        # The events page itself asks the database every time (see events()).
+        for r in conn.execute("SELECT * FROM events ORDER BY starts_at"):
+            self.event_titles.setdefault(normalize(r["title"]), []).append(dict(r))
+
     @staticmethod
     def _walk_order(room: dict) -> tuple:
         """Floor, then block along the corridor, then position on the sheet."""
@@ -399,6 +459,42 @@ class CampusIndex:
             })
         return sorted(out, key=lambda s: (s["floor_number"], s["section"] != "front"))
 
+    def directory_room(self, text: str | None) -> dict | None:
+        """The room someone picked for a class: by its code, its hall name or an
+        alias, in Latin or Cyrillic letters. None when the directory has no such room."""
+        key = normalize(text or "")
+        return self.by_code.get(key) or self.by_code.get(key.translate(CYR_TO_LAT))
+
+    def _picker_value(self, room: dict) -> str:
+        """What to type for a room: its name, or its number where the name alone
+        doesn't lead back to it ("I110/I111")."""
+        name = distinct_name(room)
+        return name if self.directory_room(name) is room else room["room_number"]
+
+    def room_list(self) -> list[dict]:
+        """The directory for a room picker: what to type, and what it is. Places
+        nobody holds a class in stay out of the list."""
+        return [{"value": self._picker_value(r),
+                 "label": f"{self._class_room(r) if barrel_name(r) else r.get('purpose') or 'Room'}"
+                          f" · Floor {r['floor_number']}, Block {r['building_id']}"}
+                for r in sorted(self.rooms, key=self._walk_order) if r["type"] not in NOT_FOR_CLASSES]
+
+    @staticmethod
+    def _class_room(room: dict) -> str:
+        """A class's room as a timetable says it: a round hall by the name people use."""
+        hall = barrel_name(room)
+        return f"Hall {hall} ({room['room_number']})" if hall else distinct_name(room)
+
+    def class_payload(self, entry: dict) -> dict:
+        """A class of a timetable as the pages show it. A room that has left the
+        directory since the class was saved says so instead of breaking the week."""
+        room = self.directory_room(entry["room"])
+        return {**entry, "day_name": DAY_NAMES[entry["day"]],
+                "room_label": self._class_room(room) if room else entry["room"],
+                "room_value": self._picker_value(room) if room else entry["room"],
+                "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
+                         else "No longer on the plans"}
+
     def service_list(self, now: datetime | None = None) -> list[dict]:
         """The services page: every service with where it is and whether it is
         open, in category order, then the kinds of room there are many of."""
@@ -445,18 +541,148 @@ class CampusIndex:
         rooms = self.named.get(normalize(svc["name"]), [])
         return self._spread(rooms) if rooms else None
 
-    def search(self, query: str, now: datetime | None = None, context: str | None = None) -> dict:
+    def search(self, query: str, now: datetime | None = None, context: str | None = None,
+               timetable: Callable[[], list[dict] | None] | None = None) -> dict:
         """Answer a question. `context` is the room number a previous answer
-        asked the user to pick a block for, so "204" then "Engineering" works."""
+        asked the user to pick a block for, so "204" then "Engineering" works.
+        `timetable` fetches the asker's classes, None for a visitor; only a
+        question about the next class calls it."""
         t0 = time.perf_counter()
-        result = self._trip(query, now) or self._search(query, now, context)
+        if NEXT_CLASS_RE.search(query.lower()):
+            result = self._next_class_answer(timetable() if timetable else None, now)
+        else:
+            result = self._event_answer(query, now) or self._trip(query, now) or self._search(query, now, context)
         if (self.router and "directions" not in result and ROUTE_WORDS_RE.search(query.lower())
                 and self._place_of(result)):
-            result["directions"] = self.router.route(self.entrance(), self._place_of(result))
+            start = result.get("start")
+            result["directions"] = self.router.route(self.router.place("room", start) if start else self.entrance(),
+                                                     self._place_of(result))
         result.setdefault("context", None)
         result["query"] = query
         result["elapsed_ms"] = round((time.perf_counter() - t0) * 1000, 3)
         return result
+
+    # ---------------------------------------------------------------- events
+    def events(self, q: str | None = None, start: date | None = None, end: date | None = None,
+               now: datetime | None = None) -> dict:
+        """US19, US20: the upcoming campus events, soonest first. Each call asks the
+        events table: every word of `q` must be in the title or the description, and
+        `start`..`end` are campus dates, both included, that an event only has to
+        overlap. An event is upcoming until it ends. Times are 'YYYY-MM-DD HH:MM'
+        in campus time, so they compare as text."""
+        now = campus_now(now)
+        stamp = now.strftime("%Y-%m-%d %H:%M")
+        where, args = ["ends_at > ?"], [stamp]
+        for word in (q or "").casefold().split():
+            where.append("(instr(fold(title), ?) > 0 OR instr(fold(description), ?) > 0)")
+            args += [word, word]
+        if start:
+            where.append("ends_at > ?")
+            args.append(f"{start:%Y-%m-%d} 00:00")
+        if end:
+            where.append("starts_at < ?")
+            args.append(f"{end + timedelta(days=1):%Y-%m-%d} 00:00")
+
+        conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        # SQLite's LIKE folds only ASCII, so Cyrillic would be case-sensitive
+        conn.create_function("fold", 1, str.casefold, deterministic=True)
+        try:
+            rows = conn.execute(f"SELECT * FROM events WHERE {' AND '.join(where)} ORDER BY starts_at, title",
+                                args).fetchall()
+            total = conn.execute("SELECT count(*) FROM events WHERE ends_at > ?", (stamp,)).fetchone()[0]
+        finally:
+            conn.close()
+
+        by_id = {r["room_id"]: r for r in self.rooms}
+        today = now.date()
+        monday = today - timedelta(days=today.weekday())
+        month_end = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        return {
+            "events": [self._event_payload(r, by_id.get(r["room_id"]), stamp) for r in rows],
+            "count": len(rows), "total": total,
+            "ranges": {name: {"from": a.isoformat(), "to": b.isoformat()} for name, (a, b) in {
+                "today": (today, today),
+                "week": (monday, monday + timedelta(days=6)),
+                "month": (today, month_end),
+            }.items()},
+        }
+
+    @staticmethod
+    def _event_payload(row: sqlite3.Row, room: dict | None, stamp: str) -> dict:
+        return {"event_id": row["event_id"], "title": row["title"], "description": row["description"],
+                "place": row["place"], "room": room["room_number"] if room else None,
+                "date": event_day(date.fromisoformat(row["starts_at"][:10])),
+                "time": event_times(row["starts_at"], row["ends_at"]),
+                "starts_at": row["starts_at"], "ends_at": row["ends_at"],
+                "on_now": row["starts_at"] <= stamp < row["ends_at"],
+                "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room else None,
+                "ask": row["title"]}
+
+    def _event_answer(self, query: str, now: datetime | None) -> dict | None:
+        """The question is an event's title (a press on the events page): its room on
+        the plan, or a card that says the place is not on the plans. None otherwise."""
+        stamp = campus_now(now).strftime("%Y-%m-%d %H:%M")
+        event = next((e for e in self.event_titles.get(normalize(query), []) if e["ends_at"] > stamp), None)
+        if not event:
+            return None
+        day = event_day(date.fromisoformat(event["starts_at"][:10]))
+        when = f"{day}, {event_times(event['starts_at'], event['ends_at'])}"
+        occasion = {"label": "Event", "title": event["title"], "when": when, "aside": event["description"]}
+        room = next((r for r in self.rooms if r["room_id"] == event["room_id"]), None)
+        if not room:
+            return {"kind": "event", "title": event["title"],
+                    "summary": f"{event['title']} is on {when}, at {event['place']}.",
+                    "occasion": occasion, "place": event["place"], "suggestions": []}
+        answer = self._room_answer(room)
+        answer["summary"] = f"{event['title']} is on {when}, in {answer['title']}."
+        answer["occasion"] = occasion
+        return answer
+
+    # ------------------------------------------------------------ next class
+    def _next_class_answer(self, classes: list[dict] | None, now: datetime | None) -> dict:
+        """US18: where the asker's next class is, out of their own timetable. A
+        class that has begun is not the next one: it is named as the one on now,
+        and the way to the next one starts from its room."""
+        if classes is None:
+            return {"kind": "needs_account", "title": "This needs an account",
+                    "summary": "Your next class comes from your own timetable, and a visitor pass "
+                               "doesn't have one. Sign in with your SDU account and add your classes "
+                               "to your profile.",
+                    "link": {"href": "/login", "label": "Sign in"}, "suggestions": []}
+        if not classes:
+            return {"kind": "needs_account", "title": "Your timetable is empty",
+                    "summary": "Add your classes to your profile, and I'll tell you where the next one is.",
+                    "link": {"href": "/profile#timetable", "label": "Add your classes"}, "suggestions": []}
+        now = campus_now(now)
+        on_now, upcoming, days = next_class(classes, now)
+        room = self.directory_room(upcoming["room"])
+        when = class_day(upcoming, days)
+        if not room:
+            return {"kind": "needs_account", "title": f"{upcoming['subject']}, {when} at {upcoming['start']}",
+                    "summary": f"Its room, {upcoming['room']}, is no longer on the plans. "
+                               "Choose the new one in your timetable.",
+                    "link": {"href": "/profile#timetable", "label": "Edit your timetable"}, "suggestions": []}
+        answer = self._room_answer(room)
+        answer["summary"] = (f"Your next class is {upcoming['subject']}, {when} at {upcoming['start']}, "
+                             f"in {self._class_room(room)}.")
+        answer["occasion"] = {"label": "Your next class", "title": upcoming["subject"],
+                              "when": f"{capitalise(when)}, {upcoming['start']}–{upcoming['end']}",
+                              "aside": f"On now: {on_now['subject']} until {on_now['end']}" if on_now else None}
+        answer["start"] = self._class_start(classes, upcoming, days, now)
+        return answer
+
+    def _class_start(self, classes: list[dict], upcoming: dict, days: int, now: datetime) -> str | None:
+        """Where the walk to a class later today starts: the room of today's latest
+        class so far. None when today holds no earlier class, and from the same room."""
+        if days:
+            return None
+        hhmm = now.strftime("%H:%M")
+        earlier = [c for c in classes if c["day"] == now.weekday() and c["start"] <= hhmm]
+        if not earlier:
+            return None
+        room = self.directory_room(max(earlier, key=lambda c: c["start"])["room"])
+        return room["room_number"] if room and room is not self.directory_room(upcoming["room"]) else None
 
     # ------------------------------------------------------------ directions
     def entrance(self) -> dict:
@@ -685,6 +911,12 @@ class CampusIndex:
             halls = [r for r in self.rooms if re.search(rf" {n}$", r.get("distinct") or "")]
             if len(halls) == 1:
                 return self._room_or_service(halls[0], now)
+
+        if EVENTS_RE.search(query.lower()):
+            return {"kind": "needs_account", "title": "Campus events",
+                    "summary": "What is on at SDU, soonest first, with where and when. "
+                               "Search by a word or pick a period, and tap one to see its place on the plan.",
+                    "link": {"href": "/events", "label": "See upcoming events"}, "suggestions": []}
 
         listing = self._purpose_answer(lowered, blocks)
         if listing:
@@ -1217,9 +1449,7 @@ class CampusIndex:
 
     # --------------------------------------------------------------- services
     def _service_payload(self, svc: dict, now: datetime | None) -> dict:
-        # opening hours are campus time: a moment given in any other zone (a UTC
-        # server clock) is turned into Almaty time first; a naive one already is
-        now = now.astimezone(CAMPUS_TZ) if now and now.tzinfo else (now or datetime.now(CAMPUS_TZ))
+        now = campus_now(now)
         hours = svc["hours"]
         status, open_now = "Opening hours aren't on file yet", None
         if hours:

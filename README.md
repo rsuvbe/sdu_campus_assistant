@@ -77,6 +77,25 @@ with no recorded use, so their purpose is "Room"; Block C's floor-3 rooms are
 drawn on the sheet without numbers and are not in the directory until they are
 given.
 
+## Sprint 5 — Timetable and campus events
+
+Checked story by story against the story sheet in `tests/test_sprint_5.py`:
+every responsibility, QA scenario and (Pass)/(Fail) test script of US17 to US20,
+and the maintenance tasks a program can check.
+
+| Story | What it is now |
+|---|---|
+| US17 Manual Class Schedule Entry | **Your timetable** on the profile: subject, day, start and end, and a room picked from the directory. Classes are added, edited and deleted through `/api/schedule`. A class lives in the `classes` table next to its account (Postgres on the live site, so it outlives a deploy), and every query carries the user id: another account's class answers 404 with nothing in it, to read, change or delete alike. A room that isn't in the directory is refused on the server; `A1`, `д217` and `Red Hall` are understood. There is no import from the student portal, as the story says |
+| US18 Where Is My Next Class | "Where is my next class?", "next lecture" or "следующая пара" pick the next class that hasn't started from the asker's own week, in campus time, across the end of the week too. The answer is the room's usual card with the class, the day and the time on top, and **How do I get there?** A class that has begun is never the next one: it is named as the one on now. If the next class is today and an earlier one has been, the walk starts from that room; the start can still be changed. A visitor gets an explanation and a link to sign in, and an account with an empty timetable a link to fill it |
+| US19 Campus Event List | The `events` table in `campus.db` holds the title, description, place, room, start and end. **Campus events** is a page of its own, `/events`, linked from the main page. It lists the ones that haven't ended, soonest first, with place and time. A row opens the map and asks about the event: its room lights up on the plan and the title heads the card. A place that isn't on the plans says so |
+| US20 Event Search and Date Filter | A search box, Today / This week / This month, and two dates. Each change asks `/api/events`, which runs a query on the events table: every word must be in the title or description (Cyrillic ignores case too), and an event has to overlap the dates. The match count is shown, and an empty result says so and offers to clear the filters |
+
+**The events table is empty.** We have no list from the university and nothing
+is made up, so the page says no events have been added yet; the story sheet's
+"seed it with sample events" was dropped on purpose. The tests run on rows of
+their own in a copy of the database. An event goes in as a row in
+`data/campus.sql`, then `python3 tools/build_db.py`.
+
 ## Campus offices — October 2026
 
 The university's own list of offices, their rooms and hours:
@@ -238,8 +257,8 @@ quicker to see.
 US1 is written for students, staff **and visitors**, and a visitor has no
 university address to sign up with. So the sign-in page also has *Continue as a
 visitor*: a session with no account behind it, which gets everything US1
-covers — search, the map, opening hours. Anything added later that belongs to a
-person (a saved route, a timetable, a reminder) goes behind
+covers — search, the map, opening hours, the events. What belongs to a person
+(the timetable, and later a saved route or a reminder) goes behind
 `require_account()` in `app/main.py`, which answers a visitor with 403.
 
 | Who | How they get in | What they can reach |
@@ -256,25 +275,27 @@ person (a saved route, a timetable, a reminder) goes behind
 sdu-campus-assistant/
 ├── app/
 │   ├── main.py        # FastAPI: API, accounts, the site
-│   ├── engine.py      # search, service hours, the services page
+│   ├── engine.py      # search, service hours, the services page, next class, events
 │   ├── routing.py     # the corridor graph and walking directions (US13, US14)
 │   ├── floorplan.py   # the redrawn vector floor plans
-│   ├── auth.py        # SDU accounts, password rules, sessions, password reset
+│   ├── auth.py        # SDU accounts, password rules, sessions, password reset, timetables
 │   └── mailer.py      # the password-reset email (SMTP, or the log in development)
 ├── data/
 │   ├── campus.sql     # the campus, schema and data: the versioned source
 │   ├── campus.db      # built from campus.sql by tools/build_db.py (read-only for the app)
-│   ├── users.db       # accounts, created on first run, git-ignored
+│   ├── users.db       # accounts and timetables, created on first run, git-ignored
 │   └── schema.sql     # exact schema of campus.db
 ├── static/
 │   ├── index.html     # the app
 │   ├── auth.html      # sign in / create account
+│   ├── events.html    # the campus events page
 │   ├── app.js         # conversation + SVG map renderer
+│   ├── events.js      # the events list, search and dates
 │   ├── auth.js        # the sign-in form
 │   ├── styles.css, auth.css
 │   ├── img/           # the SDU mark, the full lockup and the favicon
 │   └── plans/         # the original sheets, the wider floor-1 print, the colour map
-├── tests/             # 424 tests: every sprint's story sheet, the data, accounts, the map, the routes
+├── tests/             # 645 tests: every sprint's story sheet, the data, accounts, the map, the routes
 ├── requirements.txt
 ├── render.yaml        # one-click deploy on Render
 └── Dockerfile         # Railway or any Docker host
@@ -344,7 +365,8 @@ conn.commit()
 pytest -v
 ```
 
-424 tests. `tests/test_sprint_4.py` checks US13–US16, `tests/test_sprints_2_3.py` checks
+645 tests. `tests/test_sprint_5.py` checks US17–US20, `tests/test_sprint_4.py` US13–US16,
+`tests/test_sprints_2_3.py`
 US4–US12 and `tests/test_us1_acceptance.py` checks US1, each line by line against
 the story sheet. The US1 checks:
 
@@ -390,6 +412,11 @@ Real answer time is around 0.1–1 ms.
 | `GET /api/sheets` | The original evacuation sheets, for reference |
 | `GET /api/route?to=...&from=...` | Walking directions (US13, US14): ordered `steps` with the floor each one is on, the route in brief (`signs`), the line to draw on each floor (`legs`) and the staircases (`stairs`). `to` and `from` take anything the search understands; leave out `from` and the route starts at the main entrance. A place it can't find gives `kind: "route_error"` and suggestions |
 | `GET /api/services` | The services page: each service with its category group, location and an open/closed status in Almaty time, then the kinds of room there are many of |
+| `GET /api/events?q=...&from=...&to=...` | Upcoming events, soonest first (US19, US20): words to find, and a period in campus dates, both days included. Also gives the match count, the total, and today, this week and this month as dates |
+| `GET /api/schedule` | Your own timetable (accounts only; a visitor gets 403) |
+| `POST /api/schedule` | Add a class: `subject`, `day` (0 = Monday), `start`, `end`, `room` |
+| `GET` / `PUT` / `DELETE /api/schedule/{id}` | One of your classes; somebody else's answers 404 |
+| `GET /api/rooms` | The room directory for the timetable's picker (accounts only) |
 | `GET /api/health` | Liveness check (the only open data endpoint) |
 
 Everything except `/api/health`, `/api/auth/*`, `/login` and `/static/*` needs
@@ -397,7 +424,10 @@ a session cookie; without one the API answers `401` and `/` redirects to
 `/login`.
 
 `/api/search` answer kinds: `room`, `block` (a faculty or a whole block),
-`service`, `ambiguous` (e.g. "204" exists in five blocks — the answer carries a
+`service`, `event` (an event at a place that isn't on the plans; one in a room
+comes as `room`, with an `occasion`, as does the next class), `needs_account`
+(the next class without a timetable, or a pointer to the events: it carries a
+`link`), `ambiguous` (e.g. "204" exists in five blocks — the answer carries a
 `context` for the next turn), `not_found` and `no_match`. A question that names a
 start and a destination, or asks for the way ("how do I get to G215"), also
 carries `directions`, in the same shape as `/api/route`.
@@ -494,6 +524,10 @@ room's own answer.
   its corridor, not surveyed, and the open floor west of the corridor is walked
   in straight lines between rooms. Distances are never quoted, because the
   sheets have no scale.
+- **There are no events yet.** Nothing feeds them in: until the admin page
+  (US26) they are rows in `data/campus.sql`.
+- **The timetable knows one week.** It repeats for ever: no term dates, no odd
+  and even weeks, no holidays. A class during a break still counts as next.
 - **Block B's letter** comes from the room label B114. The sheet does not say
   which block the Library and Red Hall belong to; they are filed under Block B
   because they share its foyer.

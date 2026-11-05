@@ -234,6 +234,41 @@ a.btn-go { text-decoration: none; }
 .pw-card { padding: var(--s6); animation: mount 420ms var(--ease) 100ms both; }
 .section-title { margin: 0; font-size: var(--t-22); line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; }
 .pw-card .auth-lead { margin-bottom: var(--s5); }
+
+/* your timetable: the week beside the form that fills it */
+.tt-card {
+  grid-column: 1 / -1; padding: var(--s6); scroll-margin-top: 88px;
+  background: var(--stock); border: 1px solid var(--line-2); border-radius: var(--r-card);
+  animation: mount 420ms var(--ease) 200ms both;
+}
+.tt-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.tt-count { font-size: var(--t-14); color: var(--ink-2); }
+.tt-card .auth-lead { margin-bottom: var(--s5); }
+.tt-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); align-items: start; gap: var(--s6); }
+.tt-week { display: grid; gap: var(--s4); min-width: 0; }
+.tt-empty { margin: 0; padding: var(--s4); border: 1px dashed var(--line-2); border-radius: var(--r-ctl); color: var(--ink-2); }
+.tt-day-name { margin: 0 0 var(--s1); font-size: var(--t-14); font-weight: 700; }
+.tt-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.tt-row {
+  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: var(--s3);
+  padding: var(--s2) 0; border-top: 1px solid var(--line-2);
+}
+.tt-row.editing { box-shadow: inset 3px 0 0 var(--peach); padding-left: var(--s2); }
+.tt-time { font-size: var(--t-14); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tt-what { display: grid; min-width: 0; }
+.tt-what b { overflow-wrap: anywhere; }
+.tt-what span { font-size: var(--t-13); color: var(--ink-2); }
+.tt-row-actions { display: inline-flex; gap: var(--s2); }
+.tt-form { display: grid; padding: var(--s4); background: var(--stock-2); border-radius: var(--r-ctl); }
+.tt-form-title { margin: 0 0 var(--s3); font-size: var(--t-16); font-weight: 700; }
+.tt-form .field { margin-bottom: var(--s3); min-width: 0; }
+.tt-form select { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--stock); color: var(--ink); }
+.tt-times { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.tt-times input { min-width: 0; }
+.tt-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
+.tt-actions .btn-go { flex: 1; height: 48px; }
+.tt-actions .btn-line { min-height: 48px; }
+
 .pass-card.big .pass-body { padding: var(--s6); gap: var(--s3); }
 .pass-card.big .auth-lead { margin: 0 0 var(--s3); }
 
@@ -248,6 +283,9 @@ a.btn-go { text-decoration: none; }
   .entrance .mark { width: 40px; height: 40px; padding: 4px; }
   .auth-panel { padding: var(--s6) var(--s4) calc(var(--s8) + env(safe-area-inset-bottom, 0px)); }
   .profile-grid { grid-template-columns: minmax(0, 560px); }
+  .tt-body { grid-template-columns: minmax(0, 1fr); }
+  .tt-card { order: 1; }       /* in daily use, unlike the password */
+  .pw-card { order: 2; }
 }
 @media (max-width: 639px) {
   .on-photo .theme-label { display: none; }
@@ -259,6 +297,8 @@ a.btn-go { text-decoration: none; }
   .profile-body .back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .profile-body .back { width: 40px; padding: 0; }
   .profile-body .brand-sub { display: none; }
-  .pw-card { padding: var(--s5) var(--s4); }
+  .pw-card, .tt-card { padding: var(--s5) var(--s4); }
+  .tt-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .tt-time { grid-column: 1 / -1; }
   .id-card-body { grid-template-columns: 80px minmax(0, 1fr); }
 }

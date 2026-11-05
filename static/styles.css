@@ -465,6 +465,50 @@ input { caret-color: var(--dest); }
   content: ""; position: absolute; left: 0; top: 18px; width: 64%; height: 10px; border-radius: 3px;
   background: var(--stock-2); animation: breathe 1.4s ease-in-out infinite;
 }
+/* campus events: a search, a period, then the upcoming events as rows */
+.events-link {
+  display: flex; align-items: center; gap: var(--s2); min-height: 48px; padding: 0 var(--s3);
+  border: 1px solid var(--line-2); border-radius: var(--r-ctl);
+  background: var(--stock); color: var(--ink); font-weight: 600; text-decoration: none;
+  transition: border-color var(--fast) var(--ease);
+}
+.events-link .i { width: 18px; height: 18px; color: var(--dest); }
+.events-link .i:last-child { margin-left: auto; color: var(--ink-3); }
+.events-link:hover { border-color: var(--ink-2); }
+.events-main { width: 100%; max-width: 640px; margin: 0 auto; padding: clamp(24px, 5vh, 48px) var(--s4) var(--s10); }
+.ev-controls { display: grid; gap: var(--s3); }
+a.dir-row { color: inherit; text-decoration: none; }
+.ev-fields { display: grid; gap: var(--s3); }
+.ev-field { display: grid; gap: 6px; min-width: 0; }
+.ev-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.ev-field input {
+  width: 100%; min-width: 0; height: 44px; padding: 0 12px;
+  border: 1.5px solid var(--line-2); border-radius: var(--r-ctl);
+  background: var(--stock); color: var(--ink);
+  font-size: 16px; font-weight: 600;
+}
+.ev-field input:hover { border-color: var(--ink-3); }
+.ev-field input:focus { outline: none; border-color: var(--dest); box-shadow: 0 0 0 3px var(--dest-soft); }
+.ev-field input::placeholder { color: var(--ink-3); font-weight: 500; }
+.ev-count { margin: 0; font-size: var(--t-13); font-weight: 600; color: var(--ink-2); }
+.ev-row { padding: 10px 0; }
+.ev-date { display: grid; flex: none; min-width: 3.5rem; line-height: 1.25; }
+.ev-date span { font-size: var(--t-12); font-weight: 600; color: var(--ink-3); }
+.ev-row:hover .ev-date b { color: var(--ink); }
+/* a title or a place that is long wraps, so the row never needs a sideways scroll */
+.ev-text b, .ev-text .where { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.ev-text .where { font-size: var(--t-13); }
+.ev-empty, .ev-error {
+  display: grid; justify-items: start; gap: var(--s3); padding: var(--s4);
+  background: var(--stock); border: 1px solid var(--line); border-radius: 10px;
+  font-size: var(--t-14); color: var(--ink-2);
+}
+.ev-empty p { margin: 0; }
+.ev-empty b { color: var(--ink); }
+.ev-empty .btn-line, .ev-retry { min-height: 44px; }
+.ev-error { display: flex; gap: var(--s2); align-items: flex-start; border: 0; background: var(--alarm-soft); color: var(--ink); line-height: 1.45; }
+.ev-error .i { width: 17px; height: 17px; margin-top: 2px; flex: none; color: var(--alarm); }
+.ev-error + .ev-retry { margin-top: var(--s2); }
 .lamp { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px var(--lamp-off); }
 .lamp.open { background: var(--exit); box-shadow: 0 0 0 3px color-mix(in srgb, var(--exit) 18%, transparent); }
 
@@ -645,6 +689,17 @@ input { caret-color: var(--dest); }
   font-size: var(--t-14); color: var(--ink-2); line-height: 1.45;
 }
 .note .i { width: 16px; height: 16px; margin-top: 2px; color: var(--ink-3); }
+/* why this room: your next class, above the room's own card */
+.occasion { display: grid; gap: 2px; padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line-2); }
+.occasion-title { margin: 0; font-size: var(--t-18); line-height: 1.25; font-weight: 700; overflow-wrap: anywhere; }
+.occasion-when { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; }
+.occasion-when .i { width: 16px; height: 16px; color: var(--dest); }
+.occasion-aside { margin: 0; font-size: var(--t-14); color: var(--ink-2); }
+.turn.past .occasion-aside { display: none; }
+/* an event the plans don't show has no route to fold: its foot only comes back to unfold it */
+.is-event .answer-foot { display: none; }
+.turn.past .is-event .answer-foot { display: flex; }
+
 .lede { margin: 0; padding: var(--s4) var(--s4) 0; color: var(--ink-2); max-width: 60ch; }
 
 /* other places to ask about: small tags */
@@ -714,6 +769,7 @@ input { caret-color: var(--dest); }
 .prompt-head .i { width: 24px; height: 24px; margin-top: 1px; color: var(--navy); }
 .prompt-head h3 { margin: 0; font-size: var(--t-18); line-height: 1.3; font-weight: 700; letter-spacing: -0.01em; }
 .prompt .lede { padding-top: var(--s2); padding-left: calc(var(--s4) + 24px + var(--s3)); }
+.prompt-link { height: 44px; margin: var(--s3) var(--s4) var(--s3) calc(var(--s4) + 24px + var(--s3)); }
 .prompt.is-error .prompt-head .i { color: var(--alarm); }
 .prompt.is-miss .prompt-head .i { color: var(--ink-2); }
 :root[data-theme="dark"] .prompt-head .i { color: var(--dest); }
@@ -828,7 +884,7 @@ input { caret-color: var(--dest); }
 .tool:active { background: var(--line); }
 
 .stage-msg {
-  position: absolute; left: 50%; top: var(--s4); transform: translateX(-50%);
+  position: absolute; left: 50%; top: var(--s4); translate: -50% 0;   /* the rise animation owns transform */
   width: max-content; max-width: min(440px, calc(100% - 32px));
   display: flex; gap: var(--s2); align-items: flex-start;
   padding: 10px 14px;

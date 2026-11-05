@@ -109,6 +109,18 @@ CREATE TABLE service_hours (
     close_time  TEXT
 );
 
+-- Campus events (US19, US20). Times are campus time, 'YYYY-MM-DD HH:MM', so they compare as text;
+-- an event is upcoming while ends_at is still ahead. room_id NULL: a place that is not on the plans.
+CREATE TABLE events (
+    event_id    TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    place       TEXT NOT NULL,          -- in words, as the event is announced
+    room_id     TEXT REFERENCES rooms(room_id),   -- NULL: a place that is not on the plans
+    starts_at   TEXT NOT NULL,          -- 'YYYY-MM-DD HH:MM', campus time
+    ends_at     TEXT NOT NULL
+);
+
 CREATE TABLE sheet_geometry (
     sheet_id    TEXT PRIMARY KEY REFERENCES plan_sheets(sheet_id),
     west_max_x  REAL NOT NULL,
@@ -142,3 +154,5 @@ CREATE INDEX idx_nav_edges_from ON nav_edges(from_node_id);
 CREATE INDEX idx_nav_edges_to   ON nav_edges(to_node_id);
 
 CREATE INDEX idx_service_hours_service ON service_hours(service_id);
+
+CREATE INDEX idx_events_starts_at ON events(starts_at);

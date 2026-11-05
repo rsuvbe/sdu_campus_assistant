@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Campus events · SDU Campus Assistant</title>
+<meta name="description" content="What is on at SDU University: upcoming campus events with their place and time.">
+<!-- A new visit (a new tab, the browser opened again) starts at the sign-in page,
+     for an account and a visitor alike; a reload keeps the session. The mark is
+     set by the sign-in page and lives as long as the tab. -->
+<script>try{if(!sessionStorage.getItem("sdu-visit")){document.documentElement.style.visibility="hidden";fetch("/api/auth/logout",{method:"POST"}).finally(function(){location.replace("/login")})}}catch(e){}</script>
+<script>try{var t=localStorage.getItem("sdu-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta name="color-scheme" content="light dark">
+<meta name="darkreader-lock">
+<meta name="theme-color" content="#2F345C">
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css?v=96">
+<link rel="stylesheet" href="/static/auth.css?v=64">
+</head>
+<body class="profile-body">
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
+  <symbol id="i-steppe" viewBox="0 0 24 24"><path d="M2.5 17.5h19M5 21h14"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5V9M6 9.5l1.6 1.6M18 9.5l-1.6 1.6"/></symbol>
+  <symbol id="i-violet" viewBox="0 0 24 24"><path d="M12 3.5c3.4 4.3 5.75 7.4 5.75 10.25a5.75 5.75 0 0 1-11.5 0C6.25 10.9 8.6 7.8 12 3.5z"/><path d="M9.3 14.2a2.8 2.8 0 0 0 2.4 2.6"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><path d="M3.5 5h17v11h-17zM9 20h6M12 16v4"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H5M11.5 5.5 5 12l6.5 6.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17v.4"/></symbol>
+</svg>
+
+<header class="bar">
+  <a class="brand" href="/" aria-label="SDU Campus Assistant, back to the map">
+    <span class="mark"><img src="/static/img/sdu-mark.png" alt=""></span>
+    <span class="brand-text">
+      <span class="brand-name">Campus Assistant</span>
+      <span class="brand-sub">SDU University</span>
+    </span>
+  </a>
+  <div class="bar-end">
+    <div class="theme-switch" data-theme-switch></div>
+    <a class="icon-btn back" href="/"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg><span>Back to the map</span></a>
+  </div>
+</header>
+
+<main class="events-main">
+  <section class="directory" aria-labelledby="ev-title">
+    <h1 class="section-title" id="ev-title">Campus events</h1>
+    <p class="dir-intro">What's coming up on campus, soonest first, with where and when.</p>
+    <div class="ev-controls" id="ev-controls" hidden>
+      <div class="ev-fields">
+        <div class="ev-field">
+          <label class="field-label" for="ev-q">Search events</label>
+          <input id="ev-q" type="search" maxlength="200" placeholder="A word from the title or description" autocomplete="off" enterkeyhint="search">
+        </div>
+        <div class="ev-dates">
+          <div class="ev-field">
+            <label class="field-label" for="ev-from">From</label>
+            <input id="ev-from" type="date">
+          </div>
+          <div class="ev-field">
+            <label class="field-label" for="ev-to">To</label>
+            <input id="ev-to" type="date">
+          </div>
+        </div>
+      </div>
+      <div class="dir-filter" id="ev-filter" role="group" aria-label="Show events in a period">
+        <button type="button" class="chip" data-range="" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-range="today" aria-pressed="false">Today</button>
+        <button type="button" class="chip" data-range="week" aria-pressed="false">This week</button>
+        <button type="button" class="chip" data-range="month" aria-pressed="false">This month</button>
+      </div>
+      <p class="ev-count" id="ev-count" role="status" aria-live="polite"></p>
+    </div>
+    <div id="ev-list">
+      <ul class="dir-list" aria-hidden="true">
+        <li class="dir-skel"></li><li class="dir-skel"></li><li class="dir-skel"></li>
+      </ul>
+    </div>
+  </section>
+</main>
+<script src="/static/theme.js?v=7"></script>
+<script src="/static/events.js?v=1"></script>
+</body>
+</html>

@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=93">
+<link rel="stylesheet" href="/static/styles.css?v=96">
 </head>
 <body class="app-body">
 <a class="skip" href="#q">Skip to search</a>
@@ -48,6 +48,7 @@
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17v.4"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6.5h16V20H4zM4 10.5h16M8.5 3.5v5M15.5 3.5v5"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
 </svg>
 
@@ -98,10 +99,12 @@
       <article class="welcome" id="welcome">
         <h2 class="sec-title">Try one of these</h2>
         <ul class="destinations" id="examples" aria-label="Try one of these"></ul>
-        <p class="welcome-tip">Or tap any room on the plan to ask about it, or <a href="#services-page">browse the campus services</a>.</p>
+        <p class="welcome-tip">Or tap any room on the plan to ask about it, <a href="#services-page">browse the campus services</a> or <a href="/events">see what's on</a>.</p>
       </article>
 
       <div class="log" id="log" aria-live="polite"></div>
+
+      <a class="events-link" href="/events"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span>Campus events</span><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
 
       <nav class="directory" id="services-page" aria-labelledby="dir-title">
         <div class="dir-head">
@@ -151,6 +154,6 @@
 
 </div>
 <script src="/static/theme.js?v=7"></script>
-<script src="/static/app.js?v=81"></script>
+<script src="/static/app.js?v=85"></script>
 </body>
 </html>

@@ -9,6 +9,8 @@ Everything except the sign-in page, the static files and /api/health needs a
 signed-in SDU account; see app/auth.py for the rules.
 """
 import os
+import re
+from datetime import date
 from pathlib import Path
 
 import logging
@@ -17,9 +19,10 @@ from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Quer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from .auth import (GUEST, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
-                   database_url, default_db_path, normalise_email, seed_account)
+                   clean_class, database_url, default_db_path, normalise_email, seed_account)
 from .engine import CampusIndex
 from .floorplan import CampusMap
 from .routing import Router
@@ -71,8 +74,8 @@ def current_user(request: Request) -> dict:
 
 
 def require_account(user: dict = Depends(current_user)) -> dict:
-    """For anything personal a visitor session cannot hold — a saved route, a
-    timetable, a reminder. Nothing in US1 needs it; US2 and later will."""
+    """For anything personal a visitor session cannot hold: a timetable, a saved
+    route, a reminder."""
     if user["role"] == ROLE_VISITOR:
         raise HTTPException(status_code=403,
                             detail="Sign in with your SDU account to use this.")
@@ -246,8 +249,10 @@ def search(q: str = Query(..., min_length=1, max_length=200,
                                        description="The `context` of the previous answer, so a "
                                                    "follow-up like 'Engineering' resolves '204'"),
            user: dict = Depends(current_user)):
-    """Answer a free-form question about a room, a block or a campus service."""
-    return index.search(q, context=context)
+    """Answer a free-form question about a room, a block, a campus service or the
+    asker's own next class."""
+    timetable = None if user["role"] == ROLE_VISITOR else (lambda: users.classes(user["user_id"]))
+    return index.search(q, context=context, timetable=timetable)
 
 
 @app.get("/api/route", tags=["directions"])
@@ -277,6 +282,106 @@ def sheets(user: dict = Depends(current_user)):
 def services(user: dict = Depends(current_user)):
     """Campus services with an open/closed status computed in Almaty time."""
     return index.service_list()
+
+
+# ----------------------------------------------------------------- timetable
+class ClassForm(BaseModel):
+    subject: str = ""
+    day: int = -1          # 0=Mon .. 6=Sun
+    start: str = ""        # 'HH:MM', campus time
+    end: str = ""
+    room: str = ""         # a room of the directory: its code, hall name or alias
+
+
+def _class_fields(form: ClassForm) -> tuple[dict, str]:
+    """The checked fields of a class and its room's number, or 400."""
+    try:
+        fields = clean_class(form.subject, form.day, form.start, form.end)
+    except AuthError as err:
+        raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
+    room = index.directory_room(form.room)
+    if not room:
+        raise HTTPException(status_code=400, detail={
+            "field": "room", "message": "Choose a room from the list, like D103 or Hall A1."})
+    return fields, room["room_number"]
+
+
+NOT_YOURS = HTTPException(status_code=404, detail="That class isn't in your timetable.")
+
+
+@app.get("/api/rooms", tags=["timetable"])
+def rooms(user: dict = Depends(require_account)):
+    """The room directory, for the picker on the timetable form."""
+    return index.room_list()
+
+
+@app.get("/api/schedule", tags=["timetable"])
+def schedule(user: dict = Depends(require_account)):
+    """Your own week. No request here can name another account."""
+    return {"classes": [index.class_payload(c) for c in users.classes(user["user_id"])]}
+
+
+@app.post("/api/schedule", tags=["timetable"])
+def add_class(form: ClassForm, user: dict = Depends(require_account)):
+    fields, room = _class_fields(form)
+    try:
+        return index.class_payload(users.add_class(user["user_id"], fields, room))
+    except AuthError as err:
+        raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
+
+
+@app.get("/api/schedule/{class_id}", tags=["timetable"])
+def get_class(class_id: int, user: dict = Depends(require_account)):
+    entry = users.get_class(user["user_id"], class_id)
+    if not entry:
+        raise NOT_YOURS
+    return index.class_payload(entry)
+
+
+@app.put("/api/schedule/{class_id}", tags=["timetable"])
+def edit_class(class_id: int, form: ClassForm, user: dict = Depends(require_account)):
+    fields, room = _class_fields(form)
+    entry = users.update_class(user["user_id"], class_id, fields, room)
+    if not entry:
+        raise NOT_YOURS
+    return index.class_payload(entry)
+
+
+@app.delete("/api/schedule/{class_id}", tags=["timetable"])
+def delete_class(class_id: int, user: dict = Depends(require_account)):
+    if not users.delete_class(user["user_id"], class_id):
+        raise NOT_YOURS
+    return {"ok": True}
+
+
+# -------------------------------------------------------------------- events
+def _event_date(value: str | None, field: str) -> date | None:
+    """A campus date from the query string, 'YYYY-MM-DD', or 400."""
+    if not value:
+        return None
+    try:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError(value)
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={
+            "field": field, "message": f"Give the {'first' if field == 'from' else 'last'} day as year-month-day, like 2026-11-14."})
+
+
+@app.get("/api/events", tags=["events"])
+def events(q: str | None = Query(None, max_length=200,
+                                 description="Words to find in an event's title or description"),
+           frm: str | None = Query(None, alias="from",
+                                   description="First day of the period, YYYY-MM-DD, campus time"),
+           to: str | None = Query(None,
+                                  description="Last day of the period, YYYY-MM-DD, included"),
+           user: dict = Depends(current_user)):
+    """Upcoming campus events, soonest first. A visitor may read them."""
+    start, end = _event_date(frm, "from"), _event_date(to, "to")
+    if start and end and start > end:
+        raise HTTPException(status_code=400, detail={
+            "field": "to", "message": "The last day can't be before the first."})
+    return index.events(q, start, end)
 
 
 # ---------------------------------------------------------------------- site
@@ -318,9 +423,18 @@ def profile_page(request: Request):
     return FileResponse(STATIC_DIR / "profile.html", headers=PAGE_HEADERS)
 
 
+@app.get("/events", include_in_schema=False)
+def events_page(request: Request):
+    if not users.session_user(request.cookies.get(SESSION_COOKIE)):
+        return RedirectResponse("/login", status_code=303)
+    return FileResponse(STATIC_DIR / "events.html", headers=PAGE_HEADERS)
+
+
 @app.get("/login", include_in_schema=False)
 def login_page(request: Request, mode: str | None = None):
-    # a reset link opens the form even in a browser that is already signed in
-    if mode != "reset" and users.session_user(request.cookies.get(SESSION_COOKIE)):
+    # a reset link opens the form even in a browser that is already signed in, and
+    # a visitor comes here to sign in, so only an account is sent on to the map
+    user = users.session_user(request.cookies.get(SESSION_COOKIE))
+    if mode != "reset" and user and user["role"] != ROLE_VISITOR:
         return RedirectResponse("/", status_code=303)
     return FileResponse(STATIC_DIR / "auth.html", headers=PAGE_HEADERS)

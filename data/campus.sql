@@ -80,6 +80,15 @@ INSERT INTO "buildings" VALUES('H','Block H',NULL,NULL);
 INSERT INTO "buildings" VALUES('I','Block I — Engineering (annex)',NULL,NULL);
 INSERT INTO "buildings" VALUES('B','Block B',NULL,NULL);
 INSERT INTO "buildings" VALUES('A','Block A',NULL,NULL);
+CREATE TABLE events (
+    event_id    TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    place       TEXT NOT NULL,          -- in words, as the event is announced
+    room_id     TEXT REFERENCES rooms(room_id),   -- NULL: a place that is not on the plans
+    starts_at   TEXT NOT NULL,          -- 'YYYY-MM-DD HH:MM', campus time
+    ends_at     TEXT NOT NULL
+);
 CREATE TABLE floors (
     floor_id     TEXT PRIMARY KEY,          -- e.g. 'D-1' (block D, floor 1)
     building_id  TEXT NOT NULL REFERENCES buildings(building_id) ON DELETE CASCADE,
@@ -1122,6 +1131,7 @@ CREATE INDEX idx_nav_edges_from ON nav_edges(from_node_id);
 CREATE INDEX idx_nav_edges_to   ON nav_edges(to_node_id);
 CREATE INDEX idx_service_hours_service ON service_hours(service_id);
 CREATE UNIQUE INDEX idx_rooms_room_number ON rooms(room_number);
+CREATE INDEX idx_events_starts_at ON events(starts_at);
 DELETE FROM "sqlite_sequence";
 INSERT INTO "sqlite_sequence" VALUES('room_aliases',337);
 INSERT INTO "sqlite_sequence" VALUES('service_hours',163);

@@ -14,6 +14,7 @@ const EXAMPLES = [
   { tag: "204", text: "Room 204", label: "A number that's in several blocks" },
   { tag: "Route", text: "From D103 to F204", label: "Directions from one room to another", plain: true },
   { tag: "Library", text: "Is the library open?", plain: true },
+  { tag: "Next class", text: "Where is my next class?", plain: true },
 ];
 
 // Room labels are part of the drawing, so they only make sense once the plan is
@@ -335,7 +336,7 @@ function wireTrip(card, d) {
   const go = trip.querySelector("[data-directions]");
   if (go) go.addEventListener("click", async () => {
     go.disabled = true;
-    await loadTrip(card, d, null);
+    await loadTrip(card, d, d.start || null);
     trip.querySelector(".trip-steps")?.scrollIntoView({ block: "nearest", behavior: smooth() });
   });
   const form = trip.querySelector("[data-trip-from]");
@@ -458,10 +459,22 @@ function portrait(d) {
   </figure>`;
 }
 
-function foot(d, withMapLink) {
+// What a room is being shown for: the asker's next class (US18), an event (US19).
+// A card that already has the title as its headline leaves it out of the occasion.
+function occasion(d, withTitle = true) {
+  const o = d.occasion;
+  return o ? `<div class="occasion">
+    <span class="field-label">${esc(o.label)}</span>
+    ${withTitle ? `<p class="occasion-title">${esc(o.title)}</p>` : ""}
+    <p class="occasion-when">${icon("clock")}${esc(o.when)}</p>
+    ${o.aside ? `<p class="occasion-aside">${esc(o.aside)}</p>` : ""}
+  </div>` : "";
+}
+
+function foot(d, withMapLink, again = "Show the route again") {
   return `<footer class="answer-foot" title="Answered in ${d.elapsed_ms ?? "–"} ms">${
     withMapLink ? `<button type="button" class="btn-line" data-refocus>${icon("pin")}Show on plan</button>` : ""}
-    <button type="button" class="btn-text" data-expand>Show the route again${icon("down")}</button></footer>`;
+    <button type="button" class="btn-text" data-expand>${again}${icon("down")}</button></footer>`;
 }
 
 function renderCard(d) {
@@ -474,6 +487,7 @@ function renderCard(d) {
     card.classList.add("card");
     card.innerHTML = `
       <header class="card-band"><span>SDU University</span><span class="band-where">Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span></header>
+      ${occasion(d)}
       <div class="card-id">
         ${portrait(d)}
         <div class="id-main">
@@ -571,12 +585,21 @@ function renderCard(d) {
       <header class="prompt-head">${icon("question")}<h3>${esc(d.title)}</h3></header>
       <p class="lede">${esc(d.summary)}</p>
       ${picks(d.suggestions, "choices")}`;
+  } else if (d.kind === "event") {
+    // an event held somewhere the plans don't show: the event is the card
+    card.classList.add("prompt", "is-event");
+    card.innerHTML = `
+      <header class="prompt-head">${icon("clock")}<h3>${esc(d.title)}</h3></header>
+      ${occasion(d, false)}
+      <p class="lede">${esc(d.place)} isn't on the plans, so there's no room to show and no route to it.</p>
+      ${foot(d, false, "Show the event again")}`;
   } else {
     const isError = d.kind === "error";
     card.classList.add("prompt", isError ? "is-error" : "is-miss");
     card.innerHTML = `
       <header class="prompt-head">${icon(isError ? "alert" : "question")}<h3>${esc(d.title)}</h3></header>
       <p class="lede">${esc(d.summary)}</p>
+      ${d.link ? `<a class="btn-go prompt-link" href="${esc(d.link.href)}">${esc(d.link.label)}</a>` : ""}
       ${d.suggestions?.length ? `<h4 class="field-label picks-label">${isError ? "Ask again" : "Try one of these"}</h4>` : ""}
       ${picks(d.suggestions)}`;
   }
@@ -984,6 +1007,7 @@ function showResultOnMap(d) {
       renderControls();
     }
     if (d.kind === "service") showStageMsg(`${d.title} isn't pinned to a room yet, so there's nothing to show on the plan.`);
+    if (d.kind === "event") showStageMsg("This place isn't on the plans.");
     return;
   }
   state.result = d;
@@ -1508,6 +1532,12 @@ async function boot() {
     fillPlaces();
   } catch (err) {
     showStageMsg(`Couldn't load the floor plans (${err.message}).`);
+  }
+  // the events page sends a press here: /?ask=<the event's title>
+  const asked = new URLSearchParams(location.search).get("ask");
+  if (asked) {
+    history.replaceState(null, "", "/");
+    ask(asked);
   }
 }
 
