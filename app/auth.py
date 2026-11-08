@@ -179,6 +179,10 @@ def clean_event(title: str, description: str, place: str, starts: str, ends: str
             "starts_at": times[0], "ends_at": times[1], "link": link or None}
 
 
+def search_text(title: str, description: str) -> str:
+    return f"{title}\n{description}".casefold()
+
+
 def student_id(email: str) -> str:
     match = EMAIL_RE.match(email)
     return match.group(1) if match else ""
@@ -275,7 +279,7 @@ SQLITE_SCHEMA = """
         room_number TEXT NOT NULL       -- rooms.room_number in campus.db
     );
     CREATE INDEX IF NOT EXISTS idx_classes_user ON classes(user_id);
-    -- events an administrator adds (US26); the ones shipped in campus.db stay there
+    -- events an administrator adds, for the list of US19; the ones shipped in campus.db stay there
     CREATE TABLE IF NOT EXISTS campus_events (
         event_id    INTEGER PRIMARY KEY AUTOINCREMENT,
         title       TEXT NOT NULL,
@@ -286,7 +290,10 @@ SQLITE_SCHEMA = """
         ends_at     TEXT NOT NULL,
         link        TEXT,               -- the announcement on sdu.edu.kz, if any
         created_by  INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
-        created_at  TEXT NOT NULL
+        created_at  TEXT NOT NULL,
+        -- the title and description case-folded, so a word search is one query in
+        -- both databases, Cyrillic included, whatever the server's locale
+        search_text TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at);
 """
@@ -330,6 +337,8 @@ POSTGRES_SCHEMA = [
         created_by  BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
         created_at  TEXT NOT NULL)""",
     "CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at)",
+    # added after the table first went live; a table made since has it already
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS search_text TEXT NOT NULL DEFAULT ''",
 ]
 
 
@@ -368,12 +377,24 @@ class UserStore:
                 conn.execute("SELECT pg_advisory_xact_lock(4207)")
                 for statement in POSTGRES_SCHEMA:
                     conn.execute(statement)
+                self._fill_search_text(conn)
             return
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             self._migrate(conn)
             conn.executescript(SQLITE_SCHEMA)
+            if "search_text" not in {r["name"] for r in conn.execute("PRAGMA table_info(campus_events)")}:
+                conn.execute("ALTER TABLE campus_events ADD COLUMN search_text TEXT NOT NULL DEFAULT ''")
+            self._fill_search_text(conn)
+
+    @staticmethod
+    def _fill_search_text(conn) -> None:
+        """Events saved before search_text existed get theirs."""
+        for row in conn.execute("SELECT event_id, title, description FROM campus_events"
+                                " WHERE search_text = ''").fetchall():
+            conn.execute("UPDATE campus_events SET search_text = ? WHERE event_id = ?",
+                         (search_text(row["title"], row["description"]), row["event_id"]))
 
     @property
     def backend(self) -> str:
@@ -598,34 +619,58 @@ class UserStore:
     # ---------------------------------------------------------------- events
     EVENT_FIELDS = "event_id, title, description, place, room_number, starts_at, ends_at, link"
 
-    def campus_events(self, after: str | None = None) -> list[dict]:
-        """The events an administrator added, soonest first; with `after`
-        ('YYYY-MM-DD HH:MM'), only the ones that end after it."""
+    def campus_events(self, after: str | None = None, words: list[str] | tuple = (),
+                      start: str | None = None, end: str | None = None) -> list[dict]:
+        """The events an administrator added, soonest first, as one query (US20):
+        with `after` ('YYYY-MM-DD HH:MM') only those that end after it; every one
+        of `words` in the title or the description, any case; and only those that
+        overlap `start`..`end` (campus times; `end` is the moment after the last day)."""
+        where, args = [], []
+        if after:
+            where.append("ends_at > ?")
+            args.append(after)
+        find = "strpos(search_text, ?) > 0" if self._pool else "instr(search_text, ?) > 0"
+        for word in words:
+            where.append(find)
+            args.append(word.casefold())
+        if start:
+            where.append("ends_at > ?")
+            args.append(start)
+        if end:
+            where.append("starts_at < ?")
+            args.append(end)
+        sql = f"SELECT {self.EVENT_FIELDS} FROM campus_events"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
         with self._connect() as conn:
-            if after:
-                rows = conn.execute(f"SELECT {self.EVENT_FIELDS} FROM campus_events WHERE ends_at > ?"
-                                    " ORDER BY starts_at, title", (after,)).fetchall()
-            else:
-                rows = conn.execute(f"SELECT {self.EVENT_FIELDS} FROM campus_events"
-                                    " ORDER BY starts_at, title").fetchall()
+            rows = conn.execute(sql + " ORDER BY starts_at, title", tuple(args)).fetchall()
         return [dict(r) for r in rows]
+
+    def count_events(self, after: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM campus_events WHERE ends_at > ?", (after,)).fetchone()
+        return row["n"]
 
     def add_event(self, fields: dict, room_number: str | None, user_id: int) -> dict:
         with self._connect() as conn:
             row = conn.execute(
                 "INSERT INTO campus_events (title, description, place, room_number, starts_at, ends_at, link,"
-                f" created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING {self.EVENT_FIELDS}",
+                f" created_by, created_at, search_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                f" RETURNING {self.EVENT_FIELDS}",
                 (fields["title"], fields["description"], fields["place"], room_number, fields["starts_at"],
-                 fields["ends_at"], fields["link"], user_id, _now().isoformat())).fetchone()
+                 fields["ends_at"], fields["link"], user_id, _now().isoformat(),
+                 search_text(fields["title"], fields["description"]))).fetchone()
         return dict(row)
 
     def update_event(self, event_id: int, fields: dict, room_number: str | None) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(
                 "UPDATE campus_events SET title = ?, description = ?, place = ?, room_number = ?,"
-                f" starts_at = ?, ends_at = ?, link = ? WHERE event_id = ? RETURNING {self.EVENT_FIELDS}",
+                " starts_at = ?, ends_at = ?, link = ?, search_text = ?"
+                f" WHERE event_id = ? RETURNING {self.EVENT_FIELDS}",
                 (fields["title"], fields["description"], fields["place"], room_number, fields["starts_at"],
-                 fields["ends_at"], fields["link"], event_id)).fetchone()
+                 fields["ends_at"], fields["link"], search_text(fields["title"], fields["description"]),
+                 event_id)).fetchone()
         return dict(row) if row else None
 
     def delete_event(self, event_id: int) -> bool:

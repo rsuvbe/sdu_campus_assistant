@@ -503,7 +503,7 @@ class CampusIndex:
                 "room_value": self._picker_value(room) if room else written,
                 "room_label": self._class_room(room) if room else written,
                 "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
-                         else "Not on the campus plans"}
+                         else "Not in the room directory"}
 
     def _picker_value(self, room: dict) -> str:
         """What to type for a room: its name, or its number where the name alone
@@ -533,7 +533,7 @@ class CampusIndex:
                 "room_label": self._class_room(room) if room else entry["room"],
                 "room_value": self._picker_value(room) if room else entry["room"],
                 "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
-                         else "Not on the campus plans",
+                         else "No longer in the room directory",
                 "on_campus": room is not None}
 
     def service_list(self, now: datetime | None = None) -> list[dict]:
@@ -607,13 +607,15 @@ class CampusIndex:
 
     # ---------------------------------------------------------------- events
     def events(self, q: str | None = None, start: date | None = None, end: date | None = None,
-               now: datetime | None = None, added: list[dict] | None = None) -> dict:
+               now: datetime | None = None, added: list[dict] | None = None,
+               added_total: int = 0) -> dict:
         """US19, US20: the upcoming campus events, soonest first. Each call asks the
         events table: every word of `q` must be in the title or the description, and
         `start`..`end` are campus dates, both included, that an event only has to
         overlap. An event is upcoming until it ends. Times are 'YYYY-MM-DD HH:MM'
         in campus time, so they compare as text. `added` are the events an
-        administrator added (UserStore.campus_events), held to the same rules."""
+        administrator added that the same query found in the accounts database
+        (UserStore.campus_events), and `added_total` how many of them are upcoming."""
         now = campus_now(now)
         stamp = now.strftime("%Y-%m-%d %H:%M")
         where, args = ["ends_at > ?"], [stamp]
@@ -638,15 +640,9 @@ class CampusIndex:
         finally:
             conn.close()
 
-        rows = [dict(r) for r in rows]
-        upcoming_added = [self.added_event(e) for e in (added or []) if e["ends_at"] > stamp]
-        words = (q or "").casefold().split()
-        rows += [e for e in upcoming_added
-                 if all(w in e["title"].casefold() or w in e["description"].casefold() for w in words)
-                 and (not start or e["ends_at"] > f"{start:%Y-%m-%d} 00:00")
-                 and (not end or e["starts_at"] < f"{end + timedelta(days=1):%Y-%m-%d} 00:00")]
+        rows = [dict(r) for r in rows] + [self.added_event(e) for e in (added or [])]
         rows.sort(key=lambda r: (r["starts_at"], r["title"]))
-        total += len(upcoming_added)
+        total += added_total
 
         by_id = {r["room_id"]: r for r in self.rooms}
         today = now.date()
@@ -741,9 +737,8 @@ class CampusIndex:
         when = class_day(upcoming, days)
         if not room:
             return {"kind": "needs_account", "title": f"{upcoming['subject']}, {when} at {upcoming['start']}",
-                    "summary": f"Its room, {upcoming['room']}, isn't on the campus plans: an online class "
-                               "or another building, so there is no way to draw. If it has moved, "
-                               "choose the new room in your timetable.",
+                    "summary": f"Its room, {upcoming['room']}, is no longer in the room directory. "
+                               "Choose the new one in your timetable.",
                     "link": {"href": "/schedule", "label": "Open your timetable"}, "suggestions": []}
         answer = self._room_answer(room)
         answer["summary"] = (f"Your next class is {upcoming['subject']}, {when} at {upcoming['start']}, "

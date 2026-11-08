@@ -25,7 +25,8 @@ from app.main import BASE_DIR, app, index, safe_next
 STATIC = BASE_DIR / "static"
 PASSWORD = "Campus#2026"
 INF304 = {"subject": "INF 304 [04-P]", "day": 0, "start": "08:30", "end": "09:20", "room": "F202"}
-ONLINE = {"subject": "CSS 280 [02-P]", "day": 0, "start": "18:30", "end": "19:20", "room": "VR 93", "outside": True}
+ONLINE = {"subject": "CSS 280 [02-P]", "day": 0, "start": "18:30", "end": "19:20", "room": "VR 93"}
+MDE289 = {"subject": "MDE 289 [12-N]", "day": 0, "start": "15:30", "end": "17:20", "room": "D214"}
 
 
 def someone(number: int) -> TestClient:
@@ -136,7 +137,7 @@ def test_a_room_misread_by_the_ocr_is_put_right_against_the_directory(read, room
 
 
 @pytest.mark.parametrize("read", ["VR 93", "", "Online", "Z999"])
-def test_a_room_that_is_not_on_campus_stays_as_written(read):
+def test_a_room_that_is_not_in_the_directory_is_not_guessed(read):
     assert index.resolve_room(read) is None
 
 
@@ -145,7 +146,7 @@ def test_the_import_preview_shows_where_each_room_is(me):
     assert rows[0] == {"read": "11301", "on_campus": True, "room_value": "I301", "room_label": "I301",
                        "where": "Floor 3 · Block I"}
     assert rows[1] == {"read": "VR 93", "on_campus": False, "room_value": "VR 93", "room_label": "VR 93",
-                       "where": "Not on the campus plans"}
+                       "where": "Not in the room directory"}
 
 
 def test_a_visitor_cannot_use_the_import(visitor):
@@ -157,18 +158,17 @@ def test_a_visitor_cannot_use_the_import(visitor):
 # ------------------------------------------------------------ the import
 def test_an_import_replaces_the_week(me):
     me.post("/api/schedule", json={**INF304, "subject": "Old class"})
-    res = me.post("/api/schedule/import", json={"classes": [INF304, ONLINE]})
+    res = me.post("/api/schedule/import", json={"classes": [INF304, MDE289]})
     assert res.status_code == 200
     week = me.get("/api/schedule").json()["classes"]
-    assert [c["subject"] for c in week] == ["INF 304 [04-P]", "CSS 280 [02-P]"]
-    online = week[1]
-    assert (online["room"], online["on_campus"], online["where"]) == ("VR 93", False, "Not on the campus plans")
+    assert [c["subject"] for c in week] == ["INF 304 [04-P]", "MDE 289 [12-N]"]
+    assert week[1]["room_label"] == "Hall C2 (D214)"
 
 
 def test_an_import_can_add_to_the_week_instead(me):
     me.post("/api/schedule", json={**INF304, "subject": "Kept class"})
-    me.post("/api/schedule/import", json={"classes": [ONLINE], "replace": False})
-    assert [c["subject"] for c in me.get("/api/schedule").json()["classes"]] == ["Kept class", "CSS 280 [02-P]"]
+    me.post("/api/schedule/import", json={"classes": [MDE289], "replace": False})
+    assert [c["subject"] for c in me.get("/api/schedule").json()["classes"]] == ["Kept class", "MDE 289 [12-N]"]
 
 
 def test_one_wrong_class_stops_the_whole_import_and_names_its_row(me):
@@ -181,18 +181,23 @@ def test_one_wrong_class_stops_the_whole_import_and_names_its_row(me):
     assert [c["subject"] for c in me.get("/api/schedule").json()["classes"]] == ["Kept class"]
 
 
-def test_an_unknown_room_needs_to_be_marked_as_off_campus(me):
-    res = me.post("/api/schedule/import", json={"classes": [{**ONLINE, "outside": False}]})
-    assert res.status_code == 400 and res.json()["detail"]["field"] == "room"
-    res = me.post("/api/schedule", json={**ONLINE, "room": "  "})
-    assert res.status_code == 400 and res.json()["detail"]["field"] == "room"
-    res = me.post("/api/schedule", json={**ONLINE, "room": "x" * 41})
+def test_us17_fail_a_room_outside_the_directory_is_refused_in_an_import_too(me):
+    """US17 (Fail): a class can't be saved with a room that is not in the
+    directory, whether it is typed in or read off a screenshot."""
+    me.post("/api/schedule", json={**INF304, "subject": "Kept class"})
+    res = me.post("/api/schedule/import", json={"classes": [INF304, ONLINE]})
     assert res.status_code == 400
+    assert res.json()["detail"]["field"] == "room" and res.json()["detail"]["row"] == 1
+    assert me.post("/api/schedule", json=ONLINE).status_code == 400
+    # extra fields asking for an exception change nothing
+    assert me.post("/api/schedule", json={**ONLINE, "outside": True}).status_code == 400
+    assert [c["subject"] for c in me.get("/api/schedule").json()["classes"]] == ["Kept class"]
 
 
-def test_a_room_on_campus_is_saved_as_the_directory_has_it_even_when_marked_off_campus(me):
-    saved = me.post("/api/schedule", json={**INF304, "room": "f202", "outside": True}).json()
-    assert (saved["room"], saved["on_campus"]) == ("F202", True)
+def test_the_import_preview_holds_back_a_class_without_a_directory_room():
+    js = (STATIC / "schedule.js").read_text()
+    assert "keep: !!rooms[i].on_campus" in js
+    assert "choose its room from the list, or untick it" in js
 
 
 def test_an_import_respects_the_size_of_a_timetable(me):
@@ -214,11 +219,11 @@ def test_an_empty_import_is_refused(me):
     assert me.post("/api/schedule/import", json={"classes": []}).status_code == 400
 
 
-# -------------------------------------------------- the next class, off campus
-def test_a_next_class_off_campus_says_so_and_leads_to_the_timetable():
+# ------------------------------------- the next class, its room gone from the directory
+def test_a_next_class_whose_room_left_the_directory_leads_to_the_timetable():
     week = [{"class_id": 1, "subject": "CSS 280 [02-P]", "day": 0, "start": "18:30", "end": "19:20", "room": "VR 93"}]
     answer = index.search("where is my next class?", now=datetime(2026, 11, 2, 9, 0), timetable=lambda: week)
-    assert "isn't on the campus plans" in answer["summary"]
+    assert "no longer in the room directory" in answer["summary"]
     assert answer["link"]["href"] == "/schedule"
 
 
@@ -234,7 +239,7 @@ def test_the_way_to_the_next_class_is_asked_the_way_a_reminder_asks_it():
 
 # ------------------------------------------------------------ the calendar
 def test_the_calendar_file_holds_every_class_weekly_with_a_reminder(me):
-    me.post("/api/schedule/import", json={"classes": [INF304, ONLINE]})
+    me.post("/api/schedule/import", json={"classes": [INF304, MDE289]})
     res = me.get("/api/schedule.ics?lead=15")
     assert res.status_code == 200
     assert res.headers["content-type"].startswith("text/calendar")
@@ -243,11 +248,10 @@ def test_the_calendar_file_holds_every_class_weekly_with_a_reminder(me):
     assert body.startswith("BEGIN:VCALENDAR\r\n") and body.endswith("END:VCALENDAR\r\n")
     assert body.count("BEGIN:VEVENT") == 2 and body.count("RRULE:FREQ=WEEKLY") == 2
     assert body.count("TRIGGER:-PT15M") == 2
-    # the way there for a class on campus, none for one that isn't
+    # each with the way there
     unfolded = body.replace("\r\n ", "")
     assert "URL:http://testserver/?ask=How%20do%20I%20get%20to%20F202%3F" in unfolded
-    assert unfolded.count("URL:") == 1
-    assert "LOCATION:VR 93" in unfolded
+    assert unfolded.count("URL:") == 2
 
 
 def test_a_calendar_line_is_folded_at_75_octets(me):

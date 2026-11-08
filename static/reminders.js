@@ -173,7 +173,7 @@
     const box = document.createElement("aside");
     box.className = "reminder-toast";
     box.setAttribute("role", "status");
-    const where = entry.on_campus === false ? `${esc(entry.room_label)} · not on the campus plans`
+    const where = entry.on_campus === false ? `${esc(entry.room_label)} · no longer in the room directory`
       : `${esc(entry.room_label)} · ${esc(entry.where)}`;
     box.innerHTML = `
       <p class="reminder-kicker">In ${mins} min · ${esc(entry.start)}–${esc(entry.end)}</p>

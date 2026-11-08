@@ -11,7 +11,7 @@ signed-in SDU account; see app/auth.py for the rules.
 import os
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import quote
 from pathlib import Path
 
@@ -86,7 +86,7 @@ def require_account(user: dict = Depends(current_user)) -> dict:
     return user
 
 
-# Who may add, change and delete campus events (US26): the accounts named in
+# Who may add, change and delete campus events: the accounts named in
 # CAMPUS_ADMINS, comma-separated SDU addresses. Nobody, when it is unset.
 ADMINS = {e.strip().lower() for e in os.environ.get("CAMPUS_ADMINS", "").split(",") if e.strip()}
 
@@ -331,31 +331,20 @@ class ClassForm(BaseModel):
     start: str = ""        # 'HH:MM', campus time
     end: str = ""
     room: str = ""         # a room of the directory: its code, hall name or alias
-    # a class that isn't held on campus (an online one, "VR 93") keeps its room as
-    # written; without this a room the directory doesn't know is refused
-    outside: bool = False
-
-
-MAX_OUTSIDE_ROOM = 40
 
 
 def _class_fields(form: ClassForm) -> tuple[dict, str]:
-    """The checked fields of a class and its room's number, or 400."""
+    """The checked fields of a class and its room's number, or 400. US17: a room
+    that is not in the directory is refused, whatever the class is."""
     try:
         fields = clean_class(form.subject, form.day, form.start, form.end)
     except AuthError as err:
         raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
     room = index.directory_room(form.room)
-    if room:
-        return fields, room["room_number"]
-    written = re.sub(r"\s+", " ", form.room or "").strip()
-    if form.outside and written and len(written) <= MAX_OUTSIDE_ROOM:
-        return fields, written
-    if form.outside:
+    if not room:
         raise HTTPException(status_code=400, detail={
-            "field": "room", "message": f"Write where the class is, in at most {MAX_OUTSIDE_ROOM} characters."})
-    raise HTTPException(status_code=400, detail={
-        "field": "room", "message": "Choose a room from the list, like D103 or Hall A1."})
+            "field": "room", "message": "Choose a room from the list, like D103 or Hall A1."})
+    return fields, room["room_number"]
 
 
 NOT_YOURS = HTTPException(status_code=404, detail="That class isn't in your timetable.")
@@ -415,8 +404,9 @@ def read_rooms(rooms: list[ReadRoom] = Body(..., max_length=MAX_CLASSES),
                user: dict = Depends(require_account)):
     """The rooms of a timetable read off a screenshot, matched to the directory
     with the OCR's look-alike characters put right ("11301" is I301). A room that
-    matches nothing (an online class, "VR 93") comes back as not on campus."""
-    return [{"read": item.room, **index.read_room(item.room, MAX_OUTSIDE_ROOM)} for item in rooms]
+    matches nothing (an online class, "VR 93") comes back as not in the
+    directory: the preview asks for one from the list before it can be saved."""
+    return [{"read": item.room, **index.read_room(item.room, 40)} for item in rooms]
 
 
 class ImportForm(BaseModel):
@@ -486,7 +476,12 @@ def events(q: str | None = Query(None, max_length=200,
     if start and end and start > end:
         raise HTTPException(status_code=400, detail={
             "field": "to", "message": "The last day can't be before the first."})
-    return index.events(q, start, end, added=added_events())
+    # the same query, run on the events an administrator added (US20)
+    stamp = campus_now().strftime("%Y-%m-%d %H:%M")
+    added = users.campus_events(after=stamp, words=(q or "").split(),
+                                start=f"{start:%Y-%m-%d} 00:00" if start else None,
+                                end=f"{end + timedelta(days=1):%Y-%m-%d} 00:00" if end else None)
+    return index.events(q, start, end, added=added, added_total=users.count_events(stamp))
 
 
 class EventForm(BaseModel):
@@ -532,7 +527,7 @@ def _event_out(row: dict) -> dict:
 
 @app.post("/api/events", tags=["events"])
 def add_event(form: EventForm, user: dict = Depends(require_admin)):
-    """US26: an administrator adds an event."""
+    """An administrator adds an event, so the list of US19 has real ones in it."""
     fields, room = _event_fields(form)
     row = users.add_event(fields, room, user["user_id"])
     _events_changed()

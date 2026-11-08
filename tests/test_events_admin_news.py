@@ -1,5 +1,5 @@
 """
-Campus events added by an administrator (US26), and SDU University's own news
+Campus events added by an administrator (so the list of US19 holds real ones), and SDU University's own news
 read from sdu.edu.kz.
 
 The university publishes no events a program can read: its events page is
@@ -263,12 +263,25 @@ def test_a_past_added_event_is_no_longer_listed(admin, student):
     assert student.get("/api/events").json()["total"] == 0
 
 
+def test_us20_the_added_events_are_searched_and_filtered_by_a_database_query(admin):
+    """US20 (constraint): search and filtering run as database queries."""
+    admin.post("/api/events", json=EVENT)
+    admin.post("/api/events", json={**EVENT, "title": "Шахматный турнир", "description": "Блиц",
+                                     "starts": "2030-12-05T10:00", "ends": "2030-12-05T12:00"})
+    store = main.users
+    assert [e["title"] for e in store.campus_events(words=["ШАХМАТ"])] == ["Шахматный турнир"]
+    assert [e["title"] for e in store.campus_events(words=["robots", "show"])] == ["Robotics Club Demo"]
+    december = store.campus_events(start="2030-12-01 00:00", end="2031-01-01 00:00")
+    assert [e["title"] for e in december] == ["Шахматный турнир"]
+    assert store.count_events("2030-11-20 16:00") == 2 and store.count_events("2030-12-05 12:00") == 0
+
+
 def test_the_engine_holds_added_events_to_the_same_rules():
     row = {"event_id": 7, "title": "Late talk", "description": "", "place": "D103", "room_number": "D103",
            "starts_at": "2030-01-10 18:00", "ends_at": "2030-01-10 19:00", "link": None}
-    page = index.events(now=datetime(2030, 1, 10, 18, 30), added=[row])
+    page = index.events(now=datetime(2030, 1, 10, 18, 30), added=[row], added_total=1)
     assert page["events"][0]["event_id"] == "a7" and page["events"][0]["on_now"] is True
-    assert index.events(now=datetime(2030, 1, 10, 19, 0), added=[row])["total"] == 0
+    assert page["total"] == 1
 
 
 def test_clean_event_keeps_campus_time_as_given():

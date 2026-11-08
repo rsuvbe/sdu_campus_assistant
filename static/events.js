@@ -1,6 +1,6 @@
 "use strict";
 
-/* The events page (US19, US20, US26): what is coming up, soonest first. The
+/* The events page (US19, US20): what is coming up, soonest first. The
    search box and the period go to the server, which asks the events table; the
    page shows the answer. A row goes to the map and asks about that event, so its
    room lights up on the plan and its card comes up in the answers.

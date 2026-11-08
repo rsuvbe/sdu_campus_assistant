@@ -248,7 +248,6 @@ function openForm(entry, preset = {}) {
   $("#tt-start").value = entry ? entry.start : (preset.start || "");
   $("#tt-end").value = entry ? entry.end : (preset.start ? hhmm(R.minutes(preset.start) + 50) : "");
   $("#tt-room").value = entry ? entry.room_value : "";
-  $("#tt-outside").checked = entry ? entry.on_campus === false : false;
   openDialog($("#class-form"));
   $("#tt-subject").focus();
 }
@@ -270,13 +269,12 @@ async function saveClass(event) {
   event.preventDefault();
   ttClear();
   const body = { subject: $("#tt-subject").value.trim(), day: Number($("#tt-day").value),
-                 start: $("#tt-start").value, end: $("#tt-end").value, room: $("#tt-room").value.trim(),
-                 outside: $("#tt-outside").checked };
+                 start: $("#tt-start").value, end: $("#tt-end").value, room: $("#tt-room").value.trim() };
   if (!body.subject) return ttError("Enter the subject.", "subject");
   if (!body.start) return ttError("Enter when the class starts.", "start");
   if (!body.end) return ttError("Enter when the class ends.", "end");
   if (body.end <= body.start) return ttError("A class has to end after it starts.", "end");
-  if (!body.room) return ttError(body.outside ? "Write where the class is." : "Choose the room.", "room");
+  if (!body.room) return ttError("Choose the room.", "room");
 
   const button = $("#tt-submit");
   button.disabled = true;
@@ -442,7 +440,9 @@ async function readShot(file) {
       body: JSON.stringify(found.map((c) => ({ room: c.room || "" }))),
     });
     const rooms = res.ok ? await res.json() : found.map((c) => ({ on_campus: false, room_value: c.room, where: "" }));
-    reviewRows = found.map((c, i) => ({ ...c, keep: true, ...rooms[i] }));
+    // a room that isn't in the directory can't be saved (US17): that class waits
+    // unticked until a room from the list is chosen for it
+    reviewRows = found.map((c, i) => ({ ...c, ...rooms[i], keep: !!rooms[i].on_campus }));
     showReview();
   } catch (err) {
     importStep("pick");
@@ -459,7 +459,8 @@ function showReview() {
   const n = reviewRows.length;
   const away = reviewRows.filter((r) => !r.on_campus).length;
   $("#im-found").textContent = `Found ${n} class${n === 1 ? "" : "es"}. Check them against your screenshot and put right anything read wrong`
-    + (away ? `; ${away} room${away === 1 ? " isn't" : "s aren't"} on the campus plans and will be saved as written.` : ".");
+    + (away ? `. ${away} room${away === 1 ? " isn't" : "s aren't"} in the room directory (an online class, another building): `
+              + `choose a room from the list to keep ${away === 1 ? "it" : "them"}, or leave ${away === 1 ? "it" : "them"} out.` : ".");
   $("#im-shot").innerHTML = `<img src="${shotUrl}" alt="Your screenshot">`;
   $("#im-mode").hidden = !classes.length;
   $("#im-error").hidden = true;
@@ -471,7 +472,7 @@ function showReview() {
       <td><input type="time" data-f="start" value="${esc(r.start)}" aria-label="Starts"></td>
       <td><input type="time" data-f="end" value="${esc(r.end)}" aria-label="Ends"></td>
       <td><input type="text" data-f="room" list="tt-rooms" maxlength="80" value="${esc(r.room_value)}" aria-label="Room">
-          <span class="im-where${r.on_campus ? "" : " away"}">${esc(r.on_campus ? r.where : "Not on the campus plans")}</span></td>
+          <span class="im-where${r.on_campus ? "" : " away"}">${esc(r.on_campus ? r.where : "Not in the room directory")}</span></td>
     </tr>`).join("");
 }
 
@@ -496,8 +497,10 @@ $("#im-rows").addEventListener("input", (e) => {
       row.on_campus = found.on_campus;
       if (found.on_campus) row.room_value = found.room_value;
       const where = tr.querySelector(".im-where");
-      where.textContent = found.on_campus ? found.where : "Not on the campus plans";
+      where.textContent = found.on_campus ? found.where : "Not in the room directory";
       where.classList.toggle("away", !found.on_campus);
+      // a room from the list now: the class can be kept
+      if (found.on_campus && !row.keep) { row.keep = true; tr.querySelector('[data-f="keep"]').checked = true; tr.classList.remove("off"); }
     }, 350);
   } else row[f] = e.target.value;
   tr.classList.toggle("off", !row.keep);
@@ -509,11 +512,18 @@ $("#im-save").addEventListener("click", async () => {
   box.hidden = true;
   document.querySelectorAll("#im-rows tr").forEach((tr) => tr.classList.remove("bad"));
   if (!keep.length) { box.textContent = "Tick at least one class to save."; box.hidden = false; return; }
+  const roomless = keep.find(({ r }) => !r.on_campus);
+  if (roomless) {
+    document.querySelector(`#im-rows tr[data-row="${roomless.i}"]`)?.classList.add("bad");
+    box.textContent = `${roomless.r.subject}: choose its room from the list, or untick it.`;
+    box.hidden = false;
+    return;
+  }
   const replace = !classes.length || document.querySelector('input[name="im-mode"]:checked').value === "replace";
   const body = {
     replace,
     classes: keep.map(({ r }) => ({ subject: r.subject + (r.section ? ` [${r.section}]` : ""), day: r.day,
-                                    start: r.start, end: r.end, room: r.room_value, outside: !r.on_campus })),
+                                    start: r.start, end: r.end, room: r.room_value })),
   };
   const button = $("#im-save");
   button.disabled = true;
