@@ -9,7 +9,7 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.3
+        value: 3.14.10
       # Render serves over HTTPS, so the session cookie can be Secure.
       - key: CAMPUS_SECURE_COOKIES
         value: "true"

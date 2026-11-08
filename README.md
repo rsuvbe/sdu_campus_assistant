@@ -305,7 +305,7 @@ sdu-campus-assistant/
 
 ## Running it locally
 
-Python 3.12.
+Python 3.14.
 
 ```bash
 python -m venv .venv
