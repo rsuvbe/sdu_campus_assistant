@@ -583,7 +583,8 @@ class CampusIndex:
         return self._spread(rooms) if rooms else None
 
     def search(self, query: str, now: datetime | None = None, context: str | None = None,
-               timetable: Callable[[], list[dict] | None] | None = None) -> dict:
+               timetable: Callable[[], list[dict] | None] | None = None,
+               events: Callable[[], list[dict]] | None = None) -> dict:
         """Answer a question. `context` is the room number a previous answer
         asked the user to pick a block for, so "204" then "Engineering" works.
         `timetable` fetches the asker's classes, None for a visitor; only a
@@ -592,7 +593,8 @@ class CampusIndex:
         if NEXT_CLASS_RE.search(query.lower()):
             result = self._next_class_answer(timetable() if timetable else None, now)
         else:
-            result = self._event_answer(query, now) or self._trip(query, now) or self._search(query, now, context)
+            result = (self._event_answer(query, now, events) or self._trip(query, now)
+                      or self._search(query, now, context))
         if (self.router and "directions" not in result and ROUTE_WORDS_RE.search(query.lower())
                 and self._place_of(result)):
             start = result.get("start")
@@ -605,12 +607,13 @@ class CampusIndex:
 
     # ---------------------------------------------------------------- events
     def events(self, q: str | None = None, start: date | None = None, end: date | None = None,
-               now: datetime | None = None) -> dict:
+               now: datetime | None = None, added: list[dict] | None = None) -> dict:
         """US19, US20: the upcoming campus events, soonest first. Each call asks the
         events table: every word of `q` must be in the title or the description, and
         `start`..`end` are campus dates, both included, that an event only has to
         overlap. An event is upcoming until it ends. Times are 'YYYY-MM-DD HH:MM'
-        in campus time, so they compare as text."""
+        in campus time, so they compare as text. `added` are the events an
+        administrator added (UserStore.campus_events), held to the same rules."""
         now = campus_now(now)
         stamp = now.strftime("%Y-%m-%d %H:%M")
         where, args = ["ends_at > ?"], [stamp]
@@ -635,6 +638,16 @@ class CampusIndex:
         finally:
             conn.close()
 
+        rows = [dict(r) for r in rows]
+        upcoming_added = [self.added_event(e) for e in (added or []) if e["ends_at"] > stamp]
+        words = (q or "").casefold().split()
+        rows += [e for e in upcoming_added
+                 if all(w in e["title"].casefold() or w in e["description"].casefold() for w in words)
+                 and (not start or e["ends_at"] > f"{start:%Y-%m-%d} 00:00")
+                 and (not end or e["starts_at"] < f"{end + timedelta(days=1):%Y-%m-%d} 00:00")]
+        rows.sort(key=lambda r: (r["starts_at"], r["title"]))
+        total += len(upcoming_added)
+
         by_id = {r["room_id"]: r for r in self.rooms}
         today = now.date()
         monday = today - timedelta(days=today.weekday())
@@ -649,9 +662,28 @@ class CampusIndex:
             }.items()},
         }
 
+    def event_payload(self, row: dict, stamp: str) -> dict:
+        """An event as the events page shows it."""
+        return self._event_payload(row, self.directory_room(row.get("room_value") or row.get("room_number") or "")
+                                   if (row.get("room_number") or row.get("room_value")) else None, stamp)
+
+    def class_room(self, room: dict) -> str:
+        return self._class_room(room)
+
+    def added_event(self, row: dict) -> dict:
+        """An event an administrator added, shaped like a row of the events table:
+        its room by the directory's id, its id marked so it isn't taken for one
+        shipped in campus.db."""
+        room = self.directory_room(row.get("room_number")) if row.get("room_number") else None
+        return {**row, "event_id": f"a{row['event_id']}", "room_id": room["room_id"] if room else None,
+                "editable": True}
+
     @staticmethod
-    def _event_payload(row: sqlite3.Row, room: dict | None, stamp: str) -> dict:
+    def _event_payload(row: dict, room: dict | None, stamp: str) -> dict:
         return {"event_id": row["event_id"], "title": row["title"], "description": row["description"],
+                "link": row.get("link"), "editable": bool(row.get("editable")),
+                "room_value": row.get("room_number") or (room["room_number"] if room else None),
+                "starts_input": row["starts_at"].replace(" ", "T"), "ends_input": row["ends_at"].replace(" ", "T"),
                 "place": row["place"], "room": room["room_number"] if room else None,
                 "date": event_day(date.fromisoformat(row["starts_at"][:10])),
                 "time": event_times(row["starts_at"], row["ends_at"]),
@@ -660,11 +692,18 @@ class CampusIndex:
                 "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room else None,
                 "ask": row["title"]}
 
-    def _event_answer(self, query: str, now: datetime | None) -> dict | None:
+    def _event_answer(self, query: str, now: datetime | None,
+                      added: Callable[[], list[dict]] | None = None) -> dict | None:
         """The question is an event's title (a press on the events page): its room on
-        the plan, or a card that says the place is not on the plans. None otherwise."""
+        the plan, or a card that says the place is not on the plans. None otherwise.
+        `added` fetches the events an administrator added; it is only called when
+        the question could be a title at all (no shipped event has it)."""
         stamp = campus_now(now).strftime("%Y-%m-%d %H:%M")
-        event = next((e for e in self.event_titles.get(normalize(query), []) if e["ends_at"] > stamp), None)
+        key = normalize(query)
+        event = next((e for e in self.event_titles.get(key, []) if e["ends_at"] > stamp), None)
+        if not event and added and len(query) >= 3:
+            event = next((self.added_event(e) for e in added()
+                          if e["ends_at"] > stamp and normalize(e["title"]) == key), None)
         if not event:
             return None
         day = event_day(date.fromisoformat(event["starts_at"][:10]))

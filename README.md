@@ -96,6 +96,18 @@ is made up, so the page says no events have been added yet; the story sheet's
 their own in a copy of the database. An event goes in as a row in
 `data/campus.sql`, then `python3 tools/build_db.py`.
 
+## Events and SDU news — November 2026
+
+SDU University publishes no events a program can read: sdu.edu.kz's events
+page is empty, and the "upcoming events" on its home page are pictures. Its
+news is a WordPress RSS feed. So the events page now has two parts:
+
+| What | How it works |
+|---|---|
+| **Campus events, added by administrators (US26)** | The accounts in `CAMPUS_ADMINS` see **Add an event** on `/events`, and **Edit** and **Delete** on the events they added: title, description, start and end, a room from the directory (its name becomes the place) or a place in words, and a link to the announcement. They live in the accounts database (`campus_events`, Postgres on the live site) next to the ones shipped in `campus.db`, and are searched, filtered by date, listed and found by title on the map exactly like them |
+| **News from SDU** | Under the events, the ten latest stories from `https://sdu.edu.kz/en/feed/`: picture, the day it was published, title and a short excerpt, each linking to the story. The feed is read at most every 30 minutes per server; when the site can't be reached the last copy stays, marked stale. Only links and pictures on sdu.edu.kz are kept. A news date is the day a story was published, never shown as an event's date |
+| **From a story to an event** | An administrator can press **Make it an event** on a story: the form starts with its title, excerpt and link, and the day, time and room are filled in by hand, since the story doesn't give them |
+
 ## The timetable page — November 2026
 
 The timetable left the profile for a page of its own, **`/schedule`** (linked
@@ -426,6 +438,9 @@ Real answer time is around 0.1–1 ms.
 | `GET /api/route?to=...&from=...` | Walking directions (US13, US14): ordered `steps` with the floor each one is on, the route in brief (`signs`), the line to draw on each floor (`legs`) and the staircases (`stairs`). `to` and `from` take anything the search understands; leave out `from` and the route starts at the main entrance. A place it can't find gives `kind: "route_error"` and suggestions |
 | `GET /api/services` | The services page: each service with its category group, location and an open/closed status in Almaty time, then the kinds of room there are many of |
 | `GET /api/events?q=...&from=...&to=...` | Upcoming events, soonest first (US19, US20): words to find, and a period in campus dates, both days included. Also gives the match count, the total, and today, this week and this month as dates |
+| `POST /api/events` | Add an event (administrators only, US26): `title`, `description`, `starts`, `ends` ('2026-11-14T14:00', campus time), `room` from the directory or `place` in words, `link` |
+| `PUT` / `DELETE /api/events/{id}` | Change or remove an event an administrator added (`a12`); one shipped in `campus.db` answers 404 |
+| `GET /api/news` | The latest news from sdu.edu.kz's RSS feed, newest first, kept for half an hour; `stale` when the site couldn't be reached |
 | `GET /api/schedule` | Your own timetable (accounts only; a visitor gets 403) |
 | `POST /api/schedule` | Add a class: `subject`, `day` (0 = Monday), `start`, `end`, `room`; `outside: true` keeps a room that isn't on campus ("VR 93") as written |
 | `POST /api/schedule/rooms` | Rooms read off a screenshot, matched to the directory with the OCR's look-alikes put right ("11301" is I301) |
@@ -540,8 +555,11 @@ room's own answer.
   its corridor, not surveyed, and the open floor west of the corridor is walked
   in straight lines between rooms. Distances are never quoted, because the
   sheets have no scale.
-- **There are no events yet.** Nothing feeds them in: until the admin page
-  (US26) they are rows in `data/campus.sql`.
+- **Events are added by hand.** The university's site has no events feed, so
+  an administrator adds each one (`CAMPUS_ADMINS`); the news from sdu.edu.kz is
+  shown as news, by the day it was published, and is not turned into events on
+  its own. A change made on one server instance reaches the others' searches
+  within a minute.
 - **The timetable knows one week.** It repeats for ever: no term dates, no odd
   and even weeks, no holidays. A class during a break still counts as next, and
   the calendar file repeats with no end date.
@@ -635,6 +653,7 @@ docker run -p 8000:8000 sdu-campus
 | `DATABASE_URL` | unset | Postgres for accounts, sessions and reset links (also read as `CAMPUS_DATABASE_URL` or `POSTGRES_URL`); unset uses SQLite |
 | `CAMPUS_USERS_DB` | `data/users.db` | The SQLite file when there is no `DATABASE_URL` (`/tmp/users.db` on Vercel) |
 | `CAMPUS_SECURE_COOKIES` | off | Set to `true` when serving over HTTPS |
+| `CAMPUS_ADMINS` | unset | Comma-separated SDU addresses of the accounts that may add, change and delete events; nobody when unset |
 | `CAMPUS_SEED_ACCOUNT` | unset | `<email>:<password>` — one account recreated at every start, so a shared link keeps working on hosting with no persistent disk |
 | `CAMPUS_SEED_NAME` | `SDU Student` | The full name for that account (every account has one) |
 | `CAMPUS_PUBLIC_URL` | unset | The site's address, e.g. `https://sdu-campus-assistant.vercel.app` — reset links are built from it; on Vercel it defaults to the production address |

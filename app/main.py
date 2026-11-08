@@ -10,6 +10,7 @@ signed-in SDU account; see app/auth.py for the rules.
 """
 import os
 import re
+import time
 from datetime import date
 from urllib.parse import quote
 from pathlib import Path
@@ -23,12 +24,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .auth import (GUEST, MAX_CLASSES, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
-                   clean_class, database_url, default_db_path, normalise_email, seed_account)
+                   clean_class, clean_event, database_url, default_db_path, normalise_email, seed_account)
 from .ics import timetable_calendar
-from .engine import CampusIndex
+from .engine import CampusIndex, campus_now
 from .floorplan import CampusMap
 from .routing import Router
 from .mailer import mail_configured, send_reset_link
+from .news import NewsFeed
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("CAMPUS_DB", BASE_DIR / "data" / "campus.db"))
@@ -82,6 +84,42 @@ def require_account(user: dict = Depends(current_user)) -> dict:
         raise HTTPException(status_code=403,
                             detail="Sign in with your SDU account to use this.")
     return user
+
+
+# Who may add, change and delete campus events (US26): the accounts named in
+# CAMPUS_ADMINS, comma-separated SDU addresses. Nobody, when it is unset.
+ADMINS = {e.strip().lower() for e in os.environ.get("CAMPUS_ADMINS", "").split(",") if e.strip()}
+
+
+def is_admin(user: dict | None) -> bool:
+    return bool(user and user.get("email") and user["email"].lower() in ADMINS)
+
+
+def require_admin(user: dict = Depends(require_account)) -> dict:
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only the site's administrators can change events.")
+    return user
+
+
+# The events an administrator added, read once a minute at most: every search
+# looks at their titles, and a database round trip per question would be wasted.
+# A change made on this server empties it at once; on another, within a minute.
+_added_cache: dict = {"at": 0.0, "rows": None}
+ADDED_FRESH = 60.0
+
+
+def added_events() -> list[dict]:
+    if _added_cache["rows"] is None or time.monotonic() - _added_cache["at"] > ADDED_FRESH:
+        _added_cache["rows"] = users.campus_events()
+        _added_cache["at"] = time.monotonic()
+    return _added_cache["rows"]
+
+
+def _events_changed() -> None:
+    _added_cache["rows"] = None
+
+
+news_feed = NewsFeed()
 
 
 def _set_session(response: Response, user: dict | None) -> None:
@@ -230,7 +268,7 @@ def logout(request: Request, response: Response):
 
 @app.get("/api/auth/me", tags=["accounts"])
 def me(user: dict = Depends(current_user)):
-    return {"user": user}
+    return {"user": {**user, "admin": is_admin(user)}}
 
 
 # ---------------------------------------------------------------------- data
@@ -254,7 +292,7 @@ def search(q: str = Query(..., min_length=1, max_length=200,
     """Answer a free-form question about a room, a block, a campus service or the
     asker's own next class."""
     timetable = None if user["role"] == ROLE_VISITOR else (lambda: users.classes(user["user_id"]))
-    return index.search(q, context=context, timetable=timetable)
+    return index.search(q, context=context, timetable=timetable, events=added_events)
 
 
 @app.get("/api/route", tags=["directions"])
@@ -448,7 +486,82 @@ def events(q: str | None = Query(None, max_length=200,
     if start and end and start > end:
         raise HTTPException(status_code=400, detail={
             "field": "to", "message": "The last day can't be before the first."})
-    return index.events(q, start, end)
+    return index.events(q, start, end, added=added_events())
+
+
+class EventForm(BaseModel):
+    title: str = ""
+    description: str = ""
+    place: str = ""        # in words; may be left out when a room is given
+    room: str = ""         # a room of the directory, or nothing for a place off the plans
+    starts: str = ""       # '2026-11-14T14:00', campus time
+    ends: str = ""
+    link: str = ""         # the announcement, e.g. on sdu.edu.kz
+
+
+def _event_fields(form: EventForm) -> tuple[dict, str | None]:
+    """The checked fields of an event and its room's number (None off the plans), or 400."""
+    room = None
+    if form.room.strip():
+        room = index.directory_room(form.room)
+        if not room:
+            raise HTTPException(status_code=400, detail={
+                "field": "room", "message": "Choose a room from the list, or leave it empty for a place off the plans."})
+    place = form.place.strip() or (index.class_room(room) if room else "")
+    if not place:
+        raise HTTPException(status_code=400, detail={"field": "place", "message": "Say where it is, or choose a room."})
+    try:
+        fields = clean_event(form.title, form.description, place, form.starts, form.ends, form.link)
+    except AuthError as err:
+        raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
+    return fields, room["room_number"] if room else None
+
+
+def _added_id(event_id: str) -> int:
+    """'a12' is the event an administrator added with id 12; any other id is
+    one shipped in campus.db, which is changed there and not here."""
+    match = re.fullmatch(r"a(\d{1,18})", event_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="That event can't be changed here.")
+    return int(match[1])
+
+
+def _event_out(row: dict) -> dict:
+    return index.event_payload(index.added_event(row), campus_now().strftime("%Y-%m-%d %H:%M"))
+
+
+@app.post("/api/events", tags=["events"])
+def add_event(form: EventForm, user: dict = Depends(require_admin)):
+    """US26: an administrator adds an event."""
+    fields, room = _event_fields(form)
+    row = users.add_event(fields, room, user["user_id"])
+    _events_changed()
+    return _event_out(row)
+
+
+@app.put("/api/events/{event_id}", tags=["events"])
+def edit_event(event_id: str, form: EventForm, user: dict = Depends(require_admin)):
+    fields, room = _event_fields(form)
+    row = users.update_event(_added_id(event_id), fields, room)
+    if not row:
+        raise HTTPException(status_code=404, detail="That event isn't there any more.")
+    _events_changed()
+    return _event_out(row)
+
+
+@app.delete("/api/events/{event_id}", tags=["events"])
+def delete_event(event_id: str, user: dict = Depends(require_admin)):
+    if not users.delete_event(_added_id(event_id)):
+        raise HTTPException(status_code=404, detail="That event isn't there any more.")
+    _events_changed()
+    return {"ok": True}
+
+
+@app.get("/api/news", tags=["events"])
+def news(user: dict = Depends(current_user)):
+    """The latest news from sdu.edu.kz, read from its RSS feed and kept for half
+    an hour. News carries the day it was published, not the day of an event."""
+    return news_feed.latest()
 
 
 # ---------------------------------------------------------------------- site

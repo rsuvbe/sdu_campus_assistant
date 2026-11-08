@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=97">
+<link rel="stylesheet" href="/static/styles.css?v=99">
 <link rel="stylesheet" href="/static/auth.css?v=67">
 </head>
 <body class="profile-body">
@@ -31,6 +31,9 @@
   <symbol id="i-device" viewBox="0 0 24 24"><path d="M3.5 5h17v11h-17zM9 20h6M12 16v4"/></symbol>
   <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H5M11.5 5.5 5 12l6.5 6.5"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17v.4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-out-link" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 14v5.5H4.5V7H10"/></symbol>
 </svg>
 
 <header class="bar">
@@ -49,7 +52,10 @@
 
 <main class="events-main">
   <section class="directory" aria-labelledby="ev-title">
-    <h1 class="section-title" id="ev-title">Campus events</h1>
+    <div class="ev-head">
+      <h1 class="section-title" id="ev-title">Campus events</h1>
+      <button type="button" class="btn-line" id="ev-add" hidden><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add an event</button>
+    </div>
     <p class="dir-intro">What's coming up on campus, soonest first, with where and when.</p>
     <div class="ev-controls" id="ev-controls" hidden>
       <div class="ev-fields">
@@ -82,9 +88,64 @@
       </ul>
     </div>
   </section>
+
+  <!-- the university's own news, read from sdu.edu.kz; a news date is when it was published -->
+  <section class="directory news" aria-labelledby="news-title">
+    <div class="dir-head">
+      <h2 class="sec-title" id="news-title">News from SDU</h2>
+      <a class="dir-summary news-source" href="https://sdu.edu.kz/en/" target="_blank" rel="noopener noreferrer">sdu.edu.kz<svg class="i" aria-hidden="true"><use href="#i-out-link"/></svg></a>
+    </div>
+    <p class="dir-intro" id="news-intro">The latest from the university's site, newest first, by the day each story was published.</p>
+    <ul class="news-list" id="news-list" aria-busy="true">
+      <li class="dir-skel"></li><li class="dir-skel"></li><li class="dir-skel"></li>
+    </ul>
+  </section>
 </main>
+
+<!-- an administrator adds or changes an event -->
+<dialog class="sch-dialog" id="ev-dialog" aria-labelledby="ef-title">
+  <div class="sch-dialog-band"><span id="ef-title">Add an event</span><button type="button" class="sch-close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <form class="sch-dialog-body ev-form" id="ev-form" novalidate autocomplete="off">
+    <div class="field" id="ef-field-title">
+      <label for="ef-title-input">Title</label>
+      <input id="ef-title-input" type="text" maxlength="120" required>
+    </div>
+    <div class="field" id="ef-field-description">
+      <label for="ef-description">Description</label>
+      <textarea id="ef-description" maxlength="1000" rows="3"></textarea>
+    </div>
+    <div class="ev-form-times">
+      <div class="field" id="ef-field-starts">
+        <label for="ef-starts">Starts</label>
+        <input id="ef-starts" type="datetime-local" required>
+      </div>
+      <div class="field" id="ef-field-ends">
+        <label for="ef-ends">Ends</label>
+        <input id="ef-ends" type="datetime-local" required>
+      </div>
+    </div>
+    <div class="field" id="ef-field-room">
+      <label for="ef-room">Room <span class="ef-hint">on the plans, if it is in one</span></label>
+      <input id="ef-room" type="text" list="ef-rooms" maxlength="80" placeholder="D103 or A1">
+      <datalist id="ef-rooms"></datalist>
+    </div>
+    <div class="field" id="ef-field-place">
+      <label for="ef-place">Place <span class="ef-hint">as announced; the room's name if left empty</span></label>
+      <input id="ef-place" type="text" maxlength="120" placeholder="Sports ground">
+    </div>
+    <div class="field" id="ef-field-link">
+      <label for="ef-link">Announcement <span class="ef-hint">optional</span></label>
+      <input id="ef-link" type="url" maxlength="300" placeholder="https://sdu.edu.kz/en/…">
+    </div>
+    <p class="form-error" id="ef-error" role="alert" hidden></p>
+    <div class="tt-actions">
+      <button type="submit" class="btn-go" id="ef-submit">Add the event</button>
+      <button type="button" class="btn-line" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
 <script src="/static/theme.js?v=7"></script>
 <script src="/static/reminders.js?v=1"></script>
-<script src="/static/events.js?v=1"></script>
+<script src="/static/events.js?v=2"></script>
 </body>
 </html>
