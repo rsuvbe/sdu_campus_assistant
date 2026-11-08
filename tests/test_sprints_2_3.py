@@ -426,4 +426,5 @@ def test_us4_logout_returns_to_login_and_the_app_asks_again(member):
 def test_us4_the_profile_page_is_there(member, anon):
     page = member.get("/profile")
     assert page.status_code == 200 and "Change password" in page.text
-    assert anon.get("/profile", follow_redirects=False).headers["location"] == "/login"
+    # the sign-in page brings them back here afterwards
+    assert anon.get("/profile", follow_redirects=False).headers["location"] == "/login?next=%2Fprofile"

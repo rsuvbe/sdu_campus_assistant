@@ -512,6 +512,22 @@ class UserStore:
                  class_id, user_id)).fetchone()
         return dict(row) if row else None
 
+    def import_classes(self, user_id: int, entries: list[tuple[dict, str]], replace: bool) -> list[dict]:
+        """A week read off a screenshot, saved in one go: in place of the
+        timetable there was, or after it. All of it or nothing."""
+        with self._connect() as conn:
+            if replace:
+                conn.execute("DELETE FROM classes WHERE user_id = ?", (user_id,))
+            count = conn.execute("SELECT COUNT(*) AS n FROM classes WHERE user_id = ?", (user_id,)).fetchone()
+            if count["n"] + len(entries) > MAX_CLASSES:
+                raise AuthError(f"A timetable can hold at most {MAX_CLASSES} classes.", "classes")
+            for fields, room_number in entries:
+                conn.execute(
+                    "INSERT INTO classes (user_id, subject, day_of_week, start_time, end_time, room_number)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (user_id, fields["subject"], fields["day"], fields["start"], fields["end"], room_number))
+        return self.classes(user_id)
+
     def delete_class(self, user_id: int, class_id: int) -> bool:
         with self._connect() as conn:
             row = conn.execute("DELETE FROM classes WHERE class_id = ? AND user_id = ?"

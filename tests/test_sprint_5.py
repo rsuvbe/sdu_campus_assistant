@@ -22,7 +22,9 @@ from app.engine import NEXT_CLASS_RE, CampusIndex, next_class, normalize
 from app.main import BASE_DIR, DB_PATH, app, index, users
 
 PROFILE_HTML = (BASE_DIR / "static" / "profile.html").read_text()
-PROFILE_JS = (BASE_DIR / "static" / "profile.js").read_text()
+# the timetable moved from the profile to a page of its own, /schedule
+SCHEDULE_HTML = (BASE_DIR / "static" / "schedule.html").read_text()
+SCHEDULE_JS = (BASE_DIR / "static" / "schedule.js").read_text()
 APP_JS = (BASE_DIR / "static" / "app.js").read_text()
 INDEX_HTML = (BASE_DIR / "static" / "index.html").read_text()
 EVENTS_HTML = (BASE_DIR / "static" / "events.html").read_text()
@@ -212,7 +214,7 @@ def test_us17_task_the_schedule_table_is_keyed_by_user():
 
 
 def test_us17_task_the_form_has_a_room_picker_from_the_directory(me):
-    assert 'list="tt-rooms"' in PROFILE_HTML and "/api/rooms" in PROFILE_JS
+    assert 'list="tt-rooms"' in SCHEDULE_HTML and "/api/rooms" in SCHEDULE_JS
     picked = me.get("/api/rooms").json()
     # whatever the picker offers is accepted, and leads to one room of its own
     rooms = [index.directory_room(p["value"]) for p in picked]
@@ -228,10 +230,12 @@ def test_us17_a_class_opened_for_editing_can_be_saved_as_it_is(me, room):
     assert again.status_code == 200 and again.json()["room"] == saved["room"]
 
 
-def test_us17_task_the_profile_builds_edits_and_deletes():
+def test_us17_task_the_timetable_page_builds_edits_and_deletes():
     for needle in ('id="tt-form"', 'id="tt-subject"', 'id="tt-day"', 'id="tt-start"', 'id="tt-end"', 'id="tt-room"'):
-        assert needle in PROFILE_HTML
-    assert 'method: editing ? "PUT" : "POST"' in PROFILE_JS and 'method: "DELETE"' in PROFILE_JS
+        assert needle in SCHEDULE_HTML
+    assert 'method: editing ? "PUT" : "POST"' in SCHEDULE_JS and 'method: "DELETE"' in SCHEDULE_JS
+    # and the profile leads there
+    assert 'href="/schedule"' in PROFILE_HTML
 
 
 # ---------------------------------------------------------------- US18
@@ -366,7 +370,7 @@ def test_us18_an_account_is_still_sent_on_from_the_login_page(me):
 def test_us18_an_account_with_an_empty_timetable_is_sent_to_fill_it(me):
     a = me.get("/api/search", params={"q": "where is my next class"}).json()
     assert a["kind"] == "needs_account"
-    assert a["link"]["href"] == "/profile#timetable"
+    assert a["link"]["href"] == "/schedule"
 
 
 def test_us18_pass_end_to_end_a_student_with_a_schedule_gets_their_own_class(me, them):
@@ -381,7 +385,7 @@ def test_us18_a_room_that_left_the_directory_does_not_break_the_answer():
     a = ask(at("08:00"), [{**WEEK[0], "room": "GONE1"}])
     assert a["kind"] == "needs_account"
     assert "GONE1" in a["summary"]
-    assert a["link"]["href"] == "/profile#timetable"
+    assert a["link"]["href"] == "/schedule"
 
 
 # ---------------------------------------------------------------- US19 and US20
@@ -684,7 +688,7 @@ def test_us19_a_question_about_events_is_pointed_at_the_events_page(q):
 def test_us19_the_events_have_a_page_of_their_own_linked_from_the_main_page(me, anon):
     res = me.get("/events")
     assert res.status_code == 200 and 'id="ev-list"' in res.text
-    assert anon.get("/events", follow_redirects=False).headers["location"] == "/login"
+    assert anon.get("/events", follow_redirects=False).headers["location"] == "/login?next=%2Fevents"
     assert 'id="ev-list"' not in INDEX_HTML
     tip = re.search(r'<p class="welcome-tip">.*?</p>', INDEX_HTML, re.S).group(0)
     assert 'href="/events"' in tip

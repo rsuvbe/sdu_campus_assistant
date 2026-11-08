@@ -47,7 +47,17 @@ function nameParts(email) {
 // this page again (see the first script in index.html).
 function enter() {
   try { sessionStorage.setItem("sdu-visit", "1"); } catch { /* storage off: the session still works */ }
-  window.location.replace("/");
+  window.location.replace(nextPage());
+}
+
+// The page asked for before signing in (a reminder's way to a class, the
+// timetable). Only a path on this site: a browser reads "//elsewhere" and
+// "/\elsewhere" as another site, after dropping tabs and line breaks, so a
+// backslash, a space or a control character anywhere sends it to the map.
+function nextPage() {
+  const next = new URLSearchParams(location.search).get("next") || "";
+  const plain = next.startsWith("/") && !next.startsWith("//") && !/[\u0000-\u0020\u007f\\]/.test(next);
+  return plain && !/^\/login\b/.test(next) ? next : "/";
 }
 
 /* ------------------------------------------------------------ mode switch */

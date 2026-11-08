@@ -89,6 +89,10 @@ BLOCK_ORDER = "ABCDEFGHI"
 # Cyrillic letters that look like block letters (people type "Д103", "Н304").
 CYR_TO_LAT = str.maketrans({"б": "b", "с": "c", "д": "d", "е": "e", "ф": "f", "г": "g",
                             "н": "h", "и": "i", "і": "i"})
+# What an OCR reads in place of a block letter: an I as a 1, an l, a bar, or the
+# house icon's crumbs before it as an S or a T; a D as a 0, a B as an 8.
+OCR_LOOKALIKES = {"1": "I", "L": "I", "|": "I", "!": "I", "J": "I", "T": "I", "S": "IB",
+                  "0": "D", "O": "D", "8": "B", "6": "G", "E": "F", "F": "E", "H": "I"}
 # a block letter B-I, not glued to a preceding letter, then 3 digits
 CODE_RE = re.compile(r"(?<![^\W\d_])([b-i])\s?-?\s?(\d{3})(?!\d)")
 BARE_NUMBER_RE = re.compile(r"(?<!\d)(\d{3})(?!\d)")
@@ -463,7 +467,43 @@ class CampusIndex:
         """The room someone picked for a class: by its code, its hall name or an
         alias, in Latin or Cyrillic letters. None when the directory has no such room."""
         key = normalize(text or "")
-        return self.by_code.get(key) or self.by_code.get(key.translate(CYR_TO_LAT))
+        found = self.by_code.get(key) or self.by_code.get(key.translate(CYR_TO_LAT))
+        if found:
+            return found
+        # "Hall A1", as the form's hint writes it, is hall A1
+        hall = re.sub(r"^(?:hall|зал)", "", key)
+        return (self.by_code.get(hall) or self.by_code.get(hall.translate(CYR_TO_LAT))) if hall != key else None
+
+    def resolve_room(self, text: str | None) -> dict | None:
+        """A room as an OCR read it off the portal's timetable, put right: "I 301"
+        that came out as "11301" or "S110" (the house icon's crumbs and an I read
+        as a 1), "1 F202". The digits at the end are trusted; the character before
+        them is the block letter, or a look-alike of one. None when nothing in the
+        directory fits, as for "VR 93", which is not a campus room."""
+        room = self.directory_room(text)
+        if room:
+            return room
+        compact = re.sub(r"\s+", "", (text or "")).upper()
+        match = re.search(r"(.)(\d{3})$", compact)
+        if not match:
+            return None
+        letter, digits = match.groups()
+        for guess in (letter, *OCR_LOOKALIKES.get(letter, "")):
+            room = self.directory_room(guess + digits)
+            if room:
+                return room
+        return None
+
+    def read_room(self, text: str, longest: int) -> dict:
+        """A room read off a screenshot, as the import preview shows it: the
+        directory's room when one fits, or the text as written (cut to `longest`)."""
+        room = self.resolve_room(text)
+        written = re.sub(r"\s+", " ", text or "").strip()[:longest]
+        return {"on_campus": room is not None,
+                "room_value": self._picker_value(room) if room else written,
+                "room_label": self._class_room(room) if room else written,
+                "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
+                         else "Not on the campus plans"}
 
     def _picker_value(self, room: dict) -> str:
         """What to type for a room: its name, or its number where the name alone
@@ -493,7 +533,8 @@ class CampusIndex:
                 "room_label": self._class_room(room) if room else entry["room"],
                 "room_value": self._picker_value(room) if room else entry["room"],
                 "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
-                         else "No longer on the plans"}
+                         else "Not on the campus plans",
+                "on_campus": room is not None}
 
     def service_list(self, now: datetime | None = None) -> list[dict]:
         """The services page: every service with where it is and whether it is
@@ -652,17 +693,19 @@ class CampusIndex:
                     "link": {"href": "/login", "label": "Sign in"}, "suggestions": []}
         if not classes:
             return {"kind": "needs_account", "title": "Your timetable is empty",
-                    "summary": "Add your classes to your profile, and I'll tell you where the next one is.",
-                    "link": {"href": "/profile#timetable", "label": "Add your classes"}, "suggestions": []}
+                    "summary": "Add your classes to your timetable, or import a screenshot of it, "
+                               "and I'll tell you where the next one is.",
+                    "link": {"href": "/schedule", "label": "Add your classes"}, "suggestions": []}
         now = campus_now(now)
         on_now, upcoming, days = next_class(classes, now)
         room = self.directory_room(upcoming["room"])
         when = class_day(upcoming, days)
         if not room:
             return {"kind": "needs_account", "title": f"{upcoming['subject']}, {when} at {upcoming['start']}",
-                    "summary": f"Its room, {upcoming['room']}, is no longer on the plans. "
-                               "Choose the new one in your timetable.",
-                    "link": {"href": "/profile#timetable", "label": "Edit your timetable"}, "suggestions": []}
+                    "summary": f"Its room, {upcoming['room']}, isn't on the campus plans: an online class "
+                               "or another building, so there is no way to draw. If it has moved, "
+                               "choose the new room in your timetable.",
+                    "link": {"href": "/schedule", "label": "Open your timetable"}, "suggestions": []}
         answer = self._room_answer(room)
         answer["summary"] = (f"Your next class is {upcoming['subject']}, {when} at {upcoming['start']}, "
                              f"in {self._class_room(room)}.")

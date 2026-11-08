@@ -7,8 +7,9 @@
 <meta name="description" content="Ask where any room or service is at SDU University and see it on the floor plan.">
 <!-- A new visit (a new tab, the browser opened again) starts at the sign-in page,
      for an account and a visitor alike; a reload keeps the session. The mark is
-     set by the sign-in page and lives as long as the tab. -->
-<script>try{if(!sessionStorage.getItem("sdu-visit")){document.documentElement.style.visibility="hidden";fetch("/api/auth/logout",{method:"POST"}).finally(function(){location.replace("/login")})}}catch(e){}</script>
+     set by the sign-in page and lives as long as the tab; the page asked for
+     comes back after signing in. -->
+<script>try{if(!sessionStorage.getItem("sdu-visit")){document.documentElement.style.visibility="hidden";fetch("/api/auth/logout",{method:"POST"}).finally(function(){location.replace("/login?next="+encodeURIComponent(location.pathname+location.search))})}}catch(e){}</script>
 <script>try{var t=localStorage.getItem("sdu-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <meta name="color-scheme" content="light dark">
 <meta name="darkreader-lock">
@@ -17,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=96">
+<link rel="stylesheet" href="/static/styles.css?v=97">
 </head>
 <body class="app-body">
 <a class="skip" href="#q">Skip to search</a>
@@ -49,6 +50,7 @@
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
   <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6.5h16V20H4zM4 10.5h16M8.5 3.5v5M15.5 3.5v5"/></symbol>
+  <symbol id="i-week" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17zM3.5 9.5h17M9 9.5V19M14.5 9.5V19"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
 </svg>
 
@@ -104,6 +106,7 @@
 
       <div class="log" id="log" aria-live="polite"></div>
 
+      <a class="events-link" id="timetable-link" href="/schedule" hidden><svg class="i" aria-hidden="true"><use href="#i-week"/></svg><span>Your timetable</span><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
       <a class="events-link" href="/events"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span>Campus events</span><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
 
       <nav class="directory" id="services-page" aria-labelledby="dir-title">
@@ -154,6 +157,7 @@
 
 </div>
 <script src="/static/theme.js?v=7"></script>
-<script src="/static/app.js?v=85"></script>
+<script src="/static/reminders.js?v=1"></script>
+<script src="/static/app.js?v=86"></script>
 </body>
 </html>

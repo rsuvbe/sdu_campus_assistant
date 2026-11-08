@@ -75,6 +75,7 @@ async function loadHeader() {
     who.title = visitor ? "Looking around without an account" : user.email;
     $("#signout-label").textContent = visitor ? "Sign in" : "Sign out";
     $("#profile-link").hidden = visitor;   // a visitor has no account, so no profile
+    $("#timetable-link").hidden = visitor; // nor a timetable
     $("#signout").setAttribute("aria-label", visitor ? "Sign in with an SDU account" : "Sign out");
     $("#signout").title = visitor ? "You're looking around as a visitor" : `Signed in as ${user.full_name || user.email}`;
   } catch { /* the 401 above already redirected */ }

@@ -11,6 +11,7 @@ signed-in SDU account; see app/auth.py for the rules.
 import os
 import re
 from datetime import date
+from urllib.parse import quote
 from pathlib import Path
 
 import logging
@@ -19,10 +20,11 @@ from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Quer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from .auth import (GUEST, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
+from .auth import (GUEST, MAX_CLASSES, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
                    clean_class, database_url, default_db_path, normalise_email, seed_account)
+from .ics import timetable_calendar
 from .engine import CampusIndex
 from .floorplan import CampusMap
 from .routing import Router
@@ -291,6 +293,12 @@ class ClassForm(BaseModel):
     start: str = ""        # 'HH:MM', campus time
     end: str = ""
     room: str = ""         # a room of the directory: its code, hall name or alias
+    # a class that isn't held on campus (an online one, "VR 93") keeps its room as
+    # written; without this a room the directory doesn't know is refused
+    outside: bool = False
+
+
+MAX_OUTSIDE_ROOM = 40
 
 
 def _class_fields(form: ClassForm) -> tuple[dict, str]:
@@ -300,10 +308,16 @@ def _class_fields(form: ClassForm) -> tuple[dict, str]:
     except AuthError as err:
         raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
     room = index.directory_room(form.room)
-    if not room:
+    if room:
+        return fields, room["room_number"]
+    written = re.sub(r"\s+", " ", form.room or "").strip()
+    if form.outside and written and len(written) <= MAX_OUTSIDE_ROOM:
+        return fields, written
+    if form.outside:
         raise HTTPException(status_code=400, detail={
-            "field": "room", "message": "Choose a room from the list, like D103 or Hall A1."})
-    return fields, room["room_number"]
+            "field": "room", "message": f"Write where the class is, in at most {MAX_OUTSIDE_ROOM} characters."})
+    raise HTTPException(status_code=400, detail={
+        "field": "room", "message": "Choose a room from the list, like D103 or Hall A1."})
 
 
 NOT_YOURS = HTTPException(status_code=404, detail="That class isn't in your timetable.")
@@ -352,6 +366,59 @@ def delete_class(class_id: int, user: dict = Depends(require_account)):
     if not users.delete_class(user["user_id"], class_id):
         raise NOT_YOURS
     return {"ok": True}
+
+
+class ReadRoom(BaseModel):
+    room: str = Field("", max_length=200)
+
+
+@app.post("/api/schedule/rooms", tags=["timetable"])
+def read_rooms(rooms: list[ReadRoom] = Body(..., max_length=MAX_CLASSES),
+               user: dict = Depends(require_account)):
+    """The rooms of a timetable read off a screenshot, matched to the directory
+    with the OCR's look-alike characters put right ("11301" is I301). A room that
+    matches nothing (an online class, "VR 93") comes back as not on campus."""
+    return [{"read": item.room, **index.read_room(item.room, MAX_OUTSIDE_ROOM)} for item in rooms]
+
+
+class ImportForm(BaseModel):
+    classes: list[ClassForm] = Field(..., max_length=MAX_CLASSES)
+    replace: bool = True   # in place of the timetable there was, or added to it
+
+
+@app.post("/api/schedule/import", tags=["timetable"])
+def import_classes(form: ImportForm, user: dict = Depends(require_account)):
+    """A whole week at once, as checked on the import preview. Every class is
+    checked first; one that is wrong stops the import, naming its row."""
+    if not form.classes:
+        raise HTTPException(status_code=400, detail={"field": "classes", "message": "There are no classes to save."})
+    entries = []
+    for row, entry in enumerate(form.classes):
+        try:
+            entries.append(_class_fields(entry))
+        except HTTPException as err:
+            raise HTTPException(status_code=400, detail={**err.detail, "row": row})
+    try:
+        saved = users.import_classes(user["user_id"], entries, form.replace)
+    except AuthError as err:
+        raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
+    return {"classes": [index.class_payload(c) for c in saved]}
+
+
+@app.get("/api/schedule.ics", tags=["timetable"])
+def schedule_calendar(request: Request,
+                      lead: int = Query(10, ge=0, le=120,
+                                        description="Minutes before a class its reminder goes off"),
+                      user: dict = Depends(require_account)):
+    """The week as a calendar file: every class repeats weekly in campus time,
+    with a reminder `lead` minutes before and a link to the way there. A phone's
+    calendar then reminds even with the site closed."""
+    site = PUBLIC_URL or str(request.base_url).rstrip("/")
+    body = timetable_calendar([index.class_payload(c) for c in users.classes(user["user_id"])],
+                              site, lead, user["user_id"])
+    return Response(body, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="sdu-timetable.ics"',
+                             "Cache-Control": "no-store"})
 
 
 # -------------------------------------------------------------------- events
@@ -409,32 +476,61 @@ app.mount("/static", CachedStatic(directory=STATIC_DIR), name="static")
 PAGE_HEADERS = {"Cache-Control": "no-cache"}
 
 
+def safe_next(path: str | None) -> str:
+    """Where to go after signing in: a path on this site and nothing else. A
+    browser reads "//elsewhere" and "/\\elsewhere" as another site, and drops tabs
+    and line breaks first ("/<tab>/elsewhere"), so a backslash, a space or a
+    control character anywhere sends it to the map instead; so does the sign-in
+    page itself."""
+    if (path and path.startswith("/") and not path.startswith("//")
+            and not re.search(r"[\x00-\x20\x7f\\]", path) and not re.match(r"/login\b", path)):
+        return path
+    return "/"
+
+
+def _page(request: Request, name: str):
+    """A page behind the door: the file, or the sign-in page, which brings the
+    visitor back here (with its question, /?ask=...) once they are in."""
+    if not users.session_user(request.cookies.get(SESSION_COOKIE)):
+        here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        target = "/login" if here == "/" else f"/login?next={quote(here, safe='')}"
+        return RedirectResponse(target, status_code=303)
+    return FileResponse(STATIC_DIR / name, headers=PAGE_HEADERS)
+
+
 @app.get("/", include_in_schema=False)
 def home(request: Request):
-    if not users.session_user(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse("/login", status_code=303)
-    return FileResponse(STATIC_DIR / "index.html", headers=PAGE_HEADERS)
+    return _page(request, "index.html")
 
 
 @app.get("/profile", include_in_schema=False)
 def profile_page(request: Request):
-    if not users.session_user(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse("/login", status_code=303)
-    return FileResponse(STATIC_DIR / "profile.html", headers=PAGE_HEADERS)
+    return _page(request, "profile.html")
 
 
 @app.get("/events", include_in_schema=False)
 def events_page(request: Request):
-    if not users.session_user(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse("/login", status_code=303)
-    return FileResponse(STATIC_DIR / "events.html", headers=PAGE_HEADERS)
+    return _page(request, "events.html")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    """The reminders' service worker (static/sw.js), served from the root so it
+    may show notifications for every page of the site."""
+    return FileResponse(STATIC_DIR / "sw.js", media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/schedule", include_in_schema=False)
+def schedule_page(request: Request):
+    return _page(request, "schedule.html")
 
 
 @app.get("/login", include_in_schema=False)
-def login_page(request: Request, mode: str | None = None):
+def login_page(request: Request, mode: str | None = None, next: str | None = None):
     # a reset link opens the form even in a browser that is already signed in, and
     # a visitor comes here to sign in, so only an account is sent on to the map
     user = users.session_user(request.cookies.get(SESSION_COOKIE))
     if mode != "reset" and user and user["role"] != ROLE_VISITOR:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(safe_next(next), status_code=303)
     return FileResponse(STATIC_DIR / "auth.html", headers=PAGE_HEADERS)

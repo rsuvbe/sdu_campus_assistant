@@ -96,6 +96,19 @@ is made up, so the page says no events have been added yet; the story sheet's
 their own in a copy of the database. An event goes in as a row in
 `data/campus.sql`, then `python3 tools/build_db.py`.
 
+## The timetable page — November 2026
+
+The timetable left the profile for a page of its own, **`/schedule`** (linked
+from the main page and the profile).
+
+| What | How it works |
+|---|---|
+| **The week as the portal draws it** | Days across (Mo–Sa, Su when a class is on it), the portal's hours down (08:30–09:20 … 21:30–22:20, stretched for a class outside them). A class is a card over its hours with the course, its group and the room; today's column is tinted with a line at the current minute, and the next class is lit. A press on an empty hour adds a class there; a press on a class opens it: the way there, edit, delete. Above the grid, the next class and **How do I get there**. On a phone the grid scrolls sideways under a sticky hour column |
+| **Import from a screenshot** | A screenshot of the portal's *Course Schedule* is dropped, pasted or picked. It is read **in the browser** (`static/schedule-ocr.js` with tesseract.js from jsdelivr; the picture is never uploaded): the table is found by the portal's yellow lines, the icons are wiped out, the picture is enlarged by a whole factor and read; each word goes to its day and hour, an hour the OCR misread is put right from the others (they are an hour apart), the two hours of a long class become one, and a course code read short in one cell is put right by the same course elsewhere. The server then matches the rooms (`/api/schedule/rooms`), putting right the look-alikes the house icon leaves ("11301" → I301, "S110" → I110). Everything is shown for checking before it is saved, in place of the week or added to it |
+| **Reminders** | **Turn on reminders** on the page: a few minutes before each class (5, 10, 15 or 30) every open page of the site shows a note with the room and **How do I get there**, and a system notification through a service worker (`/sw.js`) when allowed. The way there is "How do I get to my next class?", so it starts from the class before. **Add to my calendar** downloads `/api/schedule.ics`: the phone's calendar reminds even with the site closed |
+| **Off-campus classes** | A room that isn't on the plans ("VR 93", online) is kept as written, marked *Not on the campus plans*, with no way to draw; "where is my next class?" says so |
+| **Back after signing in** | A link into the site (a reminder, the calendar's way there) opened in a new visit goes through the sign-in page and comes back with its question: `/login?next=…`, a path on this site only |
+
 ## Campus offices — October 2026
 
 The university's own list of offices, their rooms and hours:
@@ -414,7 +427,10 @@ Real answer time is around 0.1–1 ms.
 | `GET /api/services` | The services page: each service with its category group, location and an open/closed status in Almaty time, then the kinds of room there are many of |
 | `GET /api/events?q=...&from=...&to=...` | Upcoming events, soonest first (US19, US20): words to find, and a period in campus dates, both days included. Also gives the match count, the total, and today, this week and this month as dates |
 | `GET /api/schedule` | Your own timetable (accounts only; a visitor gets 403) |
-| `POST /api/schedule` | Add a class: `subject`, `day` (0 = Monday), `start`, `end`, `room` |
+| `POST /api/schedule` | Add a class: `subject`, `day` (0 = Monday), `start`, `end`, `room`; `outside: true` keeps a room that isn't on campus ("VR 93") as written |
+| `POST /api/schedule/rooms` | Rooms read off a screenshot, matched to the directory with the OCR's look-alikes put right ("11301" is I301) |
+| `POST /api/schedule/import` | A whole week at once: `classes`, and `replace` (default) or add. All of it or nothing; a wrong class names its `row` |
+| `GET /api/schedule.ics?lead=10` | Your week as a calendar file: weekly events in UTC, a reminder `lead` minutes before, a link to the way there |
 | `GET` / `PUT` / `DELETE /api/schedule/{id}` | One of your classes; somebody else's answers 404 |
 | `GET /api/rooms` | The room directory for the timetable's picker (accounts only) |
 | `GET /api/health` | Liveness check (the only open data endpoint) |
@@ -527,7 +543,17 @@ room's own answer.
 - **There are no events yet.** Nothing feeds them in: until the admin page
   (US26) they are rows in `data/campus.sql`.
 - **The timetable knows one week.** It repeats for ever: no term dates, no odd
-  and even weeks, no holidays. A class during a break still counts as next.
+  and even weeks, no holidays. A class during a break still counts as next, and
+  the calendar file repeats with no end date.
+- **The site reminds only while it is open.** A page in some tab is enough, but
+  with the browser closed only the calendar file reminds; there is no push
+  server. iPhones show the site's notifications only once it is added to the
+  home screen; the note on the page shows anyway. The calendar file is a copy:
+  after a change to the week it has to be added again.
+- **The screenshot reader knows one template:** the portal's *Course Schedule*
+  table as the browser shows it. A photo of a screen, a cropped or a
+  Russian-language table reads worse or not at all; the preview is there to put
+  it right.
 - **Block B's letter** comes from the room label B114. The sheet does not say
   which block the Library and Red Hall belong to; they are filed under Block B
   because they share its foyer.

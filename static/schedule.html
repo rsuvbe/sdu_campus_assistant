@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your timetable · SDU Campus Assistant</title>
+<meta name="description" content="Your week at SDU University: your classes on a timetable grid, reminders before each one and the way to its room.">
+<!-- A new visit (a new tab, the browser opened again) starts at the sign-in page,
+     for an account and a visitor alike; a reload keeps the session. The mark is
+     set by the sign-in page and lives as long as the tab; the page asked for
+     comes back after signing in. -->
+<script>try{if(!sessionStorage.getItem("sdu-visit")){document.documentElement.style.visibility="hidden";fetch("/api/auth/logout",{method:"POST"}).finally(function(){location.replace("/login?next="+encodeURIComponent(location.pathname+location.search))})}}catch(e){}</script>
+<script>try{var t=localStorage.getItem("sdu-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta name="color-scheme" content="light dark">
+<meta name="darkreader-lock">
+<meta name="theme-color" content="#2F345C">
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css?v=97">
+<link rel="stylesheet" href="/static/auth.css?v=67">
+</head>
+<body class="profile-body">
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
+  <symbol id="i-steppe" viewBox="0 0 24 24"><path d="M2.5 17.5h19M5 21h14"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5V9M6 9.5l1.6 1.6M18 9.5l-1.6 1.6"/></symbol>
+  <symbol id="i-violet" viewBox="0 0 24 24"><path d="M12 3.5c3.4 4.3 5.75 7.4 5.75 10.25a5.75 5.75 0 0 1-11.5 0C6.25 10.9 8.6 7.8 12 3.5z"/><path d="M9.3 14.2a2.8 2.8 0 0 0 2.4 2.6"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><path d="M3.5 5h17v11h-17zM9 20h6M12 16v4"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H5M11.5 5.5 5 12l6.5 6.5"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M4 12h15M12.5 5.5 19 12l-6.5 6.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17z"/><path d="m3.5 16 5-5 4 4 2.5-2.5 5 5"/><circle cx="15.5" cy="9" r="1.5"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6.5h16V20H4zM4 10.5h16M8.5 3.5v5M15.5 3.5v5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17v.4"/></symbol>
+</svg>
+
+<header class="bar">
+  <a class="brand" href="/" aria-label="SDU Campus Assistant, back to the map">
+    <span class="mark"><img src="/static/img/sdu-mark.png" alt=""></span>
+    <span class="brand-text">
+      <span class="brand-name">Campus Assistant</span>
+      <span class="brand-sub">SDU University</span>
+    </span>
+  </a>
+  <div class="bar-end">
+    <div class="theme-switch" data-theme-switch></div>
+    <a class="icon-btn back" href="/"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg><span>Back to the map</span></a>
+  </div>
+</header>
+
+<main class="sch">
+  <!-- a visitor has no account, so no timetable -->
+  <div class="sch-visitor" id="visitor" hidden>
+    <div class="pass-card big">
+      <div class="pass-band"><span>Visitor pass</span><span>SDU University</span></div>
+      <div class="pass-body">
+        <h1>A timetable needs an account</h1>
+        <p class="auth-lead">Sign in with your SDU address to keep your week here, get a reminder before each class and the way to its room.</p>
+        <a class="btn-go wide" href="/login?next=%2Fschedule">Sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="sch-page" id="member" hidden>
+    <div class="sch-head">
+      <div class="sch-title">
+        <h1 class="section-title">Your timetable</h1>
+        <p class="dir-intro" id="sch-count">Only you can see it.</p>
+      </div>
+      <div class="sch-actions">
+        <button type="button" class="btn-line" id="open-import"><svg class="i" aria-hidden="true"><use href="#i-image"/></svg>Import a screenshot</button>
+        <button type="button" class="btn-go" id="open-add"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add a class</button>
+      </div>
+    </div>
+
+    <!-- the class that is next, with the way there -->
+    <section class="sch-next" id="sch-next" aria-live="polite" hidden></section>
+
+    <!-- the week as the portal draws it: days across, hours down -->
+    <section class="sch-sheet" aria-label="Your week">
+      <div class="sch-scroll" id="sch-scroll">
+        <div class="sch-grid" id="sch-grid"></div>
+      </div>
+      <p class="sch-hint" id="sch-hint">Tap an empty hour to add a class there, or a class to see the way to it.</p>
+    </section>
+
+    <!-- reminders: in the browser while the site is open; in the phone's calendar always -->
+    <section class="sch-remind" aria-labelledby="rm-title">
+      <div class="sch-remind-text">
+        <h2 class="sec-title" id="rm-title"><svg class="i" aria-hidden="true"><use href="#i-bell"/></svg>Reminders</h2>
+        <p>A note before each class with the room and the way to it, from the class before.</p>
+      </div>
+      <div class="sch-remind-controls">
+        <label class="field-label" for="rm-lead">Remind me</label>
+        <select id="rm-lead">
+          <option value="5">5 minutes before</option>
+          <option value="10" selected>10 minutes before</option>
+          <option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option>
+        </select>
+        <div class="sch-remind-row">
+          <button type="button" class="btn-line" id="rm-toggle" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-bell"/></svg><span>Turn on reminders</span></button>
+          <a class="btn-line" id="rm-ics" href="/api/schedule.ics?lead=10" download="sdu-timetable.ics"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg>Add to my calendar</a>
+        </div>
+        <p class="sch-remind-note" id="rm-state" role="status"></p>
+        <p class="sch-remind-note">The site reminds you while it's open in a tab. Your phone's calendar reminds you even when it isn't: add the file once, and again after you change your week.</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- a class: what it is, the way there, change it -->
+<dialog class="sch-dialog" id="class-card" aria-labelledby="cc-title">
+  <div class="sch-dialog-band"><span id="cc-day"></span><button type="button" class="sch-close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="sch-dialog-body">
+    <h2 class="cc-title" id="cc-title"></h2>
+    <p class="cc-time" id="cc-time"></p>
+    <dl class="fields">
+      <div class="wide"><dt>Room</dt><dd id="cc-room"></dd></div>
+      <div class="wide"><dt>Where</dt><dd id="cc-where"></dd></div>
+    </dl>
+    <div class="cc-actions">
+      <a class="btn-go" id="cc-route" href="/">How do I get there<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
+      <button type="button" class="btn-line" id="cc-edit">Edit</button>
+      <button type="button" class="btn-text" id="cc-delete">Delete</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- add or edit a class -->
+<dialog class="sch-dialog" id="class-form" aria-labelledby="tt-form-title">
+  <div class="sch-dialog-band"><span id="tt-form-title">Add a class</span><button type="button" class="sch-close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <form class="sch-dialog-body tt-form" id="tt-form" novalidate autocomplete="off">
+    <div class="field" id="tt-field-subject">
+      <label for="tt-subject">Subject</label>
+      <input id="tt-subject" type="text" maxlength="80" placeholder="INF 304 [04-P] or Calculus I" required>
+    </div>
+    <div class="field" id="tt-field-day">
+      <label for="tt-day">Day</label>
+      <select id="tt-day">
+        <option value="0">Monday</option>
+        <option value="1">Tuesday</option>
+        <option value="2">Wednesday</option>
+        <option value="3">Thursday</option>
+        <option value="4">Friday</option>
+        <option value="5">Saturday</option>
+        <option value="6">Sunday</option>
+      </select>
+    </div>
+    <div class="tt-times">
+      <div class="field" id="tt-field-start">
+        <label for="tt-start">Starts</label>
+        <input id="tt-start" type="time" required>
+      </div>
+      <div class="field" id="tt-field-end">
+        <label for="tt-end">Ends</label>
+        <input id="tt-end" type="time" required>
+      </div>
+    </div>
+    <div class="field" id="tt-field-room">
+      <label for="tt-room">Room</label>
+      <input id="tt-room" type="text" list="tt-rooms" maxlength="80" placeholder="D103 or Hall A1" required>
+      <datalist id="tt-rooms"></datalist>
+    </div>
+    <label class="sch-check"><input type="checkbox" id="tt-outside"> Not on campus: an online class or another building</label>
+    <p class="form-error" id="tt-error" role="alert" hidden></p>
+    <div class="tt-actions">
+      <button type="submit" class="btn-go" id="tt-submit">Add class</button>
+      <button type="button" class="btn-line" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- a screenshot of the portal's Course Schedule, read into classes -->
+<dialog class="sch-dialog wide" id="import" aria-labelledby="im-title">
+  <div class="sch-dialog-band"><span id="im-title">Import from a screenshot</span><button type="button" class="sch-close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="sch-dialog-body">
+    <div id="im-pick">
+      <p class="auth-lead">Take a screenshot of <b>Course Schedule</b> on the student portal (the whole table, days across and hours down) and drop it here. It is read on this device; the picture isn't uploaded.</p>
+      <label class="sch-drop" id="im-drop" for="im-file">
+        <svg class="i" aria-hidden="true"><use href="#i-image"/></svg>
+        <b>Drop the screenshot, paste it, or choose a file</b>
+        <span>PNG or JPG, the sharper the better</span>
+        <input id="im-file" type="file" accept="image/*">
+      </label>
+    </div>
+    <div id="im-work" hidden>
+      <div class="sch-progress"><span id="im-bar"></span></div>
+      <p class="sch-remind-note" id="im-status" role="status">Getting ready…</p>
+    </div>
+    <div id="im-review" hidden>
+      <p class="auth-lead" id="im-found"></p>
+      <div class="im-layout">
+        <div class="im-shot" id="im-shot"></div>
+        <div class="im-table-wrap">
+          <table class="im-table">
+            <thead><tr><th scope="col"><span class="visually-hidden">Keep</span></th><th scope="col">Subject</th><th scope="col">Day</th><th scope="col">Starts</th><th scope="col">Ends</th><th scope="col">Room</th></tr></thead>
+            <tbody id="im-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <fieldset class="im-mode" id="im-mode">
+        <legend class="field-label">Your timetable now</legend>
+        <label><input type="radio" name="im-mode" value="replace" checked> Replace it with these classes</label>
+        <label><input type="radio" name="im-mode" value="add"> Add these to it</label>
+      </fieldset>
+      <p class="form-error" id="im-error" role="alert" hidden></p>
+      <div class="tt-actions">
+        <button type="button" class="btn-go" id="im-save">Save the classes</button>
+        <button type="button" class="btn-line" id="im-again">Another screenshot</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script src="/static/theme.js?v=7"></script>
+<script src="/static/schedule-ocr.js?v=2"></script>
+<script src="/static/reminders.js?v=1"></script>
+<script src="/static/schedule.js?v=3"></script>
+</body>
+</html>
