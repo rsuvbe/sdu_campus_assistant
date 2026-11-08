@@ -112,7 +112,7 @@ function showEventsMessage(text, retry = false) {
 }
 
 function eventRow(ev) {
-  const [weekday, ...day] = ev.date.split(" ");
+  const [weekday, dayNum, month] = ev.date.split(" ");
   const where = ev.where ? `, ${ev.where}` : "";
   const more = [
     ev.link ? `<a class="btn-text ev-link" href="${esc(ev.link)}" target="_blank" rel="noopener noreferrer">Announcement${icon("out-link")}</a>` : "",
@@ -122,8 +122,9 @@ function eventRow(ev) {
   return `<li class="ev-item"><a class="dir-row ev-row${ev.on_now ? " open" : ""}" href="/?ask=${encodeURIComponent(ev.ask)}"
       title="${esc(ev.title)}${where ? ` (${esc(ev.where)})` : ""}"
       aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.on_now ? ", on now" : ""}`)}">
-      <span class="ev-date"><span>${esc(weekday)}</span><b>${esc(day.join(" "))}</b></span>
-      <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)} · ${esc(ev.time)}</span></span>
+      <span class="ev-date"><span>${esc(weekday)}</span><b>${esc(dayNum)}</b><span>${esc(month)}</span></span>
+      <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)} · ${esc(ev.time)}</span>${
+        ev.description ? `<span class="ev-desc">${esc(ev.description)}</span>` : ""}</span>
       ${ev.on_now ? `<span class="state">On now</span>` : ""}</a>
       ${more ? `<div class="ev-more">${more}</div>` : ""}</li>`;
 }

@@ -77,13 +77,56 @@ async function load() {
 }
 
 /* ------------------------------------------------------------ timetable */
-// the week itself lives on /schedule; the profile says how full it is
+// the week itself lives on /schedule; the profile shows how full it is, the next
+// class and today's, so the page that opens most days answers the daily question
 async function loadTimetable() {
   try {
     const res = await fetch("/api/schedule");
     if (!res.ok) return;
-    const n = (await res.json()).classes.length;
+    const classes = (await res.json()).classes;
+    const n = classes.length;
     $("#tt-count").textContent = n ? `${n} class${n === 1 ? "" : "es"} a week` : "Empty so far";
+    const R = window.SDUReminders;
+    if (!n || !R) return;
+    const text = (s) => document.createTextNode(s);
+    const { next, at } = R.nextClass(classes);
+    const when = R.whenSaid(at);
+    const nextBox = $("#tt-next");
+    nextBox.replaceChildren();
+    const label = document.createElement("p");
+    label.className = "field-label";
+    label.textContent = "Your next class";
+    const title = document.createElement("p");
+    title.className = "tt-next-title";
+    title.textContent = next.subject;
+    const line = document.createElement("p");
+    line.className = "tt-next-when";
+    const room = document.createElement("b");
+    room.textContent = next.room_label;
+    line.append(text(`${when[0].toUpperCase()}${when.slice(1)}, ${next.start}–${next.end} · `), room, text(` · ${next.where}`));
+    const go = document.createElement("a");
+    go.className = "btn-line";
+    go.href = R.NEXT_ROUTE;
+    go.textContent = "How do I get there";
+    nextBox.append(label, title, line, go);
+
+    const today = R.campus().day;
+    const list = $("#tt-today");
+    const mine = classes.filter((c) => c.day === today);
+    list.replaceChildren(...(mine.length ? mine.map((c) => {
+      const li = document.createElement("li");
+      const time = document.createElement("span");
+      time.className = "tt-today-time";
+      time.textContent = `${c.start}–${c.end}`;
+      const what = document.createElement("span");
+      what.className = "tt-today-what";
+      const b = document.createElement("b");
+      b.textContent = c.subject;
+      what.append(b, text(` · ${c.room_label}`));
+      li.append(time, what);
+      return li;
+    }) : [Object.assign(document.createElement("li"), { className: "tt-today-none", textContent: "No classes today." })]));
+    $("#tt-glance").hidden = false;
   } catch { /* the link still works */ }
 }
 

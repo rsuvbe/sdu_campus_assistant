@@ -492,8 +492,11 @@ a.dir-row { color: inherit; text-decoration: none; }
 .ev-field input::placeholder { color: var(--ink-3); font-weight: 500; }
 .ev-count { margin: 0; font-size: var(--t-13); font-weight: 600; color: var(--ink-2); }
 .ev-row { padding: 10px 0; }
-.ev-date { display: grid; flex: none; min-width: 3.5rem; line-height: 1.25; }
+/* the date as a notice board prints it: the weekday, the day large, the month */
+.ev-date { display: grid; justify-items: center; flex: none; min-width: 3.5rem; line-height: 1.15; align-self: flex-start; }
 .ev-date span { font-size: var(--t-12); font-weight: 600; color: var(--ink-3); }
+.ev-date b { font-size: var(--t-22); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ev-desc { font-size: var(--t-13); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ev-row:hover .ev-date b { color: var(--ink); }
 /* a title or a place that is long wraps, so the row never needs a sideways scroll */
 .ev-text b, .ev-text .where { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
@@ -1228,6 +1231,27 @@ a.dir-row { color: inherit; text-decoration: none; }
 .ev-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); }
 .ev-item { display: grid; }
 .ev-more { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s3); margin: -6px 0 8px calc(3.5rem + 10px); }
+@media (min-width: 1100px) {
+  /* events: the list leads, SDU's news runs beside it */
+  .events-main {
+    max-width: 1320px; padding: var(--s10) var(--s8);
+    display: grid; grid-template-columns: minmax(0, 1fr) 400px; column-gap: var(--s10); align-items: start;
+  }
+  .events-main > .directory.news { margin-top: 0; padding-top: 6px; }
+  .events-main .section-title { font-size: var(--t-28); letter-spacing: -0.03em; }
+  .ev-fields { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: end; }
+  .ev-list .dir-list, #ev-list .dir-list { padding: 0 var(--s5); }
+  .ev-row { min-height: 84px; padding: var(--s4) 0; gap: var(--s4); }
+  .ev-date { min-width: 4rem; }
+  .ev-text b { font-size: var(--t-16); }
+  /* an administrator's actions on the row itself, at its right */
+  .ev-item { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .ev-item .ev-more { margin: 0; justify-content: flex-end; }
+  .news { position: sticky; top: 84px; max-height: calc(100dvh - 108px); overflow: auto; overscroll-behavior: contain; padding-right: 4px; }
+  .news .news-link { grid-template-columns: 96px minmax(0, 1fr); }
+  .news .news-pic { width: 96px; }
+  .news .news-excerpt { -webkit-line-clamp: 2; }
+}
 .ev-more .btn-text { min-height: 32px; font-size: var(--t-13); }
 .ev-link .i { width: 14px; height: 14px; }
 .events-main > .directory + .directory { margin-top: var(--s10); }

@@ -477,6 +477,69 @@ a.btn-go { text-decoration: none; }
 .im-mode label { display: flex; align-items: center; gap: 8px; font-size: var(--t-14); }
 .im-mode input { accent-color: var(--action); }
 
+/* the profile's look at the week: the next class and today's, above the way to all of it */
+.tt-glance { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); margin: 0 0 var(--s5); }
+.tt-glance-next { display: grid; gap: 2px; justify-items: start; padding: var(--s4); background: var(--stock-2); border-radius: 10px; }
+.tt-next-title { margin: 2px 0 0; font-size: var(--t-18); font-weight: 800; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.tt-next-when { margin: 0 0 var(--s3); font-size: var(--t-14); color: var(--ink-2); }
+.tt-next-when b { color: var(--ink); }
+.tt-glance-next .btn-line { text-decoration: none; }
+.tt-glance-today .field-label { margin-bottom: var(--s2); }
+.tt-today { list-style: none; margin: 0; padding: 0; display: grid; }
+.tt-today li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--s3); padding: 8px 0; border-top: 1px solid var(--line); font-size: var(--t-14); }
+.tt-today li:first-child { border-top: 0; padding-top: 0; }
+.tt-today-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tt-today-what { color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.tt-today-what b { color: var(--ink); }
+.tt-today .tt-today-none { display: block; color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- the account pages on a desk */
+/* On a wide screen the profile, the timetable and the events stop being one
+   narrow column: the thing used every day leads in the wide column, and the
+   rest sits beside it. Under these widths everything stays as it was. */
+@media (min-width: 1100px) {
+  /* profile: your card held on the left; the week, then the password, on the right */
+  .profile { max-width: 1280px; margin: 0 auto; padding: var(--s10) var(--s8) var(--s10); }
+  #member.profile-grid {
+    grid-template-columns: 380px minmax(0, 1fr); justify-content: stretch;
+    grid-template-areas: "id week" "id password"; column-gap: var(--s8); row-gap: var(--s6);
+  }
+  #member .id-card { grid-area: id; position: sticky; top: 92px; }
+  #member .tt-card { grid-area: week; grid-column: auto; }
+  #member .pw-card { grid-area: password; }
+  .tt-card, .pw-card { padding: var(--s8); }
+  .section-title { font-size: var(--t-28); letter-spacing: -0.03em; }
+  .tt-glance { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s6); align-items: start; }
+  /* the password as a settings row: what it does on the left, the form on the right */
+  .pw-card {
+    display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 460px);
+    grid-template-rows: auto 1fr; column-gap: var(--s10); align-items: start;
+  }
+  .pw-card > .auth-lead { margin-top: var(--s2); }
+  .pw-card > .section-title, .pw-card > .auth-lead { grid-column: 1; }
+  .pw-card > form { grid-column: 2; grid-row: 1 / span 2; }
+
+  /* timetable: the sheet leads; the next class and the reminders sit beside it */
+  .sch { max-width: 1600px; padding: var(--s10) var(--s8) var(--s10); }
+  .sch-page {
+    grid-template-columns: minmax(0, 1fr) 340px; column-gap: var(--s6); row-gap: var(--s5);
+    grid-template-areas: "head head" "sheet next" "sheet remind" "sheet .";
+    align-items: start;
+  }
+  .sch-head { grid-area: head; }
+  .sch-title .section-title { font-size: var(--t-28); }
+  .sch-next { grid-area: next; flex-direction: column; align-items: stretch; padding: var(--s5) var(--s5) calc(var(--s5) + 4px); }
+  .sch-next .btn-go { width: 100%; }
+  .sch-sheet { grid-area: sheet; }
+  .sch-remind { grid-area: remind; grid-template-columns: minmax(0, 1fr); padding: var(--s5); }
+  .sch-grid { --slot: 62px; }
+  .sch-class { padding: 6px 8px; gap: 2px; }
+  .sch-code { font-size: var(--t-14); }
+  .sch-room { font-size: var(--t-13); }
+  .sch-room .i { width: 13px; height: 13px; }
+  .sch-dayhead b { font-size: var(--t-18); }
+}
+
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 1023px) {
   /* the entrance becomes a band across the top; the cards follow under it */

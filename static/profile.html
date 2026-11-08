@@ -18,8 +18,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=99">
-<link rel="stylesheet" href="/static/auth.css?v=67">
+<link rel="stylesheet" href="/static/styles.css?v=101">
+<link rel="stylesheet" href="/static/auth.css?v=69">
 </head>
 <body class="profile-body">
 
@@ -128,12 +128,19 @@
         <span class="tt-count" id="tt-count"></span>
       </div>
       <p class="auth-lead">Your week has a page of its own: all of it on one sheet as the portal draws it, a reminder before each class with the way to its room, and import from a screenshot of the portal's Course Schedule.</p>
+      <div class="tt-glance" id="tt-glance" hidden>
+        <div class="tt-glance-next" id="tt-next"></div>
+        <div class="tt-glance-today">
+          <h3 class="field-label" id="tt-today-title">Today</h3>
+          <ul class="tt-today" id="tt-today" aria-labelledby="tt-today-title"></ul>
+        </div>
+      </div>
       <a class="btn-go" href="/schedule">Open your timetable<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
     </section>
   </div>
 </main>
 <script src="/static/theme.js?v=7"></script>
 <script src="/static/reminders.js?v=2"></script>
-<script src="/static/profile.js?v=6"></script>
+<script src="/static/profile.js?v=7"></script>
 </body>
 </html>
