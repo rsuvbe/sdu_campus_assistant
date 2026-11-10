@@ -13,6 +13,7 @@ import pytest
 
 TMP_USERS_DB = Path(tempfile.mkdtemp(prefix="campus-tests-")) / "users.db"
 os.environ["CAMPUS_USERS_DB"] = str(TMP_USERS_DB)
+os.environ["SDULIFE_SYNC"] = "0"           # no test goes to life.sdu.edu.kz
 
 from fastapi.testclient import TestClient      # noqa: E402  (after the env var)
 

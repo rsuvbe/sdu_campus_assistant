@@ -667,17 +667,19 @@ class CampusIndex:
         return self._class_room(room)
 
     def added_event(self, row: dict) -> dict:
-        """An event an administrator added, shaped like a row of the events table:
-        its room by the directory's id, its id marked so it isn't taken for one
-        shipped in campus.db."""
+        """An event of the accounts database (added by an administrator, or copied
+        from SDU Life), shaped like a row of the events table: its room by the
+        directory's id, its id marked so it isn't taken for one shipped in
+        campus.db. A copied one is changed at its source, not here."""
         room = self.directory_room(row.get("room_number")) if row.get("room_number") else None
         return {**row, "event_id": f"a{row['event_id']}", "room_id": room["room_id"] if room else None,
-                "editable": True}
+                "editable": not row.get("source")}
 
     @staticmethod
     def _event_payload(row: dict, room: dict | None, stamp: str) -> dict:
         return {"event_id": row["event_id"], "title": row["title"], "description": row["description"],
                 "link": row.get("link"), "editable": bool(row.get("editable")),
+                "source": row.get("source"), "organizer": row.get("organizer"),
                 "room_value": row.get("room_number") or (room["room_number"] if room else None),
                 "starts_input": row["starts_at"].replace(" ", "T"), "ends_input": row["ends_at"].replace(" ", "T"),
                 "place": row["place"], "room": room["room_number"] if room else None,

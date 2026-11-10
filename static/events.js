@@ -5,6 +5,9 @@
    page shows the answer. A row goes to the map and asks about that event, so its
    room lights up on the plan and its card comes up in the answers.
 
+   Most events are copied from SDU Life (life.sdu.edu.kz) by the server, at most
+   every half hour; they are changed there, so they have no Edit here.
+
    Below the events, the university's own news from sdu.edu.kz. An administrator
    (CAMPUS_ADMINS on the server) also gets Add, Edit and Delete, and can start an
    event from a news story. */
@@ -75,6 +78,7 @@ async function loadEvents() {
   if (seq !== eventsView.seq) return;
 
   eventsView.ranges = data.ranges;
+  showSources(data.sources || []);
   $("#ev-controls").hidden = !data.total;     // nothing to search in an empty list
   const noun = (n) => `${n} ${n === 1 ? "event" : "events"}`;
   $("#ev-count").textContent = !data.total ? ""
@@ -99,8 +103,40 @@ async function loadEvents() {
       $("#ev-q").focus();
     });
   } else {
-    list.innerHTML = `<div class="ev-empty"><p><b>No events have been added yet.</b> They'll appear here, soonest first. Until then, the university's latest news is below.</p></div>`;
+    list.innerHTML = `<div class="ev-empty"><p><b>No upcoming events yet.</b> They'll appear here, soonest first, as SDU Life announces them. Until then, the university's latest news is below.</p></div>`;
   }
+}
+
+// where the events come from, and when they were last copied
+function showSources(sources) {
+  const box = $("#ev-source");
+  const life = sources[0];
+  box.hidden = !life;
+  if (!life) return;
+  const when = life.synced_at ? `, copied ${esc(eventStamp(life.synced_at))}` : "";
+  box.innerHTML = `${icon("refresh")}<span>From <a href="${esc(life.url)}" target="_blank" rel="noopener noreferrer">${esc(life.name)}</a>${when}${
+    life.stale ? " · it couldn't be reached just now" : ""}</span>${
+    admin ? `<button type="button" class="btn-text" data-ev-sync>Update now</button>` : ""}`;
+  box.querySelector("[data-ev-sync]")?.addEventListener("click", syncNow);
+}
+
+// "2026-11-11 14:05" → "today at 14:05", or "11 Nov at 14:05"
+function eventStamp(stamp) {
+  const [day, time] = stamp.split(" ");
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
+  if (day === today) return `today at ${time}`;
+  const d = new Date(`${day}T00:00`);
+  return `${d.getDate()} ${d.toLocaleString("en-GB", { month: "short" })} at ${time}`;
+}
+
+async function syncNow(e) {
+  const button = e.currentTarget;
+  button.disabled = true;
+  button.textContent = "Updating…";
+  const res = await fetch("/api/events/sync", { method: "POST" }).catch(() => null);
+  if (res && res.ok) { loadEvents(); return; }
+  button.disabled = false;
+  button.textContent = "Couldn't update. Try again";
 }
 
 // a message where the list would be: the server's own words for a bad date, or a failed request
@@ -115,15 +151,17 @@ function eventRow(ev) {
   const [weekday, dayNum, month] = ev.date.split(" ");
   const where = ev.where ? `, ${ev.where}` : "";
   const more = [
-    ev.link ? `<a class="btn-text ev-link" href="${esc(ev.link)}" target="_blank" rel="noopener noreferrer">Announcement${icon("out-link")}</a>` : "",
+    ev.link ? `<a class="btn-text ev-link" href="${esc(ev.link)}" target="_blank" rel="noopener noreferrer">${
+      ev.source === "sdulife" ? "On SDU Life" : "Announcement"}${icon("out-link")}</a>` : "",
     admin && ev.editable ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">Edit</button>
       <button type="button" class="btn-text" data-ev-delete="${esc(ev.event_id)}">Delete</button>` : "",
   ].join("");
   return `<li class="ev-item"><a class="dir-row ev-row${ev.on_now ? " open" : ""}" href="/?ask=${encodeURIComponent(ev.ask)}"
       title="${esc(ev.title)}${where ? ` (${esc(ev.where)})` : ""}"
-      aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.on_now ? ", on now" : ""}`)}">
+      aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.organizer ? `, by ${ev.organizer}` : ""}${ev.on_now ? ", on now" : ""}`)}">
       <span class="ev-date"><span>${esc(weekday)}</span><b>${esc(dayNum)}</b><span>${esc(month)}</span></span>
-      <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)} · ${esc(ev.time)}</span>${
+      <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)} · ${esc(ev.time)}${
+        ev.organizer ? ` · ${esc(ev.organizer)}` : ""}</span>${
         ev.description ? `<span class="ev-desc">${esc(ev.description)}</span>` : ""}</span>
       ${ev.on_now ? `<span class="state">On now</span>` : ""}</a>
       ${more ? `<div class="ev-more">${more}</div>` : ""}</li>`;

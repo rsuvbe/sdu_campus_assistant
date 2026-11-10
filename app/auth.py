@@ -293,9 +293,15 @@ SQLITE_SCHEMA = """
         created_at  TEXT NOT NULL,
         -- the title and description case-folded, so a word search is one query in
         -- both databases, Cyrillic included, whatever the server's locale
-        search_text TEXT NOT NULL DEFAULT ''
+        search_text TEXT NOT NULL DEFAULT '',
+        -- copied from elsewhere (app/sdulife.py): 'sdulife' and its id there; NULL: added here
+        source      TEXT,
+        source_id   TEXT,
+        organizer   TEXT,
+        synced_at   TEXT               -- campus time of the copy that last saw it
     );
     CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id);
 """
 POSTGRES_SCHEMA = [
     """CREATE TABLE IF NOT EXISTS users (
@@ -339,7 +345,16 @@ POSTGRES_SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at)",
     # added after the table first went live; a table made since has it already
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS search_text TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS source_id TEXT",
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS organizer TEXT",
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS synced_at TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id)",
 ]
+
+# columns campus_events gained after it first went live, for an SQLite file made before them
+EVENT_COLUMNS = {"search_text": "TEXT NOT NULL DEFAULT ''", "source": "TEXT", "source_id": "TEXT",
+                 "organizer": "TEXT", "synced_at": "TEXT"}
 
 
 CLASS_FIELDS = ('class_id, subject, day_of_week AS day, start_time AS start, '
@@ -383,9 +398,12 @@ class UserStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             self._migrate(conn)
+            existing = {r["name"] for r in conn.execute("PRAGMA table_info(campus_events)")}
+            if existing:
+                for column, kind in EVENT_COLUMNS.items():
+                    if column not in existing:
+                        conn.execute(f"ALTER TABLE campus_events ADD COLUMN {column} {kind}")
             conn.executescript(SQLITE_SCHEMA)
-            if "search_text" not in {r["name"] for r in conn.execute("PRAGMA table_info(campus_events)")}:
-                conn.execute("ALTER TABLE campus_events ADD COLUMN search_text TEXT NOT NULL DEFAULT ''")
             self._fill_search_text(conn)
 
     @staticmethod
@@ -617,7 +635,7 @@ class UserStore:
         return self.classes(user_id)
 
     # ---------------------------------------------------------------- events
-    EVENT_FIELDS = "event_id, title, description, place, room_number, starts_at, ends_at, link"
+    EVENT_FIELDS = "event_id, title, description, place, room_number, starts_at, ends_at, link, source, organizer"
 
     def campus_events(self, after: str | None = None, words: list[str] | tuple = (),
                       start: str | None = None, end: str | None = None) -> list[dict]:
@@ -667,7 +685,7 @@ class UserStore:
             row = conn.execute(
                 "UPDATE campus_events SET title = ?, description = ?, place = ?, room_number = ?,"
                 " starts_at = ?, ends_at = ?, link = ?, search_text = ?"
-                f" WHERE event_id = ? RETURNING {self.EVENT_FIELDS}",
+                f" WHERE event_id = ? AND source IS NULL RETURNING {self.EVENT_FIELDS}",
                 (fields["title"], fields["description"], fields["place"], room_number, fields["starts_at"],
                  fields["ends_at"], fields["link"], search_text(fields["title"], fields["description"]),
                  event_id)).fetchone()
@@ -675,9 +693,50 @@ class UserStore:
 
     def delete_event(self, event_id: int) -> bool:
         with self._connect() as conn:
-            row = conn.execute("DELETE FROM campus_events WHERE event_id = ? RETURNING event_id",
+            row = conn.execute("DELETE FROM campus_events WHERE event_id = ? AND source IS NULL"
+                               " RETURNING event_id",
                                (event_id,)).fetchone()
         return row is not None
+
+    def event_source(self, event_id: int) -> str | None:
+        """Where an event was copied from, or None: added here, or not there at all."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT source FROM campus_events WHERE event_id = ?", (event_id,)).fetchone()
+        return row["source"] if row else None
+
+    def sync_events(self, source: str, events: list[dict], stamp: str) -> dict:
+        """Make the events copied from `source` what it lists now, in one
+        transaction: each one, by its id there, added or brought up to date. An
+        upcoming one it no longer lists was called off and is deleted; one that has
+        started stays, as the source only lists the last weeks."""
+        seen = [e["source_id"] for e in events]
+        with self._connect() as conn:
+            for e in events:
+                conn.execute(
+                    "INSERT INTO campus_events (title, description, place, room_number, starts_at, ends_at, link,"
+                    " created_at, search_text, source, source_id, organizer, synced_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    " ON CONFLICT (source, source_id) DO UPDATE SET title = excluded.title,"
+                    " description = excluded.description, place = excluded.place,"
+                    " room_number = excluded.room_number, starts_at = excluded.starts_at,"
+                    " ends_at = excluded.ends_at, link = excluded.link, search_text = excluded.search_text,"
+                    " organizer = excluded.organizer, synced_at = excluded.synced_at",
+                    (e["title"], e["description"], e["place"], e.get("room_number"), e["starts_at"],
+                     e["ends_at"], e["link"], _now().isoformat(), search_text(e["title"], e["description"]),
+                     source, e["source_id"], e.get("organizer"), stamp))
+            gone = 0
+            if seen:
+                marks = ", ".join("?" for _ in seen)
+                gone = len(conn.execute(
+                    f"DELETE FROM campus_events WHERE source = ? AND starts_at > ? AND source_id NOT IN ({marks})"
+                    " RETURNING event_id", (source, stamp[:16], *seen)).fetchall())
+        return {"synced": len(events), "removed": gone}
+
+    def last_sync(self, source: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT MAX(synced_at) AS synced FROM campus_events WHERE source = ?",
+                               (source,)).fetchone()
+        return row["synced"] if row else None
 
     def delete_class(self, user_id: int, class_id: int) -> bool:
         with self._connect() as conn:

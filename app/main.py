@@ -31,6 +31,7 @@ from .floorplan import CampusMap
 from .routing import Router
 from .mailer import mail_configured, send_reset_link
 from .news import NewsFeed
+from .sdulife import SduLifeSync
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("CAMPUS_DB", BASE_DIR / "data" / "campus.db"))
@@ -120,6 +121,22 @@ def _events_changed() -> None:
 
 
 news_feed = NewsFeed()
+
+
+def _room_of(place: str) -> str | None:
+    room = index.directory_room(place)
+    return room["room_number"] if room else None
+
+
+# SDU Life's events, copied into campus_events at most every half hour when the
+# events page asks (app/sdulife.py). SDULIFE_SYNC=0 turns it off (the tests do).
+sdulife = SduLifeSync(users, room_of=_room_of) \
+    if os.environ.get("SDULIFE_SYNC", "1").lower() not in ("0", "false", "no") else None
+
+
+def _sync_sdulife(force: bool = False) -> None:
+    if sdulife and sdulife.refresh(force=force):
+        _events_changed()
 
 
 def _set_session(response: Response, user: dict | None) -> None:
@@ -471,17 +488,21 @@ def events(q: str | None = Query(None, max_length=200,
            to: str | None = Query(None,
                                   description="Last day of the period, YYYY-MM-DD, included"),
            user: dict = Depends(current_user)):
-    """Upcoming campus events, soonest first. A visitor may read them."""
+    """Upcoming campus events, soonest first. A visitor may read them. Those of
+    SDU Life are copied in first, when the last copy is half an hour old."""
     start, end = _event_date(frm, "from"), _event_date(to, "to")
     if start and end and start > end:
         raise HTTPException(status_code=400, detail={
             "field": "to", "message": "The last day can't be before the first."})
     # the same query, run on the events an administrator added (US20)
     stamp = campus_now().strftime("%Y-%m-%d %H:%M")
+    _sync_sdulife()
     added = users.campus_events(after=stamp, words=(q or "").split(),
                                 start=f"{start:%Y-%m-%d} 00:00" if start else None,
                                 end=f"{end + timedelta(days=1):%Y-%m-%d} 00:00" if end else None)
-    return index.events(q, start, end, added=added, added_total=users.count_events(stamp))
+    result = index.events(q, start, end, added=added, added_total=users.count_events(stamp))
+    result["sources"] = [sdulife.status()] if sdulife else []
+    return result
 
 
 class EventForm(BaseModel):
@@ -514,10 +535,13 @@ def _event_fields(form: EventForm) -> tuple[dict, str | None]:
 
 def _added_id(event_id: str) -> int:
     """'a12' is the event an administrator added with id 12; any other id is
-    one shipped in campus.db, which is changed there and not here."""
+    one shipped in campus.db, which is changed there and not here. One copied
+    from SDU Life is changed on SDU Life (409)."""
     match = re.fullmatch(r"a(\d{1,18})", event_id)
     if not match:
         raise HTTPException(status_code=404, detail="That event can't be changed here.")
+    if users.event_source(int(match[1])):
+        raise HTTPException(status_code=409, detail="This event comes from SDU Life; change it there.")
     return int(match[1])
 
 
@@ -550,6 +574,17 @@ def delete_event(event_id: str, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail="That event isn't there any more.")
     _events_changed()
     return {"ok": True}
+
+
+@app.post("/api/events/sync", tags=["events"])
+def sync_events(user: dict = Depends(require_admin)):
+    """An administrator copies SDU Life's events now, without waiting for the half hour."""
+    if not sdulife:
+        raise HTTPException(status_code=404, detail="Copying from SDU Life is turned off on this server.")
+    _sync_sdulife(force=True)
+    if sdulife.ok is False:
+        raise HTTPException(status_code=502, detail="SDU Life couldn't be read just now. Try again later.")
+    return sdulife.status()
 
 
 @app.get("/api/news", tags=["events"])

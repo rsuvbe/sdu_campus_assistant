@@ -496,6 +496,10 @@ a.dir-row { color: inherit; text-decoration: none; }
 .ev-date { display: grid; justify-items: center; flex: none; min-width: 3.5rem; line-height: 1.15; align-self: flex-start; }
 .ev-date span { font-size: var(--t-12); font-weight: 600; color: var(--ink-3); }
 .ev-date b { font-size: var(--t-22); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ev-source { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: calc(-1 * var(--s2)) 0 var(--s3); font-size: var(--t-13); color: var(--ink-2); }
+.ev-source a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.ev-source .i { width: 14px; height: 14px; flex: none; }
+.ev-source[hidden] { display: none; }
 .ev-desc { font-size: var(--t-13); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ev-row:hover .ev-date b { color: var(--ink); }
 /* a title or a place that is long wraps, so the row never needs a sideways scroll */

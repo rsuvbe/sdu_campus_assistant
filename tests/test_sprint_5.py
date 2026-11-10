@@ -510,7 +510,7 @@ def test_us19_an_empty_table_says_so_and_nothing_is_made_up_to_fill_it(tmp_path)
     conn.close()
     page = CampusIndex.load(copy).events(now=NOV_10)
     assert page["events"] == [] and page["total"] == 0
-    assert "No events have been added yet." in EVENTS_JS
+    assert "No upcoming events yet." in EVENTS_JS
     assert 'hidden = !data.total' in EVENTS_JS       # no search box over nothing
 
 

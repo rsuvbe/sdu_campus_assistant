@@ -96,6 +96,35 @@ is made up, so the page says no events have been added yet; the story sheet's
 their own in a copy of the database. An event goes in as a row in
 `data/campus.sql`, then `python3 tools/build_db.py`.
 
+## Events from SDU Life — November 2026
+
+SDU Life (`life.sdu.edu.kz`), the university's student platform, lists the
+clubs' and offices' events. Its public home page carries every event of the
+last weeks and the coming ones in its Next.js payload; its `/api/` is closed
+to robots and each event's own page asks for a sign-in, so only that public
+page is read (`app/sdulife.py`).
+
+| What | How it works |
+|---|---|
+| **Copied, not proxied** | US19/US20 want the events in our own database and searched there, so they are copied into `campus_events` (next to the ones administrators add, `source = 'sdulife'` and SDU Life's id in `source_id`) and the page, the search and the map read them from there. Nothing about US20's query changes |
+| **When** | `/api/events` copies them first when the last copy is 30 minutes old. The time of the last copy is in the database, so all server instances go by the same one; the page itself takes ~0.1 s. When SDU Life can't be reached the last copy stays, the page says so, and it's tried again after 5 minutes. An administrator can press **Update now** (`POST /api/events/sync`) |
+| **What is kept** | Title, description (up to 1000 characters), place, organizer, start, and a link to the event on SDU Life. SDU Life gives no end time: an event is taken to last two hours, and one without a time the whole day. Organisers put registration links, dates and hours in the place field, so those lines are dropped; an empty one becomes "Place not announced". A place that names a room of the directory (`F202`) lights it up on the plan |
+| **Changes** | A second copy updates each event in place by its SDU Life id. An upcoming one SDU Life no longer lists was called off and is deleted; one that has started stays. A copied event has no Edit or Delete here (409): it is changed on SDU Life |
+| **Turning it off** | `SDULIFE_SYNC=0`; the tests do, and never go to the network |
+
+**Next: the posters.** Each SDU Life event has a banner, and the banner is
+usually more exact than the fields. Of the 14 upcoming events on 11 November
+2026, the posters gave a room or hall where the fields said only "SDU LIFE
+CENTRE" or "SDU University" (QAMQOR GALA in Red Hall, AIQYN in Blue Hall, SDU
+Team Relay in Sport Hall), an end time for four (Health Day 09:00–16:00, EDU
+JOB FAIR 10:00–14:00, Night at the Museum 17:30–20:30, Quanysh Alemi over two
+days), and a different start for six, by up to five hours (K-POP Random Dance:
+13:00 in the fields, 18:00 on the poster). The descriptions name no rooms. The
+plan: read each poster once with a vision model (stylised fonts are beyond
+tesseract), keep the result by event id and image URL, let it fill the place
+and the end, and decide how a start time that disagrees is shown. It needs an
+`ANTHROPIC_API_KEY`. Blue Hall and Sport Hall are not in the directory yet.
+
 ## Events and SDU news — November 2026
 
 SDU University publishes no events a program can read: sdu.edu.kz's events
@@ -554,11 +583,15 @@ room's own answer.
   its corridor, not surveyed, and the open floor west of the corridor is walked
   in straight lines between rooms. Distances are never quoted, because the
   sheets have no scale.
-- **Events are added by hand.** The university's site has no events feed, so
-  an administrator adds each one (`CAMPUS_ADMINS`); the news from sdu.edu.kz is
-  shown as news, by the day it was published, and is not turned into events on
-  its own. A change made on one server instance reaches the others' searches
-  within a minute.
+- **Events come from SDU Life's public page.** It has no feed or open API, so
+  the copy reads the events out of its home page's Next.js payload; if SDU Life
+  changes that page, the copy fails, the last one stays and the page says SDU
+  Life couldn't be reached. SDU Life gives no end time, so events are taken to
+  last two hours, and only places that name a directory room light up on the
+  plan ("SDU LIFE CENTRE", "G block" don't yet). Administrators can still add
+  events by hand (`CAMPUS_ADMINS`). The news from sdu.edu.kz is shown as news
+  and not turned into events. A change made on one server instance reaches the
+  others' searches within a minute.
 - **The timetable knows one week.** It repeats for ever: no term dates, no odd
   and even weeks, no holidays. A class during a break still counts as next, and
   the calendar file repeats with no end date.
@@ -652,6 +685,7 @@ docker run -p 8000:8000 sdu-campus
 | `DATABASE_URL` | unset | Postgres for accounts, sessions and reset links (also read as `CAMPUS_DATABASE_URL` or `POSTGRES_URL`); unset uses SQLite |
 | `CAMPUS_USERS_DB` | `data/users.db` | The SQLite file when there is no `DATABASE_URL` (`/tmp/users.db` on Vercel) |
 | `CAMPUS_SECURE_COOKIES` | off | Set to `true` when serving over HTTPS |
+| `SDULIFE_SYNC` | on | `0` stops copying events from SDU Life (life.sdu.edu.kz) |
 | `CAMPUS_ADMINS` | unset | Comma-separated SDU addresses of the accounts that may add, change and delete events; nobody when unset |
 | `CAMPUS_SEED_ACCOUNT` | unset | `<email>:<password>` — one account recreated at every start, so a shared link keeps working on hosting with no persistent disk |
 | `CAMPUS_SEED_NAME` | `SDU Student` | The full name for that account (every account has one) |
