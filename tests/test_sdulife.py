@@ -434,7 +434,7 @@ def test_a_place_that_names_a_room_lights_it_up(place, room):
     assert main.index.event_place(place)["room"]["room_number"] == room
 
 
-@pytest.mark.parametrize("place", ["Mini Red Hall", "Blue Hall", "Sport Hall", "SDU University", "online reading"])
+@pytest.mark.parametrize("place", ["Mini Red Hall", "Shanyraq Zone", "SDU University", "online reading"])
 def test_a_place_the_directory_doesnt_hold_is_not_taken_for_a_room_it_does(place):
     assert main.index.event_place(place) == {}
 
@@ -541,3 +541,21 @@ def test_a_building_of_the_grounds_is_found_by_name(question, code):
 
 def test_a_room_is_still_a_room_not_a_building_of_the_grounds():
     assert main.index.search("Red Hall")["kind"] == "room"
+
+
+@pytest.mark.parametrize("place, hall", [("Sport Hall", "Sport Hall"), ("SDU University, Blue Hall", "Blue Hall"),
+                                         ("спортзал", "Sport Hall")])
+def test_sport_hall_and_blue_hall_are_in_sdu_life_centre(place, hall):
+    assert main.index.event_place(place) == {"building": "SDU Life Centre", "hall": hall}
+
+
+def test_an_event_in_blue_hall_is_shown_at_sdu_life_centre(live):
+    live._fetch = lambda: page([{**EVENTS[0], "location": "SDU LIFE CENTRE",
+                                 "description": "Venue: SDU University, Blue Hall"}])
+    c = account(4102)
+    quiz = c.get("/api/events").json()["events"][0]
+    assert quiz["place"] == "SDU University, Blue Hall" and quiz["where"] == "SDU Life Centre"
+    a = c.get("/api/search", params={"q": "ZHAUAP BER!"}).json()
+    assert a["map"]["code"] == "SDU-LIFE" and "in Blue Hall, in SDU Life Centre" in a["summary"]
+    for question in ("Blue Hall", "where is Sport Hall"):
+        assert main.index.search(question)["map"]["code"] == "SDU-LIFE"

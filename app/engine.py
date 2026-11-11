@@ -208,6 +208,8 @@ LIFE_CENTRE_RE = re.compile(r"\blife\s*(?:cent(?:re|er)|центр)|лайф\s*�
 BLOCK_CYR_MAP = {"а": "A", "б": "B", "с": "C", "д": "D", "е": "E", "ф": "F", "г": "G", "н": "H"}
 BLOCK_CYR = str.maketrans({**BLOCK_CYR_MAP, **{k.upper(): v for k, v in BLOCK_CYR_MAP.items()}})
 WIFI_RE = re.compile(r"\bwi-?\s?fi\b|вай-?\s?фай", re.I)
+# the halls inside SDU Life Centre
+LIFE_HALLS_RE = re.compile(r"\b(sport|blue)\s*hall\b|(?:спорт\s*зал)", re.I)
 PLACE_FILLER = {"sdu", "university", "university's", "hall", "зал", "залы", "зале", "аудитория",
                 "ауд", "room", "кабинет", "бочка", "barrel", "in", "в", "the", "campus", "кампус"}
 
@@ -495,6 +497,9 @@ class CampusIndex:
         `block`, the one shown: the middle of a run of three or more. `building`
         for SDU Life Centre, a building of its own off these plans."""
         text = place or ""
+        hall = LIFE_HALLS_RE.search(text)
+        if hall:
+            return {"building": LIFE_CENTRE, "hall": f"{(hall.group(1) or 'sport').capitalize()} Hall"}
         if LIFE_CENTRE_RE.search(text):
             return {"building": LIFE_CENTRE}
         # a Cyrillic letter typed for a Latin one: a hall's ("С1"), a block's ("блок Е")
@@ -792,6 +797,8 @@ class CampusIndex:
             return f"Floor {room['floor_number']} · Block {room['building_id']}"
         if spot.get("blocks"):
             return self.blocks_label(spot["blocks"])
+        if spot.get("hall"):
+            return spot["building"]
         if spot.get("building"):
             return "a separate building"
         return None
@@ -828,8 +835,10 @@ class CampusIndex:
                 answer = self._site_answer(spot["building"])
                 answer.update({"kind": "event", "title": event["title"], "occasion": occasion,
                                "place": event["place"],
-                               "summary": f"{event['title']} is on {when}, at {spot['building']}. "
-                                          f"{answer['summary']}"})
+                               "summary": f"{event['title']} is on {when}, "
+                                          + (f"in {spot['hall']}, in {spot['building']}. " if spot.get("hall")
+                                             else f"at {spot['building']}. ")
+                                          + answer["summary"]})
                 return answer
             elif event["place"] == "Place not announced":
                 summary = f"{event['title']} is on {when}. SDU Life doesn't say where yet."

@@ -23,9 +23,10 @@ SIZE = (2660.0, 4460.0)
 BUILDINGS = [
     {"code": "SDU-LIFE", "label": "SDU Life Centre", "sub": "separate building",
      "aliases": ["sdu life", "sdu life centre", "sdu life center", "life centre", "life center",
-                 "лайф центр", "сду лайф"],
+                 "лайф центр", "сду лайф", "sport hall", "blue hall", "спортзал", "спорт зал"],
      "about": "SDU Life Centre stands on its own, south-west of the main building, past the sports "
-              "grounds. From the west entrance by Block G, walk west to the drive and south along it.",
+              "grounds; Sport Hall and Blue Hall are in it. From the west entrance by Block G, walk "
+              "west to the drive and south along it.",
      "outline": [(209, 837), (315, 837), (315, 952), (209, 952)],
      "door": (262, 837)},
     {"code": "STUDENT-HOUSE", "label": "Student House", "sub": "dormitory, 1/2",
