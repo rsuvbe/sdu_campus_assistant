@@ -320,9 +320,12 @@ def route(to: str = Query(..., min_length=1, max_length=200,
           frm: str | None = Query(None, alias="from", max_length=200,
                                   description="Where from: any room, a named place or an exit. "
                                               "Left out, the route starts at the main entrance."),
+          via: str | None = Query(None, max_length=120,
+                                  description="To a building of the grounds: the door of floor 1 to "
+                                              "go out by, one of the route's `alternatives`."),
           user: dict = Depends(current_user)):
     """Step-by-step walking directions between two places, drawn on the plans too."""
-    return index.directions(to, frm)
+    return index.directions(to, frm, via)
 
 
 @app.get("/api/map", tags=["map"])

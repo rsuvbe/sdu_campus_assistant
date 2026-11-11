@@ -302,17 +302,21 @@ function tripBody(r, error = null) {
     ${signStrip(r.signs)}
     ${floors}
     <ol class="steps trip-steps" aria-label="Step by step">${steps}</ol>
+    ${r.alternatives?.length ? `<div class="trip-alts"><h4 class="field-label">Other ways</h4>${r.alternatives.map((a) =>
+      `<button type="button" class="chip" data-via="${esc(a.via)}">${icon("exit")}${esc(a.label)}<span class="alt-len">${
+        a.longer >= 10 ? `${a.longer}% longer` : "about as long"}</span></button>`).join("")}</div>` : ""}
     ${note(r.note)}`;
 }
 
 // Fill a card's route from the server: on the first press, and every time the
 // start is changed (the old route is replaced, on the card and on the plan).
-async function loadTrip(card, d, from) {
+async function loadTrip(card, d, from, via = null) {
   const trip = card.querySelector(".trip");
   trip.setAttribute("aria-busy", "true");
   let r;
   try {
-    const q = `to=${encodeURIComponent(trip.dataset.to)}${from ? `&from=${encodeURIComponent(from)}` : ""}`;
+    const q = `to=${encodeURIComponent(trip.dataset.to)}${from ? `&from=${encodeURIComponent(from)}` : ""}${
+      via ? `&via=${encodeURIComponent(via)}` : ""}`;
     r = await api(`/api/route?${q}`);
   } catch (err) {
     r = { kind: "route_error", title: "Couldn't reach the campus server",
@@ -348,6 +352,9 @@ function wireTrip(card, d) {
     loadTrip(card, d, value || null);
   });
   trip.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => loadTrip(card, d, b.dataset.ask)));
+  // another way to a building of the grounds: out by another door, from the same start
+  trip.querySelectorAll("[data-via]").forEach((b) => b.addEventListener("click", () =>
+    loadTrip(card, d, trip.querySelector("[data-trip-from] input")?.value.trim() || null, b.dataset.via)));
   trip.querySelectorAll("[data-route-floor]").forEach((b) => b.addEventListener("click", () => {
     if (d.directions) showRoute(d.directions, Number(b.dataset.routeFloor), d);
   }));
@@ -596,20 +603,22 @@ function renderCard(d) {
       <header class="prompt-head">${icon("clock")}<h3>${esc(d.title)}</h3></header>
       ${occasion(d, false)}
       <p class="lede">${esc(d.summary)}</p>
+      ${d.map ? routeBlock(d) : ""}
       ${foot(d, !!d.map, "Show the event again")}`;
   } else if (d.kind === "site") {
     // a building of the grounds, apart from the main one: shown on the Campus view
     const b = d.building;
     card.classList.add("card");
     card.innerHTML = `
-      <header class="card-band"><span>SDU University</span><span class="band-where">Campus grounds</span></header>
+      <header class="card-band"><span>SDU University</span><span class="band-where">${b.code === "WIFI-ZONE" ? "Floor 1 · Block C" : "Campus grounds"}</span></header>
       <div class="card-id site-id">
         <div class="id-main">
-          <h3 class="code named">${esc(b.label)}</h3>
-          <p class="id-sub">${esc(capitalise(b.sub))}</p>
+          <h3 class="code named">${esc(d.title)}</h3>
+          <p class="id-sub">${esc(b.hall ? `In ${b.label}` : capitalise(b.sub))}</p>
         </div>
       </div>
       <p class="lede">${esc(d.summary)}</p>
+      ${routeBlock(d)}
       ${foot(d, true)}`;
   } else {
     const isError = d.kind === "error";
@@ -755,10 +764,16 @@ function buildFloor(floor, host) {
 
   floor.features.forEach((f) => {
     if (f.kind === "wifi") {
+      // a place of its own (search "Wi-Fi zone"): lit as the answer, pressed to ask about it
+      const spot = el("g", { class: "spot", "data-code": "WIFI-ZONE", tabindex: "0", role: "button",
+                             "aria-label": `Show the ${f.label}` }, features);
       for (let i = 3; i >= 1; i--) {
-        el("circle", { class: "wifi", cx: f.cx, cy: f.cy, r: (f.r * i) / 3 }, features);
+        el("circle", { class: "wifi", cx: f.cx, cy: f.cy, r: (f.r * i) / 3 }, spot);
       }
-      el("text", { class: "feature-label", x: f.cx, y: f.cy + 5 }, features).textContent = f.label;
+      el("text", { class: "feature-label", x: f.cx, y: f.cy + 5 }, spot).textContent = f.label;
+      const open = () => ask(f.label);
+      spot.addEventListener("click", open);
+      spot.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     } else {
       const cx = f.points.reduce((a, p) => a + p[0], 0) / f.points.length;
       if (f.kind === "atrium" || f.kind === "foyer") {
@@ -859,7 +874,7 @@ function paintResult() {
   const layer = state.focusLayer;
   if (!layer) return;
   layer.innerHTML = "";
-  $("#canvas").querySelectorAll(".room.is-target, .room.is-near").forEach((g) => {
+  $("#canvas").querySelectorAll(".room.is-target, .room.is-near, .spot.is-target").forEach((g) => {
     g.classList.remove("is-target", "is-near", "hl-passed", "hl-opposite", "hl-neighbour", "hl-start", "hl-area");
   });
 
@@ -892,7 +907,7 @@ function paintResult() {
   }
 
   // an event that names blocks, not a room: the blocks are lit, no room is the target
-  const target = map.area ? null : $(`#canvas .room[data-code="${CSS.escape(map.code || map.room_number)}"]`);
+  const target = map.area ? null : $(`#canvas :is(.room, .spot)[data-code="${CSS.escape(map.code || map.room_number)}"]`);
   if (target) target.classList.add("is-target");
 
   const pin = el("g", { class: "target" }, layer);

@@ -506,9 +506,14 @@ def test_a_vague_place_gives_way_to_the_descriptions_venue_but_a_clear_one_doesn
     assert [e["place"] for e in parse_events(page(events))] == ["SDU University, Blue Hall", "Sport Hall", "F202"]
 
 
-def test_the_wi_fi_zone_is_the_lobby_of_block_c():
-    assert main.index.event_place("Wi-fi zone") == {"blocks": ["C"], "block": "C"}
-    assert main.index.event_place("WI-Fi zone- F block") == {"blocks": ["C", "D", "E", "F"], "block": "E"}
+def test_the_wi_fi_zone_is_shown_exactly():
+    assert main.index.event_place("Wi-fi zone") == {"spot": "WIFI-ZONE"}
+    # "from the Wi-Fi zone to F block": the zone, and the block it runs to
+    assert main.index.event_place("WI-Fi zone- F block") == {"spot": "WIFI-ZONE", "to_blocks": ["F"]}
+    a = main.index.search("Wi-Fi zone")
+    feature = next(f for f in main.campus_map.floors[1]["features"] if f["kind"] == "wifi")
+    assert a["kind"] == "site" and a["map"]["code"] == "WIFI-ZONE"
+    assert (a["map"]["x"], a["map"]["y"], a["map"]["radius"]) == (feature["cx"], feature["cy"], feature["r"])
 
 
 # ------------------------------------------------------- the campus grounds
@@ -561,3 +566,42 @@ def test_an_event_in_blue_hall_is_shown_at_sdu_life_centre(live):
     assert a["map"]["code"] == "SDU-LIFE" and "in Blue Hall, in SDU Life Centre" in a["summary"]
     for question in ("Blue Hall", "where is Sport Hall"):
         assert main.index.search(question)["map"]["code"] == "SDU-LIFE"
+
+
+# ------------------------------------------------ routes to places off the rooms
+def test_the_way_to_sdu_life_goes_through_the_building_and_out_by_a_door():
+    r = main.index.directions("SDU-LIFE", "D103")
+    assert r["kind"] == "route" and r["to"]["code"] == "SDU-LIFE" and r["steps"][0].startswith("Leave D103")
+    assert "Go out by the west entrance by Block G." in r["steps"]
+    assert r["steps"][-1].endswith("SDU Life Centre is the building in front of you.")
+    assert len(r["step_floors"]) == len(r["steps"]) and r["legs"][-1]["outside"] is True
+    # the other door is offered, and picking it gives that way
+    assert [a["via"] for a in r["alternatives"]] == ["west exit beside Doner House"]
+    other = main.index.directions("SDU-LIFE", "D103", "west exit beside Doner House")
+    assert "Go out by the west exit beside Doner House." in other["steps"]
+    assert [a["via"] for a in other["alternatives"]] == ["west entrance by Block G"]
+
+
+def test_a_hall_in_another_building_is_found_and_reached():
+    a = main.index.search("Blue Hall")
+    assert a["kind"] == "site" and a["title"] == "Blue Hall" and a["building"]["label"] == "SDU Life Centre"
+    assert main.index.directions("Sport Hall")["to"]["code"] == "SDU-LIFE"
+    asked = main.index.search("how do I get to Sport Hall")
+    assert asked["directions"]["kind"] == "route" and asked["directions"]["to"]["code"] == "SDU-LIFE"
+
+
+def test_the_student_house_has_three_ways_and_the_shortest_first():
+    r = main.index.directions("Student House")
+    assert r["via"] == "main entrance by the lobby" and len(r["alternatives"]) == 2
+    assert all(a["longer"] >= 0 for a in r["alternatives"])
+
+
+def test_the_way_to_the_wi_fi_zone_ends_in_the_lobby():
+    r = main.index.directions("Wi-Fi zone", "F202")
+    assert r["kind"] == "route" and r["to"]["code"] == "WIFI-ZONE" and r["alternatives"] == []
+    assert r["steps"][-1].startswith("The Wi-Fi Zone is the round area")
+    assert r["legs"][-1]["points"][-1] == [r["to"]["x"], r["to"]["y"]]
+
+
+def test_a_route_to_a_place_from_nowhere_known_says_so():
+    assert main.index.directions("SDU Life", "XYZ999")["kind"] == "route_error"

@@ -126,8 +126,14 @@ rooms' names fade in as you zoom, and the names of the buildings keep one size
 on screen. The view is the SVG's viewBox, eased frame by frame, so the plan is
 drawn sharp at every zoom; the other floors are drawn ahead while the page is
 idle. "SDU Life", "общежитие", Sport Hall, Blue Hall or an event at SDU Life
-Centre light the building, with a dotted walk from the main building's nearest
-door (the west entrance by Block G for SDU Life Centre).
+Centre light the building, and **How do I get there?** works as for a room:
+from the main entrance or any room, through the main building to one of its
+doors and then outside (`CampusIndex.place_route`). Each building has its ways
+out (SDU Life Centre: the west entrance by Block G or the Doner House exit; the
+Student House: those two or the main entrance); the shortest is the route and
+the others are offered under **Other ways** (`/api/route?via=`). The Wi-Fi Zone
+is a place of its own: "Wi-Fi zone" or an event there lights its round in the
+main lobby and leads to it.
 
 **Next: the posters, and the halls off the plans.** Of the 16 upcoming events
 on 11 November 2026, the place field or the description now gives a room or a

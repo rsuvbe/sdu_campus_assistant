@@ -20,25 +20,64 @@ PLAN_ORIGIN = (214.0, 110.0)
 SHIFT = (1140.0, 420.0)
 SIZE = (2660.0, 4460.0)
 
-# Buildings that are destinations: a code, a name, the words people use for it
+# Buildings that are destinations: a code, a name, the words people use for it,
+# the halls inside, and the ways to it from the main building. A way leaves by
+# an exit of floor 1 (its name on the plans) and walks the traced points to the
+# door; `say` is the walk outside, step by step.
 BUILDINGS = [
     {"code": "SDU-LIFE", "label": "SDU Life Centre", "sub": "separate building",
      "aliases": ["sdu life", "sdu life centre", "sdu life center", "life centre", "life center",
-                 "лайф центр", "сду лайф", "sport hall", "blue hall", "спортзал", "спорт зал"],
+                 "лайф центр", "сду лайф"],
+     "halls": {"sport hall": "Sport Hall", "спортзал": "Sport Hall", "спорт зал": "Sport Hall",
+               "blue hall": "Blue Hall"},
      "about": "SDU Life Centre stands on its own, south-west of the main building, past the sports "
-              "grounds; Sport Hall and Blue Hall are in it. From the west entrance by Block G, walk "
-              "west to the drive and south along it.",
+              "grounds; Sport Hall and Blue Hall are in it.",
      "outline": [(209, 837), (315, 837), (315, 952), (209, 952)],
-     "door": (262, 837)},
-    {"code": "STUDENT-HOUSE", "label": "Student House", "sub": "dormitory, 1/2",
+     "ways": [
+         {"exit": "west entrance by Block G",
+          "walk": [(403, 561), (350, 561), (350, 817), (262, 817), (262, 837)],
+          "say": ["Outside, walk west to the drive.",
+                  "Turn left and follow the drive south, past the sports grounds.",
+                  "At the end of the drive turn right: SDU Life Centre is the building in front of you."]},
+         {"exit": "west exit beside Doner House",
+          "walk": [(411, 474), (350, 474), (350, 817), (262, 817), (262, 837)],
+          "say": ["Outside, walk west to the drive.",
+                  "Turn left and follow the drive south, past the sports grounds.",
+                  "At the end of the drive turn right: SDU Life Centre is the building in front of you."]},
+     ]},
+    {"code": "STUDENT-HOUSE", "label": "Student House", "sub": "dormitory, 1/2", "spoken": "the Student House",
      "aliases": ["student house", "dormitory", "dorm", "hostel", "общежитие", "общага", "жатақхана"],
-     "about": "The Student House, the dormitory, is the building west of the main one, across the "
-              "drive from the Doner House exit.",
+     "halls": {},
+     "about": "The Student House, the dormitory, is the building west of the main one, across the drive.",
      "outline": [(163, 305), (252, 300), (252, 368), (180, 368), (180, 400), (209, 400), (209, 384),
                  (224, 384), (224, 422), (268, 422), (268, 410), (310, 410), (310, 480), (282, 480),
                  (282, 568), (237, 568), (237, 584), (197, 584), (197, 510), (225, 510), (225, 451),
                  (180, 451), (180, 470), (140, 470), (140, 423), (136, 423), (136, 400), (163, 400)],
-     "door": (225, 451)},
+     "ways": [
+         {"exit": "west exit beside Doner House",
+          "walk": [(411, 474), (350, 474), (350, 445), (310, 445)],
+          "say": ["Outside, walk west across the drive: the Student House is in front of you."]},
+         {"exit": "west entrance by Block G",
+          "walk": [(403, 561), (350, 561), (350, 470), (310, 470)],
+          "say": ["Outside, walk west to the drive and turn right.",
+                  "Follow the drive north a little way: the Student House is on your left."]},
+         {"exit": "main entrance by the lobby",
+          "walk": [(400, 189), (350, 205), (350, 440), (310, 440)],
+          "say": ["Outside, walk west to the drive and turn left.",
+                  "Follow the drive south: the Student House is on your right."]},
+     ]},
+]
+
+# Places of the main building the plans draw but don't list as rooms: shown
+# exactly, and reached by their nearest door
+SPOTS = [
+    {"code": "WIFI-ZONE", "label": "Wi-Fi Zone", "sub": "main lobby, Block C", "feature": "wifi",
+     "spoken": "the Wi-Fi Zone",
+     "aliases": ["wi-fi zone", "wifi zone", "wi fi zone", "wi-fi", "wifi", "wi fi", "вай-фай зона",
+                 "вайфай зона", "вай фай зона", "вайфай"],
+     "about": "The Wi-Fi Zone is the round area in the main lobby (Block C), just inside the main entrance.",
+     "ways": [{"exit": "main entrance by the lobby", "inside": True,
+               "say": ["The Wi-Fi Zone is the round area of the main lobby, by the main entrance."]}]},
 ]
 
 # a building on the map nobody has named for us: drawn, not a destination
@@ -63,14 +102,6 @@ ROADS = [
     {"kind": "edge", "points": [(565, 670), (662, 670), (662, 200)]},
 ]
 
-# The way from the main building to SDU Life Centre: out of the west entrance by
-# Block G, west to the drive, south along it, and across to the centre's door
-WALKS = {"SDU-LIFE": {"from": "west entrance by Block G",
-                      "points": [(403, 561), (350, 561), (350, 817), (262, 817), (262, 837)]},
-         "STUDENT-HOUSE": {"from": "west exit beside Doner House",
-                           "points": [(411, 474), (350, 474), (350, 440), (310, 440)]}}
-
-
 def to_site(x: float, y: float) -> list[float]:
     """A pixel of the traced map, in the Campus view's units."""
     return [round(PLAN_ORIGIN[0] + (x - PHOTO_ORIGIN[0]) * SCALE + SHIFT[0], 1),
@@ -88,29 +119,47 @@ def _centre(points: list[list[float]]) -> tuple[float, float]:
 
 
 def building(code: str) -> dict | None:
-    return next((b for b in BUILDINGS if b["code"] == code), None)
+    return next((b for b in BUILDINGS + SPOTS if b["code"] == code), None)
 
 
-def find_building(text: str) -> dict | None:
-    """The building a question names ("SDU Life", "общежитие"), or None."""
-    key = " ".join(text.casefold().replace("?", " ").split())
-    for b in BUILDINGS:
-        if any(key == a or f" {a} " in f" {key} " for a in b["aliases"]):
-            return b
+def _words(text: str) -> str:
+    return " " + " ".join(text.casefold().replace("?", " ").replace(",", " ").split()) + " "
+
+
+def find_place(text: str) -> tuple[dict, str | None] | None:
+    """The building or spot a question names ("SDU Life", "общежитие", "Wi-Fi
+    zone"), with the hall in it it named ("Blue Hall"), or None. A code ("SDU-LIFE")
+    names it too."""
+    key = _words(text)
+    for b in BUILDINGS + SPOTS:
+        if text.strip().upper() == b["code"]:
+            return b, None
+        for name, hall in b.get("halls", {}).items():
+            if f" {name} " in key:
+                return b, hall
+        if any(f" {a} " in key for a in b["aliases"]):
+            return b, None
     return None
 
 
-def site_map(code: str) -> dict:
-    """What an answer about a building puts on the Campus view: the building lit,
-    and the walk to it from the main building's nearest door."""
+def find_building(text: str) -> dict | None:
+    found = find_place(text)
+    return found[0] if found else None
+
+
+def outline_map(code: str) -> dict:
+    """What an answer about a building puts on the map: the building lit, and the
+    walk to it from the main building's nearest door."""
     b = building(code)
     points = [to_site(*p) for p in b["outline"]]
     x, y = _centre(points)
-    walk = WALKS.get(code)
+    way = b["ways"][0]
     return {"floor": 1, "site": True, "code": code, "room_number": b["label"], "label": b["label"],
             "x": x, "y": y, "radius": None, "highlights": [], "landmark": None,
-            "walk": [to_site(*p) for p in walk["points"]] if walk else None,
-            "walk_from": walk["from"] if walk else None}
+            "walk": [to_site(*p) for p in way["walk"]], "walk_from": way["exit"]}
+
+
+site_map = outline_map
 
 
 def build_grounds() -> dict:

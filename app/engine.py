@@ -530,13 +530,11 @@ class CampusIndex:
                 re.search(r"\bfrom\s+block\s+\w\s+to\b", text, re.I):
             ends = sorted({ch for ch in blocks})
             blocks += [ch for ch in letters if ends[0] <= ch <= ends[-1]]
-        # the Wi-Fi Zone is the main lobby, in Block C; "Wi-Fi zone - F block" runs from it to F
-        if WIFI_RE.search(text):
-            blocks.append("C")
-            if blocks[:-1] and re.search(r"wi-?fi\s*zon\w*\s*[-–—]|\b(?:to|до|дейін)\b", text, re.I):
-                ends = sorted(blocks)
-                blocks += [ch for ch in letters if ends[0] <= ch <= ends[-1]]
         blocks = sorted(set(blocks))
+        # the Wi-Fi Zone is shown exactly (in the main lobby); "Wi-Fi zone - F block"
+        # runs from it to Block F, which is said too
+        if WIFI_RE.search(text):
+            return {"spot": "WIFI-ZONE", **({"to_blocks": blocks} if blocks else {})}
         if not blocks:
             return {}
         return {"blocks": blocks, "block": blocks[len(blocks) // 2] if len(blocks) > 2 else blocks[0]}
@@ -692,6 +690,12 @@ class CampusIndex:
             result = (self._event_answer(query, now, events) or self._trip(query, now)
                       or self._site_answer(query) or self._search(query, now, context))
         if (self.router and "directions" not in result and ROUTE_WORDS_RE.search(query.lower())
+                and (result.get("map") or {}).get("site")):
+            from .site import building
+            result["directions"] = self.place_route(building(result["map"]["code"]),
+                                                    self.router.place("room", result["start"])
+                                                    if result.get("start") else self.entrance())
+        if (self.router and "directions" not in result and ROUTE_WORDS_RE.search(query.lower())
                 and self._place_of(result)):
             start = result.get("start")
             result["directions"] = self.router.route(self.router.place("room", start) if start else self.entrance(),
@@ -797,6 +801,8 @@ class CampusIndex:
             return f"Floor {room['floor_number']} · Block {room['building_id']}"
         if spot.get("blocks"):
             return self.blocks_label(spot["blocks"])
+        if spot.get("spot"):
+            return "Wi-Fi Zone" + (f" to {self.blocks_label(spot['to_blocks'])}" if spot.get("to_blocks") else "")
         if spot.get("hall"):
             return spot["building"]
         if spot.get("building"):
@@ -830,6 +836,14 @@ class CampusIndex:
             answer["occasion"] = occasion
             answer["map"] = self._blocks_area(spot["blocks"], answer["map"])
             return answer
+        if spot.get("spot"):
+            answer = self._site_answer(spot["spot"])
+            stretch = f", from the Wi-Fi Zone to {self.blocks_label(spot['to_blocks'])}" \
+                if spot.get("to_blocks") else ""
+            answer.update({"kind": "event", "title": event["title"], "occasion": occasion,
+                           "place": event["place"],
+                           "summary": f"{event['title']} is on {when}{stretch}. {answer['summary']}"})
+            return answer
         if not room:
             if spot.get("building"):
                 answer = self._site_answer(spot["building"])
@@ -852,16 +866,89 @@ class CampusIndex:
         answer["occasion"] = occasion
         return answer
 
-    @staticmethod
-    def _site_answer(query: str) -> dict | None:
-        """A building of the grounds asked for by name ("SDU Life", "общежитие"):
-        lit on the Campus view, with the walk there from the main building."""
-        from .site import find_building, site_map
-        b = find_building(query)
-        if not b:
+    def _site_answer(self, query: str) -> dict | None:
+        """A building of the grounds ("SDU Life", "общежитие"), a hall in one ("Blue
+        Hall"), or a place of the main building the plans draw without listing it
+        as a room ("Wi-Fi zone"): shown on the map, and reached like a room."""
+        from .site import find_place
+        found = find_place(query)
+        if not found:
             return None
-        return {"kind": "site", "title": b["label"], "summary": b["about"], "map": site_map(b["code"]),
-                "building": {"code": b["code"], "label": b["label"], "sub": b["sub"]}, "suggestions": []}
+        b, hall = found
+        about = b["about"] if not hall else f"{hall} is in {b['label']}. {b['about']}"
+        return {"kind": "site", "title": hall or b["label"], "summary": about, "map": self._place_map(b),
+                "building": {"code": b["code"], "label": b["label"], "sub": b["sub"], "hall": hall},
+                "suggestions": []}
+
+    def _place_map(self, b: dict) -> dict:
+        from .site import outline_map
+        if "outline" in b:
+            return outline_map(b["code"])
+        # a spot: where the plan draws it, its whole round lit
+        drawn = next((f for f in (self.map.floors[1]["features"] if self.map else [])
+                      if f["kind"] == b["feature"]), None)
+        x, y, r = (drawn["cx"], drawn["cy"], drawn["r"]) if drawn else (0, 0, None)
+        return {"floor": 1, "site": True, "code": b["code"], "room_number": b["label"], "label": b["label"],
+                "x": x, "y": y, "radius": r, "highlights": [], "landmark": None, "walk": None}
+
+    def place_route(self, b: dict, origin: dict, via: str | None = None) -> dict:
+        """The walk to a building of the grounds, or a spot of the main building:
+        through the main building to one of its doors, then outside to it. Every
+        way it has (a door of floor 1, and the walk from there) is worked out; the
+        shortest is the route, unless `via` names another door, and the others are
+        offered as other ways."""
+        from .site import to_site
+        exits = {ex["name"]: key for key, ex in self.router.exits.items()}
+        target = self._place_map(b)
+        tried = []
+        for way in b["ways"]:
+            door = self.router.place("exit", exits.get(way["exit"], ""))
+            if not door:
+                continue
+            outside = [to_site(*p) for p in way.get("walk", [])]
+            node = self.router.nodes[door["node"]]
+            if way.get("inside"):
+                outside = [[node["x"], node["y"]], [target["x"], target["y"]]]
+            length = self.router.distance(origin, door) + sum(
+                ((a[0] - c[0]) ** 2 + (a[1] - c[1]) ** 2) ** 0.5 for a, c in zip(outside, outside[1:]))
+            tried.append((length, way, door, outside))
+        if not tried:
+            return {"kind": "route_error", "title": f"I couldn't find a way to {b['label']}",
+                    "summary": "None of its doors is on the plans.", "suggestions": []}
+        tried.sort(key=lambda t: t[0])
+        chosen = next((t for t in tried if via and t[1]["exit"] == via), tried[0])
+        length, way, door, outside = chosen
+        inner = self.router.route(origin, door)
+        at_door = origin["node"] == door["node"]
+        steps = [] if at_door else list(inner["steps"])
+        floors_of = [] if at_door else list(inner["step_floors"])
+        if way.get("inside"):
+            if at_door:
+                steps.append("Come in through the main entrance into the main lobby.")
+        else:
+            steps.append(f"Go out by {door['label']}.")
+        steps += way["say"]
+        floors_of += [1] * (len(steps) - len(floors_of))
+        legs = [] if at_door else list(inner["legs"])
+        legs.append({"floor": 1, "points": outside, "outside": not way.get("inside")})
+        floors = list(inner["floors"]) if not at_door else [1]
+        if floors[-1] != 1:
+            floors.append(1)
+        signs = ([] if at_door else list(inner["signs"])) + [
+            {"icon": "exit" if not way.get("inside") else "entrance", "text": capitalise(door["label"].removeprefix("the "))},
+            {"icon": "door", "text": b["label"]}]
+        how = "" if way.get("inside") else f", out by {door['label']}"
+        spoken = b.get("spoken", b["label"])
+        return {"kind": "route", "from": inner["from"],
+                "to": {"kind": "place", "label": b["label"], "floor": 1, "x": target["x"], "y": target["y"],
+                       "code": b["code"]},
+                "steps": steps, "step_floors": floors_of, "signs": signs, "legs": legs,
+                "stairs": [] if at_door else inner["stairs"], "floors": floors, "note": inner.get("note"),
+                "summary": f"From {inner['from']['label']} to {spoken}{how}.",
+                "via": way["exit"],
+                "alternatives": [{"via": t[1]["exit"], "label": capitalise(f"out by {t[2]['label']}"),
+                                  "longer": round((t[0] - length) / max(length, 1) * 100)}
+                                 for t in tried if t is not chosen and not t[1].get("inside")]}
 
     # ------------------------------------------------------------ next class
     def _next_class_answer(self, classes: list[dict] | None, now: datetime | None) -> dict:
@@ -999,9 +1086,20 @@ class CampusIndex:
             answer["directions"]["note"] = " ".join(filter(None, [note, answer["directions"].get("note")]))
         return answer
 
-    def directions(self, to: str, frm: str | None = None) -> dict:
+    def directions(self, to: str, frm: str | None = None, via: str | None = None) -> dict:
         """GET /api/route: the walk to a place, from the main entrance unless a
-        start is given (US14: the start can be any room)."""
+        start is given (US14: the start can be any room). A building of the grounds
+        or a spot like the Wi-Fi Zone goes by a door of floor 1 (`via` picks one)."""
+        from .site import find_place
+        found = find_place(PLACE_FILLER_RE.sub("", (to or "").strip()))
+        if found:
+            origin, failed = self.resolve_place(frm)
+            if origin is None:
+                return {"kind": "route_error", "title": f"I couldn't tell where \u201c{frm}\u201d is",
+                        "summary": "Start from a room code like D103, a named place like the Library, "
+                                   "or the main entrance.",
+                        "suggestions": (failed or {}).get("suggestions", [])}
+            return self.place_route(found[0], origin, via)
         dest_answer = self._search(PLACE_FILLER_RE.sub("", (to or "").strip()), None)
         dest = self._place_of(dest_answer)
         if not dest:

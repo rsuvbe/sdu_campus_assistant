@@ -969,6 +969,12 @@ a.dir-row { color: inherit; text-decoration: none; }
 .plan .room.t-building text.campus-name.sub { font-size: calc(11px / var(--zs)); font-weight: 600; transform: translateY(calc(10px / var(--zs))); }
 .plan .ground-name { fill: color-mix(in srgb, var(--exit) 80%, var(--map-ink)); font-size: calc(12px / var(--zs)); font-weight: 700; }
 .plan .main-name { text-anchor: start; font-size: calc(16px / var(--zs)); opacity: calc(1 - var(--label-a) * 3); fill-opacity: .6; }
+.map.focused .plan .spot.is-target circle { fill: var(--target-fill); stroke: var(--dest); stroke-width: 3; }
+.plan .spot { cursor: pointer; }
+.trip-alts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: var(--s3); }
+.trip-alts .field-label { flex-basis: 100%; margin: 0; }
+.trip-alts .alt-len { margin-left: 6px; color: var(--ink-3); font-weight: 500; }
+.trip-alts .chip { white-space: normal; text-align: left; height: auto; min-height: 36px; max-width: 100%; }
 .map.focused .plan .room.t-building.is-target polygon { fill: var(--target-fill); stroke: var(--dest); }
 .plan-over .site-walk { fill: none; stroke: var(--dest); stroke-width: calc(4px / var(--zs)); stroke-dasharray: calc(1px / var(--zs)) calc(9px / var(--zs)); stroke-linecap: round; stroke-linejoin: round; }
 
