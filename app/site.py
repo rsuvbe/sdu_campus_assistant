@@ -1,7 +1,8 @@
 """
 The campus grounds: the main building with the buildings around it, for the map's
 "Campus" view. The floor plans draw only the main building; SDU Life Centre and
-the Student House stand apart from it, and an event there is shown here.
+the Student House stand apart from it. They are drawn under every floor, so the
+map is the whole campus, and an event there is shown on it.
 
 Traced from a city map of the campus (the user's screenshot of 11 November 2026,
 north up). The main building on it lies over our floor 1 at 4.5 plan units to a
@@ -106,36 +107,28 @@ def site_map(code: str) -> dict:
     points = [to_site(*p) for p in b["outline"]]
     x, y = _centre(points)
     walk = WALKS.get(code)
-    return {"floor": 0, "site": True, "code": code, "room_number": b["label"], "label": b["label"],
+    return {"floor": 1, "site": True, "code": code, "room_number": b["label"], "label": b["label"],
             "x": x, "y": y, "radius": None, "highlights": [], "landmark": None,
             "walk": [to_site(*p) for p in walk["points"]] if walk else None,
             "walk_from": walk["from"] if walk else None}
 
 
-def build_site(floor1: dict) -> dict:
-    """The Campus view, shaped like a floor so the map draws it the same way."""
-    rooms = []
+def build_grounds() -> dict:
+    """The grounds round the main building, in the floors' frame: drawn under
+    every floor, so the map is one campus and a floor only changes the inside."""
+    buildings = []
     for b in BUILDINGS:
         points = [to_site(*p) for p in b["outline"]]
         x, y = _centre(points)
-        rooms.append({"code": b["code"], "label": b["label"], "sub": b["sub"], "ask": b["label"],
-                      "service": None, "block": None, "barrel": None, "type": "BUILDING",
-                      "department": None, "approx": False, "x": x, "y": y, "kind": "rect",
-                      "angle": 0, "points": points})
-    shifted = lambda pts: [from_plan(*p) for p in pts]   # noqa: E731
-    main_x, main_y = from_plan(560, 1480)
+        buildings.append({"code": b["code"], "label": b["label"], "sub": b["sub"], "ask": b["label"],
+                          "x": x, "y": y, "points": points})
+    # over the wings, east of the corridor: clear of the Student House's name
+    main_x, main_y = from_plan(600, 1480)
     return {
-        "floor": 0, "site": True, "name": "Campus",
-        "width": SIZE[0], "height": SIZE[1], "spine_half": floor1["spine_half"],
-        "areas": [{**a, "points": shifted(a["points"])} for a in floor1["areas"]],
-        "volumes": [], "circulation": [], "spines": [], "features": [],
-        "fixtures": [{"points": [to_site(*p) for p in o]} for o in OTHER_BUILDINGS],
-        "rooms": rooms, "blocks": [],
-        "landmarks": [{**lm, "x": from_plan(lm["x"], lm["y"])[0], "y": from_plan(lm["x"], lm["y"])[1]}
-                      for lm in floor1["landmarks"] if lm["type"] == "exit"],
+        "buildings": buildings,
+        "others": [[to_site(*p) for p in o] for o in OTHER_BUILDINGS],
         "grounds": [{"label": g["label"], "points": [to_site(*p) for p in g["outline"]]} for g in GROUNDS],
         "roads": [{"kind": r["kind"], "points": [to_site(*p) for p in r["points"]]} for r in ROADS],
-        "labels": [{"text": "Main building", "sub": "Blocks A–I", "x": main_x, "y": main_y}]
-                  + [{"text": b["id"], "x": from_plan(b["tag_x"], b["tag_y"])[0],
-                      "y": from_plan(b["tag_x"], b["tag_y"])[1], "letter": True} for b in floor1["blocks"]],
+        # seen only when the whole campus is in view, where the rooms can't be read
+        "labels": [{"text": "Main building", "sub": "Blocks A–I", "x": main_x, "y": main_y}],
     }

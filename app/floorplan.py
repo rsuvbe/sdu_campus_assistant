@@ -28,7 +28,7 @@ import math
 import re
 
 from .engine import APPROXIMATE_SOURCES, BLOCK_ORDER, NORTH_BLOCKS, barrel_name, base_name, display_code, ask_text
-from .site import build_site
+from .site import SHIFT as SITE_SHIFT, SIZE as SITE_SIZE, build_grounds
 
 # Vertical offset applied to the back sheet of each floor, in plan pixels.
 # Each value keeps the block-to-block pitch measured on the front sheet
@@ -491,7 +491,7 @@ class CampusMap:
         self._placement: dict[str, tuple[float, float]] = {}
         self._points: dict[str, dict] = {}
         self.floors: dict[int, dict] = {}
-        self.site: dict | None = None     # the Campus view, built on first use
+        self._offsets: dict[int, tuple[float, float]] = {}   # how far each floor was moved to its corner
         self._build()
 
     # ------------------------------------------------------------- transform
@@ -509,11 +509,10 @@ class CampusMap:
     def floor_list(self) -> list[dict]:
         return [self.floors[f] for f in sorted(self.floors)]
 
-    def site_view(self) -> dict | None:
-        """The Campus view (app/site.py): the grounds, drawn round floor 1's outline."""
-        if self.site is None and 1 in self.floors:
-            self.site = build_site(self.floors[1])
-        return self.site
+    def grounds(self) -> dict:
+        """The buildings, sports grounds and drives round the main one (app/site.py),
+        in the floors' frame: the map draws them under every floor."""
+        return build_grounds()
 
     # ----------------------------------------------------------------- build
     def _build(self) -> None:
@@ -534,6 +533,32 @@ class CampusMap:
                 self._placement[annex["sheet_id"]] = (
                     dx, BACK_DY[floor] + self._block_pitch(floor, back["sheet_id"]))
             self.floors[floor] = self._build_floor(floor, front["west_max_x"] + 10.0)
+        self._common_frame()
+
+    def _common_frame(self) -> None:
+        """One map for the whole campus: every floor is moved into floor 1's frame
+        (the evacuation sheets line up from floor to floor before each is moved
+        to its own corner), then all of them out by the grounds' margin, so the
+        buildings round the main one (app/site.py) are drawn under every floor
+        and a floor changes without the plan moving."""
+        if 1 not in self.floors:
+            return
+        base = self._offsets[1]
+        for floor, plan in self.floors.items():
+            off = self._offsets[floor]
+            self._translate(plan, floor, base[0] - off[0] + SITE_SHIFT[0], base[1] - off[1] + SITE_SHIFT[1])
+            plan["width"], plan["height"] = SITE_SIZE
+        # the sheets of each floor were drawn to their own scale, so a floor is then
+        # set on floor 1 by its corridor and by the middle of the blocks they share
+        ground = self.floors[1]
+        mid = {b["id"]: (b["y0"] + b["y1"]) / 2 for b in ground["blocks"]}
+        for floor, plan in self.floors.items():
+            if floor == 1:
+                continue
+            gaps = sorted(mid[b["id"]] - (b["y0"] + b["y1"]) / 2 for b in plan["blocks"] if b["id"] in mid)
+            dy = gaps[len(gaps) // 2] if gaps else 0.0
+            dx = ground["spines"][0]["x"] - plan["spines"][0]["x"] if plan["spines"] and ground["spines"] else 0.0
+            self._translate(plan, floor, round(dx, 1), round(dy, 1))
 
     def _block_pitch(self, floor: int, sheet_id: str) -> float:
         """How far apart two neighbouring blocks sit on a sheet, measured G to H."""
@@ -899,7 +924,15 @@ class CampusMap:
                 ys += [feature["cy"] - feature["r"], feature["cy"] + feature["r"]]
         dx = MARGIN_LEFT - min(xs)
         dy = MARGIN - min(ys)
+        self._offsets[floor] = (dx, dy)
+        self._translate(plan, floor, dx, dy)
+        plan["width"] = round(max(xs) + dx + MARGIN, 1)
+        plan["height"] = round(max(ys) + dy + MARGIN, 1)
+        plan["spine_half"] = SPINE_HALF
+        return plan
 
+    def _translate(self, plan: dict, floor: int, dx: float, dy: float) -> None:
+        """Move a floor's whole drawing, and where its rooms are, by (dx, dy)."""
         for sheet_id, (sx, sy) in list(self._placement.items()):
             if self._index.sheets[sheet_id]["floor_number"] == floor:
                 self._placement[sheet_id] = (sx + dx, sy + dy)
@@ -931,7 +964,11 @@ class CampusMap:
             block["x"] = round(block["x"] + dx, 1)
             block["y0"] = round(block["y0"] + dy, 1)
             block["y1"] = round(block["y1"] + dy, 1)
-            if "tag_y" in block:
+            if "focus_x" in block:      # placed already: moved as it is
+                block["tag_x"] = round(block["tag_x"] + dx, 1)
+                block["tag_y"] = round(block["tag_y"] + dy, 1)
+                block["focus_x"] = round(block["focus_x"] + dx, 1)
+            elif "tag_y" in block:
                 block["tag_x"] = round(block["tag_x"] + dx, 1)
                 block["tag_y"] = round(block["tag_y"] + dy, 1)
                 xs_in = [r["x"] for r in plan["rooms"] if r["block"] == block["id"]]
@@ -948,8 +985,3 @@ class CampusMap:
         for shape in plan["rooms"]:
             self._points[shape["code"]] = {"floor": floor, "x": shape["x"], "y": shape["y"],
                                            "r": shape.get("r")}
-
-        plan["width"] = round(max(xs) + dx + MARGIN, 1)
-        plan["height"] = round(max(ys) + dy + MARGIN, 1)
-        plan["spine_half"] = SPINE_HALF
-        return plan

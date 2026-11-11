@@ -470,7 +470,7 @@ def test_an_event_in_a_block_opens_the_block_and_one_in_life_centre_says_where_i
     b = c.get("/api/search", params={"q": "Health Day"}).json()
     # SDU Life Centre is off the floor plans: the Campus view lights it, with the walk there
     assert b["kind"] == "event" and "SDU Life Centre" in b["summary"]
-    assert b["map"]["floor"] == 0 and b["map"]["code"] == "SDU-LIFE" and b["map"]["walk"]
+    assert b["map"]["floor"] == 1 and b["map"]["code"] == "SDU-LIFE" and b["map"]["walk"]
     assert b["occasion"]["title"] == "Health Day"
 
 
@@ -512,22 +512,24 @@ def test_the_wi_fi_zone_is_the_lobby_of_block_c():
 
 
 # ------------------------------------------------------- the campus grounds
-def test_the_map_carries_the_campus_grounds_round_the_main_building():
+def test_the_map_is_one_campus_with_the_grounds_under_every_floor():
     c = account(4102)
     data = c.get("/api/map").json()
-    assert [f["floor"] for f in data["floors"]] == [1, 2, 3]
-    site = data["site"]
-    assert site["site"] is True and {r["code"] for r in site["rooms"]} == {"SDU-LIFE", "STUDENT-HOUSE"}
-    # the main building is floor 1's own outline, moved into the grounds
-    assert len(site["areas"]) == len(data["floors"][0]["areas"])
-    xs = [p[0] for r in site["rooms"] for p in r["points"]] + [p[0] for a in site["areas"] for p in a["points"]]
-    ys = [p[1] for r in site["rooms"] for p in r["points"]] + [p[1] for a in site["areas"] for p in a["points"]]
-    assert 0 <= min(xs) and max(xs) <= site["width"] and 0 <= min(ys) and max(ys) <= site["height"]
-    life = next(r for r in site["rooms"] if r["code"] == "SDU-LIFE")
-    main_x = [p[0] for a in site["areas"] for p in a["points"]]
+    floors, grounds = data["floors"], data["grounds"]
+    assert [f["floor"] for f in floors] == [1, 2, 3]
+    # one frame: every floor the same size, and a block where it is on the others
+    assert len({(f["width"], f["height"]) for f in floors}) == 1
+    middle = [{b["id"]: (b["y0"] + b["y1"]) / 2 for b in f["blocks"]} for f in floors]
+    assert all(abs(m["G"] - middle[0]["G"]) < 1 for m in middle)
+    assert {b["code"] for b in grounds["buildings"]} == {"SDU-LIFE", "STUDENT-HOUSE"}
+    pts = [p for b in grounds["buildings"] for p in b["points"]] + [p for g in grounds["grounds"] for p in g["points"]]
+    assert all(0 <= x <= floors[0]["width"] and 0 <= y <= floors[0]["height"] for x, y in pts)
+    life = next(b for b in grounds["buildings"] if b["code"] == "SDU-LIFE")
+    main_x = [p[0] for a in floors[0]["areas"] for p in a["points"]]
+    main_y = [p[1] for a in floors[0]["areas"] for p in a["points"]]
     # SDU Life Centre is west of the main building and south of it
     assert max(p[0] for p in life["points"]) < min(main_x)
-    assert min(p[1] for p in life["points"]) > max(p[1] for a in site["areas"] for p in a["points"])
+    assert min(p[1] for p in life["points"]) > max(main_y)
 
 
 @pytest.mark.parametrize("question, code", [
@@ -536,7 +538,7 @@ def test_the_map_carries_the_campus_grounds_round_the_main_building():
 ])
 def test_a_building_of_the_grounds_is_found_by_name(question, code):
     a = main.index.search(question)
-    assert a["kind"] == "site" and a["map"]["code"] == code and a["map"]["floor"] == 0 and a["map"]["walk"]
+    assert a["kind"] == "site" and a["map"]["code"] == code and a["map"]["floor"] == 1 and a["map"]["walk"]
 
 
 def test_a_room_is_still_a_room_not_a_building_of_the_grounds():

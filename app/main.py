@@ -325,9 +325,9 @@ def route(to: str = Query(..., min_length=1, max_length=200,
 
 @app.get("/api/map", tags=["map"])
 def vector_map(user: dict = Depends(current_user)):
-    """The three floors as vector geometry: one merged drawing per floor, and the
-    campus grounds round the main building (`site`)."""
-    return {"floors": campus_map.floor_list(), "site": campus_map.site_view()}
+    """The three floors as vector geometry, one merged drawing per floor, all in
+    one frame with the campus grounds round the main building (`grounds`)."""
+    return {"floors": campus_map.floor_list(), "grounds": campus_map.grounds()}
 
 
 @app.get("/api/sheets", tags=["map"])

@@ -312,7 +312,7 @@ def test_us11_floor_buttons_redraw_without_reloading():
 
 def test_us11_zoom_is_bounded():
     assert re.search(r"const MIN_ZOOM = [\d.]+", APP_JS) and re.search(r"const MAX_ZOOM = \d+", APP_JS)
-    assert "Math.min(Math.max(scale, v.fit * MIN_ZOOM), v.fit * MAX_ZOOM)" in APP_JS
+    assert "Math.min(Math.max(scale, v.fit * MIN_ZOOM), Math.max(v.fit * MAX_ZOOM, MAX_SCALE))" in APP_JS
 
 
 def test_us11_dragging_cannot_lose_the_plan():
@@ -335,11 +335,11 @@ def test_us11_a_tap_is_not_a_drag():
 
 
 def test_us11_switching_floors_keeps_the_zoom():
-    assert "const before = state.floor ? { ...state.view } : null;" in APP_JS
-    assert "if (zoomed) focusOn(spot.x, spot.y, before.s, false);" in APP_JS
-    # zoomed out to the whole floor, the next floor opens at that scale too,
-    # not at the zoomed-in overview the page starts with
-    assert "else if (before) zoomTo(before.s, r.width / 2, r.height / 2, false);" in APP_JS
+    # every floor is drawn in one frame with the campus round it, so another
+    # floor goes in under the same view: the zoom and the place stay as they were
+    body = APP_JS.split("function openFloor(")[1].split("function renderControls()")[0]
+    assert "if (changed) drawFloor(floor);" in body and "if (!state.view) fitView(false);" in body
+    assert "focusOn(" not in body and "zoomTo(" not in body
 
 
 # ======================================================== US12 Hall names

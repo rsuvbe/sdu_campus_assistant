@@ -371,8 +371,8 @@ function fillPlaces() {
   add("Main entrance");
   state.floors.forEach((f) => f.landmarks.filter((lm) => lm.type === "exit" && !/main entrance/.test(lm.name))
     .forEach((lm) => add(capitalise(lm.name))));
-  state.floors.forEach((f) => f.rooms.forEach((r) => add(r.ask || r.code,
-    f.site ? `${r.label} · ${r.sub || "on the campus grounds"}` : `${r.label} · Floor ${f.floor}, Block ${r.block}`)));
+  state.floors.forEach((f) => f.rooms.forEach((r) => add(r.ask || r.code, `${r.label} · Floor ${f.floor}, Block ${r.block}`)));
+  (state.grounds?.buildings || []).forEach((b) => add(b.ask, `${b.label} · ${b.sub}`));
   list.innerHTML = opts.join("");
 }
 
@@ -654,37 +654,73 @@ const drawnFloors = new Map();
 
 function drawFloor(floor) {
   const canvas = $("#canvas");
-  canvas.style.width = `${floor.width}px`;
-  canvas.style.height = `${floor.height}px`;
-  const kept = drawnFloors.get(floor);
-  if (kept) {
-    canvas.replaceChildren(kept.svg, kept.over);
-    state.svg = kept.svg;
-    state.focusLayer = kept.focus;
-    return;
-  }
-  canvas.innerHTML = "";
+  const built = drawnFloors.get(floor) || buildFloor(floor, canvas);
+  canvas.replaceChildren(built.svg, built.over);
+  state.svg = built.svg;
+  state.overSvg = built.over;
+  state.focusLayer = built.focus;
+  if (state.shown) renderView();
+}
 
+// The floors not on show are drawn ahead, while the page is idle, in a holder
+// out of sight (in the page, so names can be measured): switching to one then
+// only puts it in place.
+function predrawFloors() {
+  const holder = document.createElement("div");
+  holder.className = "predraw";
+  holder.setAttribute("aria-hidden", "true");
+  document.body.append(holder);
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 60));
+  const next = () => {
+    const floor = state.floors.find((f) => !drawnFloors.has(f));
+    if (!floor) return;
+    buildFloor(floor, holder);
+    idle(next);
+  };
+  idle(next);
+}
+
+/** The campus round the main building, the same under every floor: drives,
+    sports grounds and the buildings that stand apart. Their names keep one size
+    on screen at any zoom, so they read even with the whole campus in view. */
+function drawGrounds(svg) {
+  const g0 = state.grounds;
+  if (!g0) return;
+  const ground = el("g", { class: "lay-grounds" }, svg);
+  g0.roads.forEach((r) => el("polyline", { class: `road ${r.kind}`, points: path(r.points) }, ground));
+  const centre = (pts) => {
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+  };
+  g0.grounds.forEach((g) => {
+    el("polygon", { class: "ground", points: path(g.points) }, ground);
+    if (g.label) {
+      const [x, y] = centre(g.points);
+      el("text", { class: "campus-name ground-name", x, y }, ground).textContent = g.label;
+    }
+  });
+  g0.others.forEach((o) => el("polygon", { class: "other-building", points: path(o) }, ground));
+  g0.buildings.forEach((b) => {
+    const g = el("g", { class: "room t-building", "data-code": b.code, tabindex: "0", role: "button",
+                        "aria-label": `Show ${b.label}` }, ground);
+    el("polygon", { points: path(b.points) }, g);
+    el("text", { class: "campus-name", x: b.x, y: b.y }, g).textContent = b.label;
+    el("text", { class: "campus-name sub", x: b.x, y: b.y }, g).textContent = b.sub;
+    const open = () => ask(b.ask);
+    g.addEventListener("click", open);
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+}
+
+function buildFloor(floor, host) {
   const svg = el("svg", {
-    class: "plan", viewBox: `0 0 ${floor.width} ${floor.height}`,
-    width: floor.width, height: floor.height,
+    class: "plan", viewBox: `0 0 ${floor.width} ${floor.height}`, width: "100%", height: "100%",
+    preserveAspectRatio: "xMinYMin meet",
     role: "img", "aria-label": `Floor ${floor.floor}, blocks ${floor.blocks.map((b) => b.id).join(", ")}`,
-  }, canvas);
+  }, host);
 
   const layer = (name) => el("g", { class: `lay-${name}` }, svg);
-  // the Campus view: the drives and the sports grounds lie under the buildings
-  if (floor.site) {
-    const ground = layer("grounds");
-    (floor.roads || []).forEach((r) => el("polyline", { class: `road ${r.kind}`, points: path(r.points) }, ground));
-    (floor.grounds || []).forEach((g) => {
-      el("polygon", { class: "ground", points: path(g.points) }, ground);
-      if (g.label) {
-        const xs = g.points.map((p) => p[0]), ys = g.points.map((p) => p[1]);
-        el("text", { class: "ground-label", x: (Math.min(...xs) + Math.max(...xs)) / 2,
-                     y: (Math.min(...ys) + Math.max(...ys)) / 2 + 6 }, ground).textContent = g.label;
-      }
-    });
-  }
+  drawGrounds(svg);
   const shell = layer("shell");
   const circulation = layer("circulation");
   const features = layer("features");
@@ -697,8 +733,8 @@ function drawFloor(floor) {
   // under it, every frame (which a phone feels, while the plan is moving too)
   const over = el("svg", {
     class: "plan plan-over", viewBox: `0 0 ${floor.width} ${floor.height}`,
-    width: floor.width, height: floor.height, "aria-hidden": "true",
-  }, canvas);
+    width: "100%", height: "100%", preserveAspectRatio: "xMinYMin meet", "aria-hidden": "true",
+  }, host);
   const focus = el("g", { class: "lay-focus" }, over);
 
   // The envelope is drawn twice: once with a fat wall stroke, then again with
@@ -757,9 +793,7 @@ function drawFloor(floor) {
         el("text", { class: "barrel", x: room.cx, y: room.cy + 17 }, g).textContent = room.barrel;
       }
     } else {
-      // a building of the grounds has a bigger name, and its note further under it
-      const big = room.type === "BUILDING";
-      const label = el("text", { x: room.x, y: room.y + (room.sub ? (big ? -14 : -3) : 4.5) }, g);
+      const label = el("text", { x: room.x, y: room.y + (room.sub ? -3 : 4.5) }, g);
       if (room.angle) label.setAttribute("transform", `rotate(${room.angle} ${room.x} ${room.y})`);
       label.textContent = room.label;
       if (room.service && !room.angle) {
@@ -769,7 +803,7 @@ function drawFloor(floor) {
       }
       if (room.sub) {
         // a second line for the floor note: "Red Canteen" / "3rd floor"
-        const sub = el("text", { class: "sub", x: room.x, y: room.y + (big ? 40 : 14) }, g);
+        const sub = el("text", { class: "sub", x: room.x, y: room.y + 14 }, g);
         if (room.angle) sub.setAttribute("transform", `rotate(${room.angle} ${room.x} ${room.y})`);
         sub.textContent = room.sub;
       }
@@ -777,12 +811,6 @@ function drawFloor(floor) {
     const open = () => ask(room.ask || room.code);
     g.addEventListener("click", open);
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
-  });
-
-  (floor.labels || []).forEach((l) => {
-    const g = el("g", { class: l.letter ? "site-letter" : "site-label" }, blocks);
-    el("text", { x: l.x, y: l.y }, g).textContent = l.text;
-    if (l.sub) el("text", { class: "sub", x: l.x, y: l.y + 56 }, g).textContent = l.sub;
   });
 
   floor.blocks.forEach((b) => {
@@ -817,9 +845,13 @@ function drawFloor(floor) {
     else sub.remove();
   });
 
-  state.svg = svg;
-  state.focusLayer = focus;
-  drawnFloors.set(floor, { svg, over, focus });
+  const built = { svg, over, focus };
+  drawnFloors.set(floor, built);
+  // the Main building's name, for when the whole campus is in view: over the plan
+  (state.grounds?.labels || []).forEach((l) => {
+    el("text", { class: "campus-name main-name", x: l.x, y: l.y }, svg).textContent = l.text;
+  });
+  return built;
 }
 
 /* ------------------------------------------------------------ map: answer */
@@ -1059,8 +1091,7 @@ function showResultOnMap(d) {
   state.result = d;
   if (d.directions) { showRoute(d.directions); return; }
   state.route = null;
-  const changed = state.floor?.floor !== d.map.floor;
-  openFloor(d.map.floor, { focus: d.map, fitFirst: changed });
+  openFloor(d.map.floor, { focus: d.map });
 }
 
 /** Put a route on the plan, on the floor it starts on (or the one asked for),
@@ -1106,43 +1137,26 @@ function markRouteFloor(trip) {
 }
 
 /* ------------------------------------------------------------ map: controls */
-function openFloor(number, { focus = null, fitFirst = true, clearResult = false } = {}) {
+function openFloor(number, { focus = null, clearResult = false } = {}) {
   const floor = state.floors.find((f) => f.floor === number) || state.floors[0];
   const changed = state.floor !== floor;
-  const before = state.floor ? { ...state.view } : null;   // the zoom we leave the old floor at
   if (clearResult) state.result = null;
   state.floor = floor;
+  // every floor is drawn in the same frame, with the campus round it: another
+  // floor takes the place of this one under the same view, nothing moves
   if (changed) drawFloor(floor);
+  if (!state.view) fitView(false);
   renderControls();
   paintResult();
   hideStageMsg();
-
-  if (focus) {
-    if (fitFirst || changed) fitView(false);
-    requestAnimationFrame(() => focusRoom(focus, true));
-  } else if (changed && floor.site) {
-    fitView(false);
-  } else if (changed) {
-    const r = stageRect();
-    const zoomed = before && before.s > before.fit * 1.05;
-    const spot = zoomed && { x: (r.width / 2 - before.tx) / before.s, y: (r.height / 2 - before.ty) / before.s };
-    fitView(false);
-    if (zoomed) focusOn(spot.x, spot.y, before.s, false);
-    // zoomed out to the whole floor (or further): the next floor at the same scale
-    else if (before) zoomTo(before.s, r.width / 2, r.height / 2, false);
-    else overview(false);
-  } else {
-    updateDetail();
-  }
+  if (focus) requestAnimationFrame(() => focusRoom(focus, true));
+  else updateDetail();
 }
 
 function renderControls() {
   const floorSeg = $("#floor-seg");
   floorSeg.innerHTML = `<span class="lbl">Floor</span>` + state.floors.map((f) =>
-    f.site
-      ? `<button type="button" class="site" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="The campus grounds">Campus</button>`
-      : `<button type="button" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="Floor ${f.floor}">${f.floor}</button>`).join("");
-  $(".map").classList.toggle("is-site", !!state.floor.site);
+    `<button type="button" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="Floor ${f.floor}">${f.floor}</button>`).join("");
   floorSeg.querySelectorAll("button").forEach((b) => b.addEventListener("click",
     () => openFloor(Number(b.dataset.floor), { clearResult: true })));
 
@@ -1168,11 +1182,7 @@ function renderControls() {
 /** Which block sits at the centre of the stage: filled on the rail, named in the bar. */
 function markInView(r = stageRect()) {
   if (!state.floor) return;
-  if (state.floor.site) {
-    state.inView = null;
-    $("#map-where").innerHTML = `<b>Campus</b><span>Grounds</span>`;
-    return;
-  }
+
   const v = state.view;
   let id = null;
   if (v.s > v.fit * 1.15) {
@@ -1194,7 +1204,7 @@ function markInView(r = stageRect()) {
       seg.scrollTo({ left: current.offsetLeft - (seg.clientWidth - current.offsetWidth) / 2, behavior: smooth() });
     }
   });
-  $("#map-where").innerHTML = `<b>Floor ${state.floor.floor}</b><span>${id ? `Block ${id}` : "Whole floor"}</span>`;
+  $("#map-where").innerHTML = `<b>Floor ${state.floor.floor}</b><span>${id ? `Block ${id}` : "Whole campus"}</span>`;
 }
 
 function showStageMsg(text) {
@@ -1212,6 +1222,7 @@ function hideStageMsg() { $("#stage-msg").hidden = true; }
 const KEEP_IN_VIEW = 140;
 const MIN_ZOOM = 0.8;   // x "whole floor"
 const MAX_ZOOM = 12;
+const MAX_SCALE = 3;    // however small the whole campus is on the stage, rooms can be read
 
 function clampView(r = stageRect()) {
   if (!state.floor) return;
@@ -1222,16 +1233,61 @@ function clampView(r = stageRect()) {
   v.ty = Math.min(Math.max(v.ty, keepY - h), r.height - keepY);
 }
 
+// The plan is drawn by the browser at the scale it is seen at: the view is the
+// SVG's viewBox, not a picture of it stretched, so it stays sharp while it
+// zooms and never fills in afterwards. A move is eased frame by frame, zooming
+// evenly (in log scale) about a centre that travels in a straight line.
+let viewTween = 0;
+const MOVE_MS = 640;
+const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2);
+
 function applyView(animate) {
-  // the stage is measured before anything is written, so moving the plan never
-  // makes the browser lay the page out again in the middle of a frame
   const r = stageRect();
-  const c = $("#canvas");
-  c.classList.toggle("animate", !!animate);
   clampView(r);
-  const v = state.view;
-  c.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.s})`;
+  const to = { ...state.view };
+  cancelAnimationFrame(viewTween);
+  viewTween = 0;
   updateDetail(r);
+  if (!animate || !state.shown || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    state.shown = to;
+    renderView();
+    return;
+  }
+  const from = { ...state.shown }, t0 = performance.now();
+  const centre = (v) => [(r.width / 2 - v.tx) / v.s, (r.height / 2 - v.ty) / v.s];
+  const [fx, fy] = centre(from), [tx, ty] = centre(to);
+  const step = (now) => {
+    const k = easeInOut(Math.min((now - t0) / MOVE_MS, 1));
+    const s = Math.exp(Math.log(from.s) + (Math.log(to.s) - Math.log(from.s)) * k);
+    const cx = fx + (tx - fx) * k, cy = fy + (ty - fy) * k;
+    state.shown = { ...to, s, tx: r.width / 2 - cx * s, ty: r.height / 2 - cy * s };
+    renderView();
+    viewTween = k < 1 ? requestAnimationFrame(step) : 0;
+    if (!viewTween) { state.shown = to; renderView(); }
+  };
+  viewTween = requestAnimationFrame(step);
+}
+
+/** A move under way stops where it is, so a finger or the wheel takes it from there. */
+function settleView() {
+  if (!viewTween) return;
+  cancelAnimationFrame(viewTween);
+  viewTween = 0;
+  state.view = { ...state.view, s: state.shown.s, tx: state.shown.tx, ty: state.shown.ty };
+}
+
+function renderView() {
+  const v = state.shown;
+  if (!v || !state.svg) return;
+  stageRect();   // measured once, if it hasn't been
+  // the drawing covers the whole stage, the part under a phone's sheet too
+  const box = `${-v.tx / v.s} ${-v.ty / v.s} ${stageBox.width / v.s} ${stageBox.height / v.s}`;
+  state.svg.setAttribute("viewBox", box);
+  state.overSvg.setAttribute("viewBox", box);
+  // names: a room's fade in as it gets big enough to read, the campus's keep one size
+  const c = $("#canvas").style;
+  c.setProperty("--zs", v.s.toFixed(4));
+  c.setProperty("--label-a", Math.min(Math.max((v.s - LABEL_SCALE * 0.7) / (LABEL_SCALE * 0.5), 0), 1).toFixed(3));
 }
 
 // A drag or a pinch moves the plan once a frame, however often the finger reports.
@@ -1242,9 +1298,6 @@ function scheduleView() {
 }
 
 function updateDetail(r) {
-  const far = state.view.s < LABEL_SCALE;
-  const c = $("#canvas");
-  if (c.classList.contains("far") !== far) c.classList.toggle("far", far);
   markInView(r);
 }
 
@@ -1273,29 +1326,6 @@ function fitView(animate) {
   applyView(animate);
 }
 
-/** The opening view. A floor is a long corridor, so fitting all of it leaves a
-    sliver; instead the plan opens at the width of the stage on the lobby end,
-    where every route starts. The rail beside it keeps the whole corridor in view. */
-function overview(animate) {
-  if (!state.floor) return;
-  fitView(false);
-  const r = stageRect();
-  const pts = state.floor.areas.flatMap((a) => a.points);
-  const x0 = Math.min(...pts.map((p) => p[0])), x1 = Math.max(...pts.map((p) => p[0]));
-  const y0 = Math.min(...pts.map((p) => p[1]));
-  // never below the scale where room codes can be read; on a narrow stage
-  // that means the corridor end of the lobby, not the whole width
-  const across = (r.width * 0.92) / (x1 - x0);
-  const s = Math.min(Math.max(across, LABEL_SCALE * 1.1), state.view.fit * 6);
-  if (s <= state.view.fit * 1.15) return;   // the floor already fills the stage
-  const spine = state.floor.blocks[0]?.x ?? (x0 + x1) / 2;
-  const cx = s > across ? Math.min(Math.max(spine + 60, x0 + r.width / 2 / s), x1 - r.width / 2 / s) : (x0 + x1) / 2;
-  state.view.s = s;
-  state.view.tx = r.width / 2 - cx * s;
-  state.view.ty = 28 - y0 * s;
-  applyView(animate);
-}
-
 /** Centre the plan on a point at an absolute scale (never below "whole floor"). */
 function focusOn(x, y, scale, animate) {
   const r = stageRect();
@@ -1314,7 +1344,8 @@ function focusRoom(map, animate, keep = 0) {
   const r = stageRect();
   // an answer that lists several places frames every one of them on this floor
   const codes = (state.result?.map === map && state.result.several) || [map.code || map.room_number];
-  const shapes = (state.floor?.rooms || []).filter((rm) => codes.includes(rm.code));
+  const shapes = [...(state.floor?.rooms || []), ...(state.grounds?.buildings || [])]
+    .filter((rm) => codes.includes(rm.code));
   if (!shapes.length) { focusOn(map.x, map.y, Math.max(keep, ROOM_ZOOM), animate); return; }
   const pts = shapes.flatMap((shape) => shape.kind === "circle"
     ? [[shape.cx - shape.r, shape.cy - shape.r], [shape.cx + shape.r, shape.cy + shape.r]] : shape.points);
@@ -1331,8 +1362,9 @@ function focusRoom(map, animate, keep = 0) {
 
 /** Zoom to an absolute scale, keeping the plan point under (mx, my) where it is. */
 function zoomTo(scale, mx, my, animate, defer = false) {
+  settleView();
   const v = state.view;
-  const ns = Math.min(Math.max(scale, v.fit * MIN_ZOOM), v.fit * MAX_ZOOM);
+  const ns = Math.min(Math.max(scale, v.fit * MIN_ZOOM), Math.max(v.fit * MAX_ZOOM, MAX_SCALE));
   const px = (mx - v.tx) / v.s, py = (my - v.ty) / v.s;
   v.s = ns; v.tx = mx - px * ns; v.ty = my - py * ns;
   if (defer) scheduleView(); else applyView(animate);
@@ -1366,6 +1398,7 @@ function setupPanZoom() {
 
   stage.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button, a")) return;   // the zoom buttons are pressed, not dragged
+    settleView();
     pointers.set(e.pointerId, local(e));
     if (pointers.size === 2) {
       pointers.forEach((_, id) => capture(id));
@@ -1442,8 +1475,13 @@ function setupPanZoom() {
       const map = state.result?.map;
       if (state.route?.floors.includes(state.floor?.floor)) { fitView(false); fitRoute(state.floor.floor, false); }
       else if (map && map.floor === state.floor?.floor) { fitView(false); focusRoom(map, false); }
-      else if (state.view.s > state.view.fit * 1.05) overview(false);
-      else fitView(false);
+      else if (state.view.s > state.view.fit * 1.05) {
+        // zoomed in: the same spot stays in the middle, at the same scale
+        const v = state.view, r = stageRect();
+        const x = (r.width / 2 - v.tx) / v.s, y = (r.height / 2 - v.ty) / v.s;
+        fitView(false);
+        focusOn(x, y, v.s, false);
+      } else fitView(false);
     }, 120);
   }).observe(stage);
 }
@@ -1585,9 +1623,11 @@ async function boot() {
   loadHeader();
   try {
     const data = await api("/api/map");
-    state.floors = data.site ? [...data.floors, data.site] : data.floors;   // the Campus view last
-    openFloor(1);
+    state.floors = data.floors;
+    state.grounds = data.grounds;
+    openFloor(1);   // the whole campus, with floor 1 in the main building
     fillPlaces();
+    predrawFloors();
   } catch (err) {
     showStageMsg(`Couldn't load the floor plans (${err.message}).`);
   }

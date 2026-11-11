@@ -115,15 +115,19 @@ page is read (`app/sdulife.py`).
 | **Reading the poster** | The correction form shows the event's poster (fetched through `GET /api/events/a<id>/poster`, administrators only, and only from SDU Life's bucket, as the bucket doesn't let a page read it) and reads it in the browser with tesseract.js (`static/poster-ocr.js`): the hours and the hall, block or zone it finds fill the form, outlined, for the administrator to check against the picture. Nothing is saved on the reader's say-so: tesseract read 17:30 as 17:50 and 18:00 as 08:00 on some of the posters of 11 November. The day stays SDU Life's |
 | **Turning it off** | `SDULIFE_SYNC=0`; the tests do, and never go to the network |
 
-**The campus grounds.** The map has a **Campus** view beside floors 1–3
-(`app/site.py`, sent as `site` by `/api/map`): the main building as floor 1's
-own outline, the Student House (the dormitory, 1/2), SDU Life Centre, the sports
-grounds and the drives. It was traced from a city map of the campus (north up)
-whose main building lies over floor 1 at 4.5 plan units to a pixel, so the
-other buildings stand where they are in relation to it; the shapes are a sketch,
-not their rooms. "SDU Life", "общежитие" or an event at SDU Life Centre light
-the building there, with a dotted walk from the main building's nearest door
-(the west entrance by Block G for SDU Life Centre).
+**One map of the campus.** The map is the whole campus: the Student House (the
+dormitory, 1/2), SDU Life Centre, the sports grounds and the drives
+(`app/site.py`, sent as `grounds` by `/api/map`) are drawn under every floor, and
+all three floors share one frame with them, set on floor 1 by the corridor and
+the blocks they share, so a floor changes under the same view. The grounds were
+traced from a city map of the campus (north up) whose main building lies over
+floor 1 at 4.5 plan units to a pixel. The map opens on the whole campus;
+rooms' names fade in as you zoom, and the names of the buildings keep one size
+on screen. The view is the SVG's viewBox, eased frame by frame, so the plan is
+drawn sharp at every zoom; the other floors are drawn ahead while the page is
+idle. "SDU Life", "общежитие", Sport Hall, Blue Hall or an event at SDU Life
+Centre light the building, with a dotted walk from the main building's nearest
+door (the west entrance by Block G for SDU Life Centre).
 
 **Next: the posters, and the halls off the plans.** Of the 16 upcoming events
 on 11 November 2026, the place field or the description now gives a room or a
