@@ -269,12 +269,69 @@ def test_pressing_a_copied_event_finds_it_on_the_map(live):
     assert answer["occasion"]["title"] == "Research Poster Day" and "F202" in answer["summary"]
 
 
-def test_a_copied_event_is_changed_on_sdu_life_not_here(live):
+def test_a_copied_event_is_not_deleted_here(live):
     admin = account(4101)
     quiz = admin.get("/api/events").json()["events"][0]
-    form = {"title": "Renamed", "place": "F202", "starts": "2030-11-12T17:30", "ends": "2030-11-12T19:30"}
-    assert admin.put(f"/api/events/{quiz['event_id']}", json=form).status_code == 409
     assert admin.delete(f"/api/events/{quiz['event_id']}").status_code == 409
+
+
+# ------------------------------------------------- corrections from the poster
+def test_a_correction_in_the_store_outlives_the_next_copy(store):
+    clock = Clock()
+    sync, _ = sync_of(store, [page()], clock)
+    sync.refresh()
+    quiz = store.campus_events()[0]
+    fixed = store.correct_event(quiz["event_id"], "Red Hall", None, "2030-11-12 18:00", "2030-11-12 20:30")
+    assert fixed["corrected"] == 1
+    clock.wait(FRESH + 1)
+    renamed = [{**EVENTS[0], "title": "ZHAUAP BER! Final"}, *EVENTS[1:]]
+    sync._fetch = lambda: page(renamed)
+    assert sync.refresh() is True
+    row = next(r for r in store.campus_events() if r["event_id"] == quiz["event_id"])
+    # SDU Life's title still comes through; the place and the times are the poster's
+    assert (row["title"], row["place"], row["starts_at"], row["ends_at"]) == \
+        ("ZHAUAP BER! Final", "Red Hall", "2030-11-12 18:00", "2030-11-12 20:30")
+    assert store.uncorrect_event(quiz["event_id"]) is True
+    sync.refresh(force=True)
+    row = next(r for r in store.campus_events() if r["event_id"] == quiz["event_id"])
+    assert (row["place"], row["starts_at"], row["corrected"]) == ("Mini Red Hall", "2030-11-12 17:30", 0)
+
+
+def test_an_event_added_here_cant_be_corrected_as_a_copy(store):
+    row = store.add_event({"title": "Club fair", "description": "", "place": "F202", "starts_at": "2030-11-20 15:00",
+                           "ends_at": "2030-11-20 17:00", "link": None}, "F202", None)
+    assert store.correct_event(row["event_id"], "Red Hall", None, "2030-11-20 15:00", "2030-11-20 16:00") is None
+    assert store.uncorrect_event(row["event_id"]) is False
+
+
+def test_an_administrator_corrects_place_and_time_but_not_the_title(live):
+    admin = account(4101)
+    quiz = admin.get("/api/events").json()["events"][0]
+    form = {"title": "Renamed", "description": "Changed", "room": "F202", "place": "",
+            "starts": "2030-11-12T18:00", "ends": "2030-11-12T20:00", "link": quiz["link"]}
+    res = admin.put(f"/api/events/{quiz['event_id']}", json=form)
+    assert res.status_code == 200, res.text
+    out = res.json()
+    assert out["title"] == "ZHAUAP BER!" and out["description"].startswith("Интеллектуалдық")
+    assert out["room"] == "F202" and out["time"] == "18:00–20:00" and out["corrected"] is True
+    # a copy made now keeps it, and the search finds it in its new room
+    admin.post("/api/events/sync")
+    again = next(e for e in admin.get("/api/events").json()["events"] if e["event_id"] == quiz["event_id"])
+    assert again["room"] == "F202" and again["time"] == "18:00–20:00"
+    assert "F202" in admin.get("/api/search", params={"q": "ZHAUAP BER!"}).json()["summary"]
+    # undone, SDU Life's place and time are back at once
+    assert admin.delete(f"/api/events/{quiz['event_id']}/correction").status_code == 200
+    back = next(e for e in admin.get("/api/events").json()["events"] if e["event_id"] == quiz["event_id"])
+    assert (back["place"], back["time"], back["corrected"]) == ("Mini Red Hall", "17:30–19:30", False)
+    assert admin.delete(f"/api/events/{quiz['event_id']}/correction").status_code == 200   # nothing to undo is fine
+
+
+def test_a_student_cant_correct_an_event(live):
+    student = account(4102)
+    quiz = student.get("/api/events").json()["events"][0]
+    form = {"title": quiz["title"], "place": "Red Hall", "starts": "2030-11-12T18:00", "ends": "2030-11-12T20:00"}
+    assert student.put(f"/api/events/{quiz['event_id']}", json=form).status_code == 403
+    assert student.delete(f"/api/events/{quiz['event_id']}/correction").status_code == 403
 
 
 def test_an_administrator_can_copy_now_and_a_student_cant(live):

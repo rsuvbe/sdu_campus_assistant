@@ -108,6 +108,7 @@
 <dialog class="sch-dialog" id="ev-dialog" aria-labelledby="ef-title">
   <div class="sch-dialog-band"><span id="ef-title">Add an event</span><button type="button" class="sch-close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
   <form class="sch-dialog-body ev-form" id="ev-form" novalidate autocomplete="off">
+    <p class="ef-note" id="ef-note" hidden>This event comes from SDU Life. Set the place and the times as its poster gives them; the title and the description stay SDU Life's, and later updates keep your correction.</p>
     <div class="field" id="ef-field-title">
       <label for="ef-title-input">Title</label>
       <input id="ef-title-input" type="text" maxlength="120" required>
@@ -148,6 +149,6 @@
 </dialog>
 <script src="/static/theme.js?v=7"></script>
 <script src="/static/reminders.js?v=2"></script>
-<script src="/static/events.js?v=3"></script>
+<script src="/static/events.js?v=4"></script>
 </body>
 </html>

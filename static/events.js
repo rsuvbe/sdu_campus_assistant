@@ -6,7 +6,8 @@
    room lights up on the plan and its card comes up in the answers.
 
    Most events are copied from SDU Life (life.sdu.edu.kz) by the server, at most
-   every half hour; they are changed there, so they have no Edit here.
+   every half hour. Their title and description are changed on SDU Life; an
+   administrator can only correct their place and times from the poster here.
 
    Below the events, the university's own news from sdu.edu.kz. An administrator
    (CAMPUS_ADMINS on the server) also gets Add, Edit and Delete, and can start an
@@ -91,6 +92,7 @@ async function loadEvents() {
     list.querySelectorAll("[data-ev-edit]").forEach((b) => b.addEventListener("click", () =>
       openEventForm(shownEvents.find((e) => e.event_id === b.dataset.evEdit))));
     list.querySelectorAll("[data-ev-delete]").forEach((b) => b.addEventListener("click", () => deleteEvent(b)));
+    list.querySelectorAll("[data-ev-uncorrect]").forEach((b) => b.addEventListener("click", () => uncorrectEvent(b)));
   } else if (data.total) {
     // events exist, but the search or the dates took every one of them out
     list.innerHTML = `<div class="ev-empty">
@@ -155,13 +157,15 @@ function eventRow(ev) {
       ev.source === "sdulife" ? "On SDU Life" : "Announcement"}${icon("out-link")}</a>` : "",
     admin && ev.editable ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">Edit</button>
       <button type="button" class="btn-text" data-ev-delete="${esc(ev.event_id)}">Delete</button>` : "",
+    admin && ev.source ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">Correct place and time</button>${
+      ev.corrected ? `<button type="button" class="btn-text" data-ev-uncorrect="${esc(ev.event_id)}">Undo correction</button>` : ""}` : "",
   ].join("");
   return `<li class="ev-item"><a class="dir-row ev-row${ev.on_now ? " open" : ""}" href="/?ask=${encodeURIComponent(ev.ask)}"
       title="${esc(ev.title)}${where ? ` (${esc(ev.where)})` : ""}"
       aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.organizer ? `, by ${ev.organizer}` : ""}${ev.on_now ? ", on now" : ""}`)}">
       <span class="ev-date"><span>${esc(weekday)}</span><b>${esc(dayNum)}</b><span>${esc(month)}</span></span>
       <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)} · ${esc(ev.time)}${
-        ev.organizer ? ` · ${esc(ev.organizer)}` : ""}</span>${
+        ev.organizer ? ` · ${esc(ev.organizer)}` : ""}${ev.corrected ? ` · <span class="ev-fixed">checked against the poster</span>` : ""}</span>${
         ev.description ? `<span class="ev-desc">${esc(ev.description)}</span>` : ""}</span>
       ${ev.on_now ? `<span class="state">On now</span>` : ""}</a>
       ${more ? `<div class="ev-more">${more}</div>` : ""}</li>`;
@@ -236,15 +240,18 @@ const EF = { title: "#ef-title-input", description: "#ef-description", starts: "
 function openEventForm(ev, preset = {}) {
   editingEvent = ev ? ev.event_id : null;
   efClear();
-  $("#ef-title").textContent = ev ? "Edit the event" : "Add an event";
-  $("#ef-submit").textContent = ev ? "Save changes" : "Add the event";
+  const copied = !!ev?.source;      // from SDU Life: only the place and the times are corrected here
+  $("#ef-title").textContent = copied ? "Correct the place and time" : ev ? "Edit the event" : "Add an event";
+  $("#ef-submit").textContent = copied ? "Save the correction" : ev ? "Save changes" : "Add the event";
+  $("#ef-note").hidden = !copied;
+  [EF.title, EF.description, EF.link].forEach((sel) => { $(sel).readOnly = copied; });
   const values = ev ? { title: ev.title, description: ev.description, starts: ev.starts_input, ends: ev.ends_input,
                         room: ev.room_value || "", place: ev.place, link: ev.link || "" }
                     : { title: "", description: "", starts: "", ends: "", room: "", place: "", link: "", ...preset };
   Object.entries(EF).forEach(([k, sel]) => { $(sel).value = values[k] ?? ""; });
   const d = $("#ev-dialog");
   if (!d.open) d.showModal();
-  $(EF.title).focus();
+  $(copied ? EF.starts : EF.title).focus();
 }
 
 function efClear() {
@@ -289,6 +296,14 @@ $("#ev-form").addEventListener("submit", async (e) => {
   }
   button.disabled = false;
 });
+
+async function uncorrectEvent(button) {
+  button.disabled = true;
+  button.textContent = "Bringing SDU Life's back…";
+  const res = await fetch(`/api/events/${encodeURIComponent(button.dataset.evUncorrect)}/correction`, { method: "DELETE" }).catch(() => null);
+  if (res && (res.ok || res.status === 404)) loadEvents();
+  else { button.disabled = false; button.textContent = "Couldn't undo. Try again"; }
+}
 
 async function deleteEvent(button) {
   if (!button.dataset.sure) {            // a second press deletes

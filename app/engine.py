@@ -680,6 +680,7 @@ class CampusIndex:
         return {"event_id": row["event_id"], "title": row["title"], "description": row["description"],
                 "link": row.get("link"), "editable": bool(row.get("editable")),
                 "source": row.get("source"), "organizer": row.get("organizer"),
+                "corrected": bool(row.get("corrected")),
                 "room_value": row.get("room_number") or (room["room_number"] if room else None),
                 "starts_input": row["starts_at"].replace(" ", "T"), "ends_input": row["ends_at"].replace(" ", "T"),
                 "place": row["place"], "room": room["room_number"] if room else None,

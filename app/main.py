@@ -533,16 +533,23 @@ def _event_fields(form: EventForm) -> tuple[dict, str | None]:
     return fields, room["room_number"] if room else None
 
 
-def _added_id(event_id: str) -> int:
-    """'a12' is the event an administrator added with id 12; any other id is
-    one shipped in campus.db, which is changed there and not here. One copied
-    from SDU Life is changed on SDU Life (409)."""
+def _event_id(event_id: str) -> int:
+    """'a12' is the event with id 12 in the accounts database; any other id is
+    one shipped in campus.db, which is changed there and not here."""
     match = re.fullmatch(r"a(\d{1,18})", event_id)
     if not match:
         raise HTTPException(status_code=404, detail="That event can't be changed here.")
-    if users.event_source(int(match[1])):
-        raise HTTPException(status_code=409, detail="This event comes from SDU Life; change it there.")
     return int(match[1])
+
+
+def _added_id(event_id: str) -> int:
+    """An event an administrator added. One copied from SDU Life has its title
+    and description changed on SDU Life (409); only its place and times are
+    corrected here."""
+    number = _event_id(event_id)
+    if users.event_source(number):
+        raise HTTPException(status_code=409, detail="This event comes from SDU Life; change it there.")
+    return number
 
 
 def _event_out(row: dict) -> dict:
@@ -560,8 +567,15 @@ def add_event(form: EventForm, user: dict = Depends(require_admin)):
 
 @app.put("/api/events/{event_id}", tags=["events"])
 def edit_event(event_id: str, form: EventForm, user: dict = Depends(require_admin)):
+    """An event an administrator added is changed whole. One copied from SDU Life
+    gets the place, room and times from its poster; its title, description and
+    link stay SDU Life's, and later copies keep the correction."""
+    number = _event_id(event_id)
     fields, room = _event_fields(form)
-    row = users.update_event(_added_id(event_id), fields, room)
+    if users.event_source(number):
+        row = users.correct_event(number, fields["place"], room, fields["starts_at"], fields["ends_at"])
+    else:
+        row = users.update_event(number, fields, room)
     if not row:
         raise HTTPException(status_code=404, detail="That event isn't there any more.")
     _events_changed()
@@ -572,6 +586,16 @@ def edit_event(event_id: str, form: EventForm, user: dict = Depends(require_admi
 def delete_event(event_id: str, user: dict = Depends(require_admin)):
     if not users.delete_event(_added_id(event_id)):
         raise HTTPException(status_code=404, detail="That event isn't there any more.")
+    _events_changed()
+    return {"ok": True}
+
+
+@app.delete("/api/events/{event_id}/correction", tags=["events"])
+def uncorrect_event(event_id: str, user: dict = Depends(require_admin)):
+    """Drop a correction: the event takes SDU Life's place and times again, now."""
+    if not users.uncorrect_event(_event_id(event_id)):
+        raise HTTPException(status_code=404, detail="That event has no correction to undo.")
+    _sync_sdulife(force=True)
     _events_changed()
     return {"ok": True}
 

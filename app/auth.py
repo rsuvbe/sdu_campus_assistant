@@ -298,7 +298,9 @@ SQLITE_SCHEMA = """
         source      TEXT,
         source_id   TEXT,
         organizer   TEXT,
-        synced_at   TEXT               -- campus time of the copy that last saw it
+        synced_at   TEXT,              -- campus time of the copy that last saw it
+        -- 1: an administrator corrected its place and times from the poster; a copy keeps them
+        corrected   INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id);
@@ -349,12 +351,13 @@ POSTGRES_SCHEMA = [
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS source_id TEXT",
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS organizer TEXT",
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS synced_at TEXT",
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS corrected INTEGER NOT NULL DEFAULT 0",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id)",
 ]
 
 # columns campus_events gained after it first went live, for an SQLite file made before them
 EVENT_COLUMNS = {"search_text": "TEXT NOT NULL DEFAULT ''", "source": "TEXT", "source_id": "TEXT",
-                 "organizer": "TEXT", "synced_at": "TEXT"}
+                 "organizer": "TEXT", "synced_at": "TEXT", "corrected": "INTEGER NOT NULL DEFAULT 0"}
 
 
 CLASS_FIELDS = ('class_id, subject, day_of_week AS day, start_time AS start, '
@@ -635,7 +638,8 @@ class UserStore:
         return self.classes(user_id)
 
     # ---------------------------------------------------------------- events
-    EVENT_FIELDS = "event_id, title, description, place, room_number, starts_at, ends_at, link, source, organizer"
+    EVENT_FIELDS = ("event_id, title, description, place, room_number, starts_at, ends_at, link, source, organizer,"
+                    " corrected")
 
     def campus_events(self, after: str | None = None, words: list[str] | tuple = (),
                       start: str | None = None, end: str | None = None) -> list[dict]:
@@ -708,7 +712,8 @@ class UserStore:
         """Make the events copied from `source` what it lists now, in one
         transaction: each one, by its id there, added or brought up to date. An
         upcoming one it no longer lists was called off and is deleted; one that has
-        started stays, as the source only lists the last weeks."""
+        started stays, as the source only lists the last weeks. The place, room and
+        times an administrator corrected (correct_event) are kept."""
         seen = [e["source_id"] for e in events]
         with self._connect() as conn:
             for e in events:
@@ -717,9 +722,15 @@ class UserStore:
                     " created_at, search_text, source, source_id, organizer, synced_at)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                     " ON CONFLICT (source, source_id) DO UPDATE SET title = excluded.title,"
-                    " description = excluded.description, place = excluded.place,"
-                    " room_number = excluded.room_number, starts_at = excluded.starts_at,"
-                    " ends_at = excluded.ends_at, link = excluded.link, search_text = excluded.search_text,"
+                    " description = excluded.description,"
+                    " place = CASE WHEN campus_events.corrected = 1 THEN campus_events.place ELSE excluded.place END,"
+                    " room_number = CASE WHEN campus_events.corrected = 1 THEN campus_events.room_number"
+                    " ELSE excluded.room_number END,"
+                    " starts_at = CASE WHEN campus_events.corrected = 1 THEN campus_events.starts_at"
+                    " ELSE excluded.starts_at END,"
+                    " ends_at = CASE WHEN campus_events.corrected = 1 THEN campus_events.ends_at"
+                    " ELSE excluded.ends_at END,"
+                    " link = excluded.link, search_text = excluded.search_text,"
                     " organizer = excluded.organizer, synced_at = excluded.synced_at",
                     (e["title"], e["description"], e["place"], e.get("room_number"), e["starts_at"],
                      e["ends_at"], e["link"], _now().isoformat(), search_text(e["title"], e["description"]),
@@ -731,6 +742,24 @@ class UserStore:
                     f"DELETE FROM campus_events WHERE source = ? AND starts_at > ? AND source_id NOT IN ({marks})"
                     " RETURNING event_id", (source, stamp[:16], *seen)).fetchall())
         return {"synced": len(events), "removed": gone}
+
+    def correct_event(self, event_id: int, place: str, room_number: str | None,
+                      starts_at: str, ends_at: str) -> dict | None:
+        """An administrator sets the place, room and times of a copied event from its
+        poster; later copies keep them. None when it isn't a copied event."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "UPDATE campus_events SET place = ?, room_number = ?, starts_at = ?, ends_at = ?, corrected = 1"
+                f" WHERE event_id = ? AND source IS NOT NULL RETURNING {self.EVENT_FIELDS}",
+                (place, room_number, starts_at, ends_at, event_id)).fetchone()
+        return dict(row) if row else None
+
+    def uncorrect_event(self, event_id: int) -> bool:
+        """The next copy brings the source's place and times back."""
+        with self._connect() as conn:
+            row = conn.execute("UPDATE campus_events SET corrected = 0 WHERE event_id = ? AND source IS NOT NULL"
+                               " RETURNING event_id", (event_id,)).fetchone()
+        return row is not None
 
     def last_sync(self, source: str) -> str | None:
         with self._connect() as conn:
