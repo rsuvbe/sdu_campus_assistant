@@ -429,12 +429,14 @@ def test_the_pages_poster_reader_takes_times_and_places_not_dates():
     ("Бочка С1", "D113"),               # hall C1, typed with a Cyrillic С
     ("Red Hall, SDU", "RED-HALL"),
     ("F202 аудитория", "F202"),
+    ("Mini Red Hall", "G116"),          # the hall's other name, not Red Hall
+    ("12.11 Mini Red Hall 18:00", "G116"),
 ])
 def test_a_place_that_names_a_room_lights_it_up(place, room):
     assert main.index.event_place(place)["room"]["room_number"] == room
 
 
-@pytest.mark.parametrize("place", ["Mini Red Hall", "Shanyraq Zone", "SDU University", "online reading"])
+@pytest.mark.parametrize("place", ["Blue Red Hall", "Green Zone", "SDU University", "online reading"])
 def test_a_place_the_directory_doesnt_hold_is_not_taken_for_a_room_it_does(place):
     assert main.index.event_place(place) == {}
 
@@ -605,3 +607,25 @@ def test_the_way_to_the_wi_fi_zone_ends_in_the_lobby():
 
 def test_a_route_to_a_place_from_nowhere_known_says_so():
     assert main.index.directions("SDU Life", "XYZ999")["kind"] == "route_error"
+
+
+@pytest.mark.parametrize("question", ["Mini Red Hall", "how do I get to Mini Red Hall", "where is mini red hall?",
+                                      "как пройти в мини ред холл"])
+def test_mini_red_hall_is_g116_not_red_hall(question):
+    a = main.index.search(question)
+    assert a["kind"] == "room" and a["map"]["code"] == "G116"
+
+
+def test_red_hall_is_still_red_hall():
+    for question in ("Red Hall", "how do I get to Red Hall"):
+        assert main.index.search(question)["map"]["code"] == "RED-HALL"
+
+
+@pytest.mark.parametrize("place", ["Shanyraq Zone", "📍 Shanyraq Zone", "Шаңырақ зона"])
+def test_shanyraq_zone_is_the_wi_fi_zone(place):
+    assert main.index.event_place(place) == {"spot": "WIFI-ZONE"}
+
+
+def test_shanyraq_zone_is_found_as_the_wi_fi_zone():
+    for question in ("Shanyraq Zone", "how do I get to Shanyraq Zone", "шанырак"):
+        assert main.index.search(question)["map"]["code"] == "WIFI-ZONE"

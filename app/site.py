@@ -74,8 +74,10 @@ SPOTS = [
     {"code": "WIFI-ZONE", "label": "Wi-Fi Zone", "sub": "main lobby, Block C", "feature": "wifi",
      "spoken": "the Wi-Fi Zone",
      "aliases": ["wi-fi zone", "wifi zone", "wi fi zone", "wi-fi", "wifi", "wi fi", "вай-фай зона",
-                 "вайфай зона", "вай фай зона", "вайфай"],
-     "about": "The Wi-Fi Zone is the round area in the main lobby (Block C), just inside the main entrance.",
+                 "вайфай зона", "вай фай зона", "вайфай", "shanyraq zone", "shanyraq", "shaniraq zone",
+                 "шанырак", "шанырак зона", "шаңырақ", "шаңырақ зона"],
+     "about": "The Wi-Fi Zone, also called Shanyraq Zone, is the round area in the main lobby (Block C), "
+              "just inside the main entrance.",
      "ways": [{"exit": "main entrance by the lobby", "inside": True,
                "say": ["The Wi-Fi Zone is the round area of the main lobby, by the main entrance."]}]},
 ]

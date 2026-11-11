@@ -503,6 +503,10 @@ INSERT INTO "room_aliases" VALUES(334,'I-2-I211','i212');
 INSERT INTO "room_aliases" VALUES(335,'I-3-I312','i312');
 INSERT INTO "room_aliases" VALUES(336,'I-3-I310','i310');
 INSERT INTO "room_aliases" VALUES(337,'I-3-I310','i311');
+INSERT INTO "room_aliases" VALUES(338,'G-1-G116','mini red hall');
+INSERT INTO "room_aliases" VALUES(339,'G-1-G116','mini-red-hall');
+INSERT INTO "room_aliases" VALUES(340,'G-1-G116','мини ред холл');
+INSERT INTO "room_aliases" VALUES(341,'G-1-G116','мини красный зал');
 CREATE TABLE rooms (
     room_id             TEXT PRIMARY KEY,
     floor_id            TEXT NOT NULL REFERENCES floors(floor_id) ON DELETE CASCADE,
@@ -1133,7 +1137,7 @@ CREATE INDEX idx_service_hours_service ON service_hours(service_id);
 CREATE UNIQUE INDEX idx_rooms_room_number ON rooms(room_number);
 CREATE INDEX idx_events_starts_at ON events(starts_at);
 DELETE FROM "sqlite_sequence";
-INSERT INTO "sqlite_sequence" VALUES('room_aliases',337);
+INSERT INTO "sqlite_sequence" VALUES('room_aliases',341);
 INSERT INTO "sqlite_sequence" VALUES('service_hours',163);
 INSERT INTO "sqlite_sequence" VALUES('service_aliases',142);
 INSERT INTO "sqlite_sequence" VALUES('building_aliases',58);

@@ -138,8 +138,9 @@ main lobby and leads to it.
 **Next: the posters, and the halls off the plans.** Of the 16 upcoming events
 on 11 November 2026, the place field or the description now gives a room or a
 block for nine. Sport Hall and Blue Hall are in SDU Life Centre, so an event
-there lights the centre on the Campus view. Mini Red Hall and Shanyraq Zone are
-not in the directory yet and are said in words. The posters still give end times and, for some, other
+there lights the centre on the map. Mini Red Hall is G116 (an alias of the room,
+found inside a longer question too: "how do I get to Mini Red Hall"). Shanyraq
+Zone is the Wi-Fi Zone of the main lobby. The posters still give end times and, for some, other
 starts than the fields (Health Day 09:00–16:00; K-POP Random Dance 13:00 in the
 fields, 18:00 on the poster); without an API key they are read by tesseract in
 the administrator's browser and only fill the correction form.

@@ -207,7 +207,8 @@ LIFE_CENTRE_RE = re.compile(r"\blife\s*(?:cent(?:re|er)|центр)|лайф\s*�
 # which are words ("в блоке D", "D и F")
 BLOCK_CYR_MAP = {"а": "A", "б": "B", "с": "C", "д": "D", "е": "E", "ф": "F", "г": "G", "н": "H"}
 BLOCK_CYR = str.maketrans({**BLOCK_CYR_MAP, **{k.upper(): v for k, v in BLOCK_CYR_MAP.items()}})
-WIFI_RE = re.compile(r"\bwi-?\s?fi\b|вай-?\s?фай", re.I)
+# the Wi-Fi Zone of the main lobby, also called Shanyraq Zone
+WIFI_RE = re.compile(r"\bwi-?\s?fi\b|вай-?\s?фай|\bshan[yi]raq\b|шаныра[кқ]|шаңыра[кқ]", re.I)
 # the halls inside SDU Life Centre
 LIFE_HALLS_RE = re.compile(r"\b(sport|blue)\s*hall\b|(?:спорт\s*зал)", re.I)
 PLACE_FILLER = {"sdu", "university", "university's", "hall", "зал", "залы", "зале", "аудитория",
@@ -335,6 +336,7 @@ class CampusIndex:
         self.floors: dict[str, dict] = {}
         self.rooms: list[dict] = []
         self.by_code: dict[str, dict] = {}
+        self.alias_phrases: list[tuple[str, str]] = []   # (words, alias) of aliases of two words or more
         self.landmarks: dict[str, list[dict]] = {}
         self.services: dict[str, dict] = {}
         self.building_aliases: list[tuple[str, str]] = []   # (alias, building_id), longest first
@@ -405,6 +407,11 @@ class CampusIndex:
             if room:
                 room["aliases"].append(normalize(r["alias"]))
                 self.by_code.setdefault(normalize(r["alias"]), room)
+                words = re.findall(r"[^\W_]+", r["alias"].casefold())
+                if len(words) > 1:
+                    self.alias_phrases.append((" ".join(words), r["alias"]))
+        # the longest first: "mini red hall" is found before a room called "Red Hall"
+        self.alias_phrases.sort(key=lambda p: -len(p[0]))
 
         aliases = [(normalize(r["alias"]), r["building_id"])
                    for r in conn.execute("SELECT building_id, alias FROM building_aliases")]
@@ -1135,8 +1142,15 @@ class CampusIndex:
 
     # --------------------------------------------------------------- search
     def _search(self, query: str, now: datetime | None, context: str | None = None) -> dict:
-        lowered = query.lower().translate(CYR_TO_LAT)
         qn = normalize(query)
+        # a room's other name of several words, inside a longer question ("how do
+        # I get to Mini Red Hall"): that room, not one whose name is part of it
+        if qn not in self.by_code:
+            words = " " + " ".join(re.findall(r"[^\W_]+", query.casefold())) + " "
+            alias = next((a for phrase, a in self.alias_phrases if f" {phrase} " in words), None)
+            if alias:
+                query, qn = alias, normalize(alias)
+        lowered = query.lower().translate(CYR_TO_LAT)
 
         # exactly a room's code or alias: "D103", "A1", "Red Hall", "Study Space 2" —
         # unless it is the name several places share ("Red Canteen"): then all of them
