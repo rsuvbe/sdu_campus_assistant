@@ -630,6 +630,26 @@ def test_static_files_are_cached_and_pages_are_not(client):
     assert client.get("/").headers.get("cache-control") == "no-cache"
 
 
+def test_a_page_is_tagged_by_what_it_holds_not_by_its_date_and_size(client, tmp_path, monkeypatch):
+    # Vercel gives every file of a deployment the same date: a page that changed
+    # only in its digits ("v=93" to "v=94") kept its size, and with the usual tag
+    # the browser was told its old copy was still good
+    import app.main as main
+    page = client.get("/")
+    tag = page.headers["etag"]
+    assert tag == main.content_tag(main.STATIC_DIR / "index.html") and "last-modified" not in page.headers
+    assert client.get("/", headers={"If-None-Match": tag}).status_code == 304
+    assert client.get("/", headers={"If-None-Match": '"a-tag-of-date-and-size"'}).status_code == 200
+    one, two = tmp_path / "a.html", tmp_path / "b.html"
+    one.write_text("<script src=app.js?v=93></script>")
+    two.write_text("<script src=app.js?v=94></script>")
+    assert one.stat().st_size == two.stat().st_size and main.content_tag(one) != main.content_tag(two)
+    # the static files too
+    plain = client.get("/static/img/favicon.png")
+    assert plain.headers["etag"] == main.content_tag(main.STATIC_DIR / "img" / "favicon.png")
+    assert client.get("/static/img/favicon.png", headers={"If-None-Match": plain.headers["etag"]}).status_code == 304
+
+
 def _free_walk(floor, a, b, skip):
     """The shortest walk between two points through free floor: straight where
     nothing stands between, else round the corners of the rooms."""

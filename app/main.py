@@ -8,6 +8,8 @@ Then open:     http://127.0.0.1:8000        (the web app)
 Everything except the sign-in page, the static files and /api/health needs a
 signed-in SDU account; see app/auth.py for the rules.
 """
+import functools
+import hashlib
 import os
 import re
 import time
@@ -635,6 +637,33 @@ def news(user: dict = Depends(current_user)):
 
 
 # ---------------------------------------------------------------------- site
+def content_tag(path: Path) -> str:
+    """An ETag made of what the file holds. Vercel stamps every file of a
+    deployment with the same date, so the usual tag (its date and size) stayed
+    the same when a page changed only in its digits ("app.js?v=93" to "v=94"):
+    the browser was told its old page was still good."""
+    stat = path.stat()
+    return _content_tag(str(path), stat.st_mtime_ns, stat.st_size)
+
+
+@functools.lru_cache(maxsize=256)
+def _content_tag(path: str, mtime_ns: int, size: int) -> str:
+    return '"' + hashlib.sha256(Path(path).read_bytes()).hexdigest()[:32] + '"'
+
+
+def tagged_file(request: Request, path: Path, headers: dict, media_type: str | None = None) -> Response:
+    """A file with the ETag of its content; 304 when the browser already has it."""
+    tag = content_tag(path)
+    headers = {**headers, "ETag": tag}
+    if tag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
+        return Response(status_code=304, headers=headers)
+    # its size and type are set now (not when sent), so the date can be taken out
+    response = FileResponse(path, media_type=media_type, headers=headers, stat_result=os.stat(path))
+    if "last-modified" in response.headers:    # the deployment's one date: says nothing
+        del response.headers["last-modified"]
+    return response
+
+
 class CachedStatic(StaticFiles):
     """Static files the CDN and the browser keep, so a page opens without asking
     the server for each of them again. A script or a stylesheet the pages name
@@ -644,7 +673,20 @@ class CachedStatic(StaticFiles):
 
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
-        if response.status_code == 200:
+        if response.status_code in (200, 304):
+            # the content's tag, not the deployment's one date and the size (content_tag)
+            full, _ = self.lookup_path(path)
+            if full:
+                tag = content_tag(Path(full))
+                asked = dict(scope.get("headers") or []).get(b"if-none-match", b"").decode()
+                if tag in [t.strip() for t in asked.split(",")]:
+                    response = Response(status_code=304)
+                elif response.status_code == 304:      # the old kind of tag matched: send it again
+                    response = FileResponse(full)
+                response.headers["ETag"] = tag
+                if "last-modified" in response.headers:
+                    del response.headers["last-modified"]
+        if response.status_code in (200, 304):
             versioned = b"v=" in scope.get("query_string", b"")
             response.headers["Cache-Control"] = (
                 "public, max-age=31536000, s-maxage=31536000, immutable" if versioned
@@ -678,7 +720,7 @@ def _page(request: Request, name: str):
         here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         target = "/login" if here == "/" else f"/login?next={quote(here, safe='')}"
         return RedirectResponse(target, status_code=303)
-    return FileResponse(STATIC_DIR / name, headers=PAGE_HEADERS)
+    return tagged_file(request, STATIC_DIR / name, PAGE_HEADERS)
 
 
 @app.get("/", include_in_schema=False)
@@ -697,11 +739,10 @@ def events_page(request: Request):
 
 
 @app.get("/sw.js", include_in_schema=False)
-def service_worker():
+def service_worker(request: Request):
     """The reminders' service worker (static/sw.js), served from the root so it
     may show notifications for every page of the site."""
-    return FileResponse(STATIC_DIR / "sw.js", media_type="text/javascript",
-                        headers={"Cache-Control": "no-cache"})
+    return tagged_file(request, STATIC_DIR / "sw.js", {"Cache-Control": "no-cache"}, "text/javascript")
 
 
 @app.get("/schedule", include_in_schema=False)
@@ -716,4 +757,4 @@ def login_page(request: Request, mode: str | None = None, next: str | None = Non
     user = users.session_user(request.cookies.get(SESSION_COOKIE))
     if mode != "reset" and user and user["role"] != ROLE_VISITOR:
         return RedirectResponse(safe_next(next), status_code=303)
-    return FileResponse(STATIC_DIR / "auth.html", headers=PAGE_HEADERS)
+    return tagged_file(request, STATIC_DIR / "auth.html", PAGE_HEADERS)
