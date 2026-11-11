@@ -338,7 +338,7 @@ def test_us11_switching_floors_keeps_the_zoom():
     # every floor is drawn in one frame with the campus round it, so another
     # floor goes in under the same view: the zoom and the place stay as they were
     body = APP_JS.split("function openFloor(")[1].split("function renderControls()")[0]
-    assert "if (changed) drawFloor(floor);" in body and "if (!state.view) fitView(false);" in body
+    assert "if (changed) drawFloor(floor);" in body and "if (!state.shown) fitView(false);" in body
     assert "focusOn(" not in body and "zoomTo(" not in body
 
 

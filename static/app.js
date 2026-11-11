@@ -1145,7 +1145,7 @@ function openFloor(number, { focus = null, clearResult = false } = {}) {
   // every floor is drawn in the same frame, with the campus round it: another
   // floor takes the place of this one under the same view, nothing moves
   if (changed) drawFloor(floor);
-  if (!state.view) fitView(false);
+  if (!state.shown) fitView(false);   // the first floor shown opens on the whole campus
   renderControls();
   paintResult();
   hideStageMsg();
