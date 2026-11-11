@@ -108,24 +108,31 @@ page is read (`app/sdulife.py`).
 |---|---|
 | **Copied, not proxied** | US19/US20 want the events in our own database and searched there, so they are copied into `campus_events` (next to the ones administrators add, `source = 'sdulife'` and SDU Life's id in `source_id`) and the page, the search and the map read them from there. Nothing about US20's query changes |
 | **When** | `/api/events` copies them first when the last copy is 30 minutes old. The time of the last copy is in the database, so all server instances go by the same one; the page itself takes ~0.1 s. When SDU Life can't be reached the last copy stays, the page says so, and it's tried again after 5 minutes. An administrator can press **Update now** (`POST /api/events/sync`) |
-| **What is kept** | Title, description (up to 1000 characters), place, organizer, start, and a link to the event on SDU Life. SDU Life gives no end time: an event is taken to last two hours, and one without a time the whole day. Organisers put registration links, dates and hours in the place field, so those lines are dropped; an empty one becomes "Place not announced". A place that names a room of the directory (`F202`) lights it up on the plan |
+| **What is kept** | Title, description (up to 1000 characters), place, organizer, start, and a link to the event on SDU Life. SDU Life gives no end time: an event is taken to last two hours, and one without a time the whole day. Organisers put registration links, dates and hours in the place field, so those lines are dropped; an empty one becomes "Place not announced". A long description comes as `"$2b"` with the text on a flight row of its own (`2b:T<bytes>,…`, rows back to back), and is put back from there |
+| **Where it is** | When the place field says only "SDU University", "SDU LIFE CENTRE" or nothing, the venue is taken from the description: a "Venue:", "Өтетін орны:", "Орны:" or "Место:" line, or a line that is only 📍 and a name ("📍 Shanyraq Zone"); a format ("📍 Format: Offline") or a prize ("1st place: …") is not a venue. Clubs put SDU LIFE CENTRE in the field for events held in the main building too (AIQYN's description says Blue Hall). The place is then put on the plan (`CampusIndex.event_place`): a room it names lights up (`F202`, "Бочка С1" is hall C1 in D113 — a Cyrillic С read as C), but not a room it only contains ("Mini Red Hall" is not Red Hall). Blocks it names ("G block аллея", "G-H block", "от блока D до блока F", "D-F block-тар арасы"; the Wi-Fi Zone is Block C's lobby) light up as one area with a flag saying them, and the row shows "Block G" or "Blocks D–F". SDU Life Centre is a building of its own, not on the plans, and says so |
 | **Changes** | A second copy updates each event in place by its SDU Life id. An upcoming one SDU Life no longer lists was called off and is deleted; one that has started stays. A copied event can't be deleted here (409), and its title and description are changed on SDU Life |
 | **Corrected from the poster** | SDU Life's place and times are often vaguer or different from the poster's. An administrator presses **Correct place and time** and sets the room, place, start and end as the poster gives them (`PUT /api/events/a<id>`); the event is marked `corrected`, later copies keep those four fields and still bring the title and description, and the row says "checked against the poster". **Undo correction** (`DELETE /api/events/a<id>/correction`) copies SDU Life's back at once |
 | **Reading the poster** | The correction form shows the event's poster (fetched through `GET /api/events/a<id>/poster`, administrators only, and only from SDU Life's bucket, as the bucket doesn't let a page read it) and reads it in the browser with tesseract.js (`static/poster-ocr.js`): the hours and the hall, block or zone it finds fill the form, outlined, for the administrator to check against the picture. Nothing is saved on the reader's say-so: tesseract read 17:30 as 17:50 and 18:00 as 08:00 on some of the posters of 11 November. The day stays SDU Life's |
 | **Turning it off** | `SDULIFE_SYNC=0`; the tests do, and never go to the network |
 
-**Next: the posters.** Each SDU Life event has a banner, and the banner is
-usually more exact than the fields. Of the 14 upcoming events on 11 November
-2026, the posters gave a room or hall where the fields said only "SDU LIFE
-CENTRE" or "SDU University" (QAMQOR GALA in Red Hall, AIQYN in Blue Hall, SDU
-Team Relay in Sport Hall), an end time for four (Health Day 09:00–16:00, EDU
-JOB FAIR 10:00–14:00, Night at the Museum 17:30–20:30, Quanysh Alemi over two
-days), and a different start for six, by up to five hours (K-POP Random Dance:
-13:00 in the fields, 18:00 on the poster). The descriptions name no rooms. Without an
-API key the posters are read by tesseract in the administrator's browser and
-only fill the correction form (below); a vision model would read the stylised
-ones too, and could fill it on its own. Blue Hall and Sport Hall are not in the
-directory yet.
+**The campus grounds.** The map has a **Campus** view beside floors 1–3
+(`app/site.py`, sent as `site` by `/api/map`): the main building as floor 1's
+own outline, the Student House (the dormitory, 1/2), SDU Life Centre, the sports
+grounds and the drives. It was traced from a city map of the campus (north up)
+whose main building lies over floor 1 at 4.5 plan units to a pixel, so the
+other buildings stand where they are in relation to it; the shapes are a sketch,
+not their rooms. "SDU Life", "общежитие" or an event at SDU Life Centre light
+the building there, with a dotted walk from the main building's nearest door
+(the west entrance by Block G for SDU Life Centre).
+
+**Next: the posters, and the halls off the plans.** Of the 16 upcoming events
+on 11 November 2026, the place field or the description now gives a room or a
+block for nine. Mini Red Hall, Blue Hall, Sport Hall and Shanyraq Zone are not
+in the directory: they are said in words until we have their plans (SDU Life
+Centre's among them). The posters still give end times and, for some, other
+starts than the fields (Health Day 09:00–16:00; K-POP Random Dance 13:00 in the
+fields, 18:00 on the poster); without an API key they are read by tesseract in
+the administrator's browser and only fill the correction form.
 
 ## Events and SDU news — November 2026
 

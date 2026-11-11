@@ -93,12 +93,60 @@ def clean_place(location: str) -> str:
     return _one_line(", ".join(kept), 120) or NO_PLACE
 
 
+def _text_rows(payload: str) -> dict[str, str]:
+    """The long texts of a page's flight data. Next.js puts "$2b" in a field and
+    the text on a row of its own, "2b:T<length in UTF-8 bytes, hex>,<text>"; a
+    row like that has no line end, so the next one starts right after its text."""
+    rows: dict[str, str] = {}
+    head = re.compile(r"([0-9a-f]+):T([0-9a-f]+),")
+    for first in re.finditer(r"(?:^|\n)(?=[0-9a-f]+:T[0-9a-f]+,)", payload):
+        at = first.end()
+        while (row := head.match(payload, at)) and row.group(1) not in rows:
+            size = int(row.group(2), 16)
+            text = payload[row.end():row.end() + size].encode("utf-8")[:size].decode("utf-8", "ignore")
+            rows[row.group(1)] = text
+            at = row.end() + len(text)
+    return rows
+
+
+def _text(rows: dict[str, str], value) -> str:
+    """A field as text, a "$2b" put back from its row."""
+    value = str(value or "")
+    ref = re.fullmatch(r"\$([0-9a-f]+)", value)
+    return rows.get(ref.group(1), "") if ref else value
+
+
+# A place field that says nothing about where on campus: the university, or SDU
+# Life Centre, which clubs put there for events held in the main building too
+VAGUE_PLACE_RE = re.compile(r"^(?:sdu(?: university)?|sdu life(?: cent(?:re|er))?|university|"
+                            + re.escape(NO_PLACE) + r")$", re.I)
+# "Venue: SDU University, Blue Hall", "Өтетін орны: Sport Hall", "📍 Shanyraq Zone"
+VENUE_RE = re.compile(r"(?<![\w-])(?:venue|location|өтетін орны|орны|место(?: проведения)?|локация)\s*:\s*"
+                      r"([^\n📅⏰🕒🕐👥🌍💰🎟📞]+)", re.I)
+PIN_LINE_RE = re.compile(r"^\s*📍\s*([^:?\n]{3,60})$", re.M)
+
+
+def venue_of(description: str) -> str | None:
+    """Where an event is, as its description says it: the first line that names
+    a venue ("Venue: …", "Өтетін орны: …", "Место: …"), else a line that is only
+    a 📍 and a name. A format ("📍 Format: Offline") or a heading is no venue."""
+    for match in VENUE_RE.finditer(description or ""):
+        venue = match.group(1).strip(" .,;—–-")
+        if venue and not re.match(r"(?:online|offline|офлайн|онлайн)\b", venue, re.I):
+            return _one_line(venue, 120)
+    pin = PIN_LINE_RE.search(description or "")
+    if pin and not re.search(r"\b(?:format|формат|offline|online|офлайн|онлайн)\b", pin.group(1), re.I):
+        return _one_line(pin.group(1).strip(" .,;"), 120)
+    return None
+
+
 def parse_events(body: bytes) -> list[dict]:
     """The events on SDU Life's home page, as fields of campus_events (see
     clean_event), each with its SDU Life id as `source_id`. An event that can't be
     read is left out; a page with none at all is an error, so a changed page
     never empties the list."""
     payload = _payload(body.decode("utf-8", "replace"))
+    texts = _text_rows(payload)
     decoder = json.JSONDecoder()
     found: dict[int, dict] = {}
     for match in EVENT_START_RE.finditer(payload):
@@ -120,15 +168,18 @@ def parse_events(body: bytes) -> list[dict]:
                 ends = starts + timedelta(days=1)
             else:
                 ends = starts + DEFAULT_LENGTH
-            fields = clean_event(_one_line(str(item.get("title") or ""), 120),
-                                 _description(str(item.get("description") or "")),
-                                 clean_place(str(item.get("location") or "")),
+            description = _text(texts, item.get("description"))
+            place = clean_place(_text(texts, item.get("location")))
+            if VAGUE_PLACE_RE.match(place):
+                place = venue_of(description) or place
+            fields = clean_event(_one_line(_text(texts, item.get("title")), 120),
+                                 _description(description), place,
                                  f"{starts:%Y-%m-%dT%H:%M}", f"{ends:%Y-%m-%dT%H:%M}",
                                  EVENT_URL.format(id=int(source_id)))
         except (AuthError, TypeError, ValueError, OverflowError):
             continue
         fields["source_id"] = str(int(source_id))
-        fields["organizer"] = _one_line(str(item.get("organizer") or ""), 120) or None
+        fields["organizer"] = _one_line(_text(texts, item.get("organizer")), 120) or None
         image = str(item.get("image") or "")
         fields["image"] = image if POSTER_RE.match(image) else None
         events.append(fields)

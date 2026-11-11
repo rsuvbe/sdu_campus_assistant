@@ -636,16 +636,17 @@ def test_us19_an_event_in_a_place_off_the_plans_gets_a_card_that_says_so():
     assert a["kind"] == "event" and a["title"] == "Nauryz Celebration"
     assert a["occasion"]["when"] == "Mon 22 Mar, 12:00–15:00"
     assert a["occasion"]["title"] == "Nauryz Celebration" and a["place"] == "Campus grounds"
-    assert "Campus grounds" in a["summary"] and not a.get("map")
+    assert "Campus grounds" in a["summary"] and "isn't on the plans" in a["summary"] and not a.get("map")
     branch = APP_JS.split('d.kind === "event"')[1].split("} else {")[0]
-    assert "occasion(d" in branch and "isn't on the plans" in branch and 'classList.add("prompt"' in branch
+    assert "occasion(d" in branch and "esc(d.summary)" in branch and 'classList.add("prompt"' in branch
 
 
 def test_us19_the_event_card_folds_with_the_turn_without_losing_its_way_back():
     assert ".is-event .answer-foot { display: none; }" in STYLES_CSS
     assert ".turn.past .is-event .answer-foot { display: flex; }" in STYLES_CSS
     branch = APP_JS.split('d.kind === "event"')[1].split("} else {")[0]
-    assert "foot(d, false" in branch                           # the foot holds the expand button
+    assert "foot(d, !!d.map" in branch                        # the foot holds the expand button (and, for
+    # an event the Campus view shows, the way back to it on the plan)
     assert 'if (d.kind === "event") showStageMsg(' in APP_JS      # and the plan says there is nothing to show
 
 

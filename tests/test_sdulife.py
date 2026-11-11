@@ -15,7 +15,7 @@ import app.main as main
 from app.auth import UserStore
 from app.engine import CAMPUS_TZ
 from app.main import app
-from app.sdulife import (FRESH, NO_PLACE, RETRY, SOURCE, SduLifeSync, SourceError, clean_place,
+from app.sdulife import (FRESH, NO_PLACE, RETRY, SOURCE, SduLifeSync, SourceError, clean_place, venue_of,
                          parse_events)
 
 PASSWORD = "Campus#2026"
@@ -422,3 +422,122 @@ def test_the_pages_poster_reader_takes_times_and_places_not_dates():
     for found, (start, end, places) in zip(json.loads(out), POSTER_TEXTS.values()):
         assert (found["start"], found["end"]) == (start, end)
         assert [p.lower() for p in found["places"]] == [p.lower() for p in places]
+
+
+# ------------------------------------------------- where an event's place is
+@pytest.mark.parametrize("place, room", [
+    ("Бочка С1", "D113"),               # hall C1, typed with a Cyrillic С
+    ("Red Hall, SDU", "RED-HALL"),
+    ("F202 аудитория", "F202"),
+])
+def test_a_place_that_names_a_room_lights_it_up(place, room):
+    assert main.index.event_place(place)["room"]["room_number"] == room
+
+
+@pytest.mark.parametrize("place", ["Mini Red Hall", "Blue Hall", "Sport Hall", "SDU University", "online reading"])
+def test_a_place_the_directory_doesnt_hold_is_not_taken_for_a_room_it_does(place):
+    assert main.index.event_place(place) == {}
+
+
+@pytest.mark.parametrize("place, blocks, shown", [
+    ("G block аллея", ["G"], "G"),
+    ("G-H block", ["G", "H"], "G"),
+    ("Коридор SDU (от блока D до блока F)", ["D", "E", "F"], "E"),
+    ("D-F block-тар арасы", ["D", "E", "F"], "E"),
+    ("блок Е, 2 этаж", ["E"], "E"),       # a Cyrillic Е
+    ("в блоке D", ["D"], "D"),            # "в" is a word, not block B
+])
+def test_a_place_that_names_blocks_shows_the_block(place, blocks, shown):
+    assert main.index.event_place(place) == {"blocks": blocks, "block": shown}
+
+
+def test_sdu_life_centre_is_a_building_of_its_own():
+    for place in ("SDU LIFE CENTRE", "SDU Life Center", "Лайф центр"):
+        assert main.index.event_place(place) == {"building": "SDU Life Centre"}
+
+
+def test_an_event_in_a_block_opens_the_block_and_one_in_life_centre_says_where_it_is(live):
+    live._fetch = lambda: page([{**EVENTS[0], "location": "G block аллея"},
+                                {**EVENTS[1], "location": "SDU LIFE CENTRE"}])
+    c = account(4102)
+    events = c.get("/api/events").json()["events"]
+    quiz, health = events[0], events[1]
+    assert quiz["room"] is None and quiz["where"] == "Block G"
+    assert health["where"] == "a separate building"
+    a = c.get("/api/search", params={"q": "ZHAUAP BER!"}).json()
+    assert a["kind"] == "block" and a["block"]["building_id"] == "G" and a["map"]
+    assert a["occasion"]["title"] == "ZHAUAP BER!" and "Block G" in a["summary"]
+    b = c.get("/api/search", params={"q": "Health Day"}).json()
+    # SDU Life Centre is off the floor plans: the Campus view lights it, with the walk there
+    assert b["kind"] == "event" and "SDU Life Centre" in b["summary"]
+    assert b["map"]["floor"] == 0 and b["map"]["code"] == "SDU-LIFE" and b["map"]["walk"]
+    assert b["occasion"]["title"] == "Health Day"
+
+
+def test_a_long_text_on_a_row_of_its_own_is_put_back():
+    # Next.js writes "$2b" in the field and the text after the rows, "2b:T<bytes, hex>,<text>",
+    # one straight after another with no line between them
+    first, second = "Film Hunter — кино байқауы 🎬", "Venue: SDU University, Blue Hall"
+    rows = f'2b:T{len(first.encode()):x},{first}2c:T{len(second.encode()):x},{second}'
+    events = [{**EVENTS[0], "description": "$2b"}, {**EVENTS[1], "description": "$2c"}]
+    body = page(events).replace(b"</body>",
+        f"<script>self.__next_f.push([1,{json.dumps(chr(10) + rows, ensure_ascii=False)}])</script></body>".encode())
+    quiz, health = parse_events(body)[:2]
+    assert quiz["description"] == first
+    assert health["description"] == second and health["place"] == "SDU University, Blue Hall"
+
+
+@pytest.mark.parametrize("description, venue", [
+    ("📅 Күні: 14.11.2026 ⏰ Басталуы: 10:00 📍 Өтетін орны: Sport Hall\nТіркел!", "Sport Hall"),
+    ("📍 EVENT DETAILS\nVenue: SDU University, Blue Hall", "SDU University, Blue Hall"),
+    ("Танцы!\n📍 Shanyraq Zone\n", "Shanyraq Zone"),
+    ("📍 Орны: WI-Fi zone- F block", "WI-Fi zone- F block"),
+    ("🥇 1st place: 200,000 KZT\n🥈 2-орын: 120 000 ₸\n📍 Format: Offline+Online", None),
+    ("📍 Іс-шара қалай өтеді?\n📍 Өткізу форматы: Офлайн", None),
+])
+def test_the_venue_is_read_from_the_description(description, venue):
+    assert venue_of(description) == venue
+
+
+def test_a_vague_place_gives_way_to_the_descriptions_venue_but_a_clear_one_doesnt():
+    events = [{**EVENTS[0], "location": "SDU LIFE CENTRE", "description": "Venue: SDU University, Blue Hall"},
+              {**EVENTS[1], "location": "", "description": "📍 Өтетін орны: Sport Hall"},
+              {**EVENTS[2], "location": "F202", "description": "Venue: Red Hall"}]
+    assert [e["place"] for e in parse_events(page(events))] == ["SDU University, Blue Hall", "Sport Hall", "F202"]
+
+
+def test_the_wi_fi_zone_is_the_lobby_of_block_c():
+    assert main.index.event_place("Wi-fi zone") == {"blocks": ["C"], "block": "C"}
+    assert main.index.event_place("WI-Fi zone- F block") == {"blocks": ["C", "D", "E", "F"], "block": "E"}
+
+
+# ------------------------------------------------------- the campus grounds
+def test_the_map_carries_the_campus_grounds_round_the_main_building():
+    c = account(4102)
+    data = c.get("/api/map").json()
+    assert [f["floor"] for f in data["floors"]] == [1, 2, 3]
+    site = data["site"]
+    assert site["site"] is True and {r["code"] for r in site["rooms"]} == {"SDU-LIFE", "STUDENT-HOUSE"}
+    # the main building is floor 1's own outline, moved into the grounds
+    assert len(site["areas"]) == len(data["floors"][0]["areas"])
+    xs = [p[0] for r in site["rooms"] for p in r["points"]] + [p[0] for a in site["areas"] for p in a["points"]]
+    ys = [p[1] for r in site["rooms"] for p in r["points"]] + [p[1] for a in site["areas"] for p in a["points"]]
+    assert 0 <= min(xs) and max(xs) <= site["width"] and 0 <= min(ys) and max(ys) <= site["height"]
+    life = next(r for r in site["rooms"] if r["code"] == "SDU-LIFE")
+    main_x = [p[0] for a in site["areas"] for p in a["points"]]
+    # SDU Life Centre is west of the main building and south of it
+    assert max(p[0] for p in life["points"]) < min(main_x)
+    assert min(p[1] for p in life["points"]) > max(p[1] for a in site["areas"] for p in a["points"])
+
+
+@pytest.mark.parametrize("question, code", [
+    ("SDU Life", "SDU-LIFE"), ("Where is SDU Life Centre?", "SDU-LIFE"),
+    ("общежитие", "STUDENT-HOUSE"), ("where is the dormitory", "STUDENT-HOUSE"),
+])
+def test_a_building_of_the_grounds_is_found_by_name(question, code):
+    a = main.index.search(question)
+    assert a["kind"] == "site" and a["map"]["code"] == code and a["map"]["floor"] == 0 and a["map"]["walk"]
+
+
+def test_a_room_is_still_a_room_not_a_building_of_the_grounds():
+    assert main.index.search("Red Hall")["kind"] == "room"

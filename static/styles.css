@@ -501,6 +501,10 @@ a.dir-row { color: inherit; text-decoration: none; }
 .ev-source .i { width: 14px; height: 14px; flex: none; }
 .ev-source[hidden] { display: none; }
 .ev-fixed { color: var(--ink); font-weight: 500; }
+/* where on campus an event is, beside the place as SDU Life words it */
+.ev-spot { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 0 6px;
+  border-radius: 999px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-weight: 500; white-space: nowrap; }
+.ev-spot .i { width: 12px; height: 12px; }
 .ef-note { margin: 0; padding: var(--s3); font-size: var(--t-13); color: var(--ink-2); background: var(--stock); border: 1px solid var(--line); border-radius: 8px; }
 .ef-note[hidden] { display: none; }
 .ev-form input[readonly], .ev-form textarea[readonly] { color: var(--ink-2); background: var(--stock); }
@@ -949,6 +953,21 @@ a.dir-row { color: inherit; text-decoration: none; }
 .map.focused .plan .room.is-target text { fill: #2B1A0C; }
 .map.focused .plan .room.is-target text.barrel { opacity: 1; }
 
+/* the Campus view: drives, sports grounds, the buildings around the main one */
+.plan .road { fill: none; stroke: color-mix(in srgb, var(--map-wall) 45%, transparent); stroke-width: 26; stroke-linecap: round; stroke-linejoin: round; }
+.plan .road.edge { stroke: color-mix(in srgb, var(--map-wall) 55%, transparent); stroke-width: 3; stroke-dasharray: 14 10; }
+.plan .ground { fill: color-mix(in srgb, var(--exit) 12%, var(--map-bg)); stroke: color-mix(in srgb, var(--exit) 45%, transparent); stroke-width: 3; }
+.plan .ground-label { fill: color-mix(in srgb, var(--exit) 80%, var(--map-ink)); font-size: 40px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.plan .room.t-building text { font-size: 56px; font-weight: 800; }
+.plan .room.t-building text.sub { font-size: 32px; font-weight: 600; }
+.plan .site-label text { fill: var(--map-ink); opacity: .55; font-size: 72px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.plan .site-label text.sub { font-size: 40px; font-weight: 600; }
+.plan .site-letter text { fill: var(--map-ink); opacity: .22; font-size: 64px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.plan-over .site-walk { fill: none; stroke: var(--dest); stroke-width: 8; stroke-dasharray: 2 18; stroke-linecap: round; stroke-linejoin: round; }
+.levels button.site { width: auto; padding: 0 12px; }
+.plan .room.t-building text { opacity: 1; }
+.plan .room.t-building text.sub { opacity: .75; }
+.map.is-site #block-seg { visibility: hidden; }
 .plan .block-tag .letter { fill: var(--map-ink); opacity: .2; font-size: 92px; font-weight: 800; text-anchor: middle; pointer-events: none; }
 .plan .block-tag .caption { fill: color-mix(in srgb, var(--map-ink) 65%, transparent); font-size: 17px; font-weight: 600; text-anchor: middle; pointer-events: none; }
 
@@ -985,6 +1004,7 @@ a.dir-row { color: inherit; text-decoration: none; }
 .plan .trip-path.fresh .trip-chev { animation: rise-in .25s ease-out both; animation-delay: calc(var(--at) * .7s); }
 .plan .trip-path.fresh :is(.trip-stairs, .trip-door, .trip-link) { animation: rise-in .25s ease-out .6s both; }
 .map.focused .plan .room.hl-start polygon, .map.focused .plan .room.hl-start circle { fill: var(--dest-soft); stroke: var(--dest); stroke-width: 2.4; stroke-dasharray: none; }
+.map.focused .plan .room.hl-area polygon, .map.focused .plan .room.hl-area circle { fill: var(--dest-soft); stroke: var(--dest); stroke-width: 1.6; stroke-dasharray: none; }
 @keyframes trip-draw { from { stroke-dashoffset: calc(var(--len) * 1px); } to { stroke-dashoffset: 0; } }
 @keyframes rise-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -1337,3 +1357,6 @@ a.dir-row { color: inherit; text-decoration: none; }
 .ef-poster img { width: 100%; max-height: 360px; object-fit: contain; background: var(--stock); border: 1px solid var(--line); border-radius: 8px; }
 .ef-ocr { font-size: var(--t-13); color: var(--ink-2); }
 .ev-form .field.guess input { border-color: #D9824B; box-shadow: 0 0 0 1px #D9824B; }
+
+/* a building of the grounds: its name is the headline, with no plan beside it */
+.answer .card-id.site-id, .turn.past .answer .card-id.site-id { grid-template-columns: minmax(0, 1fr); }

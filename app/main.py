@@ -124,7 +124,7 @@ news_feed = NewsFeed()
 
 
 def _room_of(place: str) -> str | None:
-    room = index.directory_room(place)
+    room = index.event_place(place).get("room")
     return room["room_number"] if room else None
 
 
@@ -325,8 +325,9 @@ def route(to: str = Query(..., min_length=1, max_length=200,
 
 @app.get("/api/map", tags=["map"])
 def vector_map(user: dict = Depends(current_user)):
-    """The three floors as vector geometry: one merged drawing per floor."""
-    return {"floors": campus_map.floor_list()}
+    """The three floors as vector geometry: one merged drawing per floor, and the
+    campus grounds round the main building (`site`)."""
+    return {"floors": campus_map.floor_list(), "site": campus_map.site_view()}
 
 
 @app.get("/api/sheets", tags=["map"])

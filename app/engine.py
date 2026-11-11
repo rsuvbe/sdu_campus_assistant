@@ -199,6 +199,18 @@ def normalize(text: str) -> str:
 
 ENTRANCE_KEYS = {normalize(w) for w in ENTRANCE_WORDS}
 
+# Events: SDU Life Centre is a building of its own, apart from the main one the
+# plans draw; and the words around a room's name that still mean that room
+LIFE_CENTRE = "SDU Life Centre"
+LIFE_CENTRE_RE = re.compile(r"\blife\s*(?:cent(?:re|er)|центр)|лайф\s*центр", re.I)
+# the Cyrillic letters that are typed for a block's Latin one; not "в" or "и",
+# which are words ("в блоке D", "D и F")
+BLOCK_CYR_MAP = {"а": "A", "б": "B", "с": "C", "д": "D", "е": "E", "ф": "F", "г": "G", "н": "H"}
+BLOCK_CYR = str.maketrans({**BLOCK_CYR_MAP, **{k.upper(): v for k, v in BLOCK_CYR_MAP.items()}})
+WIFI_RE = re.compile(r"\bwi-?\s?fi\b|вай-?\s?фай", re.I)
+PLACE_FILLER = {"sdu", "university", "university's", "hall", "зал", "залы", "зале", "аудитория",
+                "ауд", "room", "кабинет", "бочка", "barrel", "in", "в", "the", "campus", "кампус"}
+
 
 def base_name(name: str) -> str:
     """A place's name without the floor note: "Red Canteen (3rd floor)" -> "Red Canteen"."""
@@ -474,6 +486,85 @@ class CampusIndex:
         hall = re.sub(r"^(?:hall|зал)", "", key)
         return (self.by_code.get(hall) or self.by_code.get(hall.translate(CYR_TO_LAT))) if hall != key else None
 
+    def event_place(self, place: str | None) -> dict:
+        """Where an event's place, as an organiser wrote it on SDU Life, is on the
+        plans. `room`: a room it names ("Бочка С1" is hall C1, "F202, SDU") — a
+        name with a word in front that the directory doesn't know is another
+        place ("Mini Red Hall" is not Red Hall). Otherwise `blocks`, the blocks
+        it names ("G block аллея", "G-H block", "от блока D до блока F"), and
+        `block`, the one shown: the middle of a run of three or more. `building`
+        for SDU Life Centre, a building of its own off these plans."""
+        text = place or ""
+        if LIFE_CENTRE_RE.search(text):
+            return {"building": LIFE_CENTRE}
+        # a Cyrillic letter typed for a Latin one: a hall's ("С1"), a block's ("блок Е")
+        text = re.sub(r"(?<![^\W\d_])[абсдефгнАБСДЕФГН](?=\d)",
+                      lambda m: m.group().translate(BLOCK_CYR), text)
+        words = re.findall(r"[^\W_]+", text)
+        for size in (3, 2, 1):
+            for at in range(len(words) - size + 1):
+                room = self.directory_room(" ".join(words[at:at + size]))
+                if not room:
+                    continue
+                rest = [w for i, w in enumerate(words) if not at <= i < at + size]
+                if any(ch.isdigit() for ch in room["room_number"] + "".join(words[at:at + size])) \
+                        or all(normalize(w) in PLACE_FILLER for w in rest):
+                    return {"room": room}
+        blocks: list[str] = []
+        letters = "".join(sorted(self.buildings))
+        cyr = "".join(k for k, v in BLOCK_CYR_MAP.items() if v in letters)
+        letters_any = letters + cyr
+        for a, b in re.findall(rf"(?<![^\W\d_])([{letters_any}])\s*[-–—]\s*([{letters_any}])(?![^\W\d_])(?=\s*(?:block|блок|корпус))",
+                               text, re.I):
+            a, b = sorted((a.translate(BLOCK_CYR).upper(), b.translate(BLOCK_CYR).upper()))
+            blocks += [ch for ch in letters if a <= ch <= b]
+        for a, b in re.findall(rf"(?:(?<![^\W\d_])([{letters_any}])\s*(?:block|блок)|(?:block|блок\w*|корпус\w*)\s+([{letters_any}]))(?![^\W\d_])",
+                               text, re.I):
+            blocks.append((a or b).translate(BLOCK_CYR).upper())
+        if re.search(r"\b(?:от|from)\s+блок\w*\s+\w\s+(?:до|to)\b", text, re.I) or \
+                re.search(r"\bfrom\s+block\s+\w\s+to\b", text, re.I):
+            ends = sorted({ch for ch in blocks})
+            blocks += [ch for ch in letters if ends[0] <= ch <= ends[-1]]
+        # the Wi-Fi Zone is the main lobby, in Block C; "Wi-Fi zone - F block" runs from it to F
+        if WIFI_RE.search(text):
+            blocks.append("C")
+            if blocks[:-1] and re.search(r"wi-?fi\s*zon\w*\s*[-–—]|\b(?:to|до|дейін)\b", text, re.I):
+                ends = sorted(blocks)
+                blocks += [ch for ch in letters if ends[0] <= ch <= ends[-1]]
+        blocks = sorted(set(blocks))
+        if not blocks:
+            return {}
+        return {"blocks": blocks, "block": blocks[len(blocks) // 2] if len(blocks) > 2 else blocks[0]}
+
+    def _blocks_area(self, blocks: list[str], map_: dict | None) -> dict | None:
+        """The plan for an event that names blocks, not a room: every room of those
+        blocks on that floor lit as one area, the flag over the middle of them and
+        saying the blocks. `code` stays the block's way in, for the route there."""
+        if not map_ or not self.map:
+            return map_
+        drawn = [b for b in self.map.floors.get(map_["floor"], {}).get("blocks", []) if b["id"] in blocks]
+        if not drawn:
+            return map_
+        middle = next((b for b in drawn if b["id"] == blocks[len(blocks) // 2]), drawn[0]) \
+            if len(blocks) > 2 else drawn[0]
+        rooms = [r["room_number"] for r in self.rooms
+                 if r["building_id"] in blocks and r["floor_number"] == map_["floor"]
+                 and self.map.room_point(r["room_number"])]
+        y = (min(b["y0"] for b in drawn) + max(b["y1"] for b in drawn)) / 2 if len(blocks) == 2 \
+            else (middle["y0"] + middle["y1"]) / 2
+        return {**map_, "area": True, "label": self.blocks_label(blocks),
+                "x": middle["focus_x"], "y": y, "radius": None, "landmark": None,
+                "highlights": [{"room_number": code, "role": "area"} for code in rooms]}
+
+    @staticmethod
+    def blocks_label(blocks: list[str]) -> str:
+        """"Block G", "Blocks G and H", "Blocks D–F"."""
+        if len(blocks) == 1:
+            return f"Block {blocks[0]}"
+        if len(blocks) == 2:
+            return f"Blocks {blocks[0]} and {blocks[1]}"
+        return f"Blocks {blocks[0]}–{blocks[-1]}"
+
     def resolve_room(self, text: str | None) -> dict | None:
         """A room as an OCR read it off the portal's timetable, put right: "I 301"
         that came out as "11301" or "S110" (the house icon's crumbs and an I read
@@ -594,7 +685,7 @@ class CampusIndex:
             result = self._next_class_answer(timetable() if timetable else None, now)
         else:
             result = (self._event_answer(query, now, events) or self._trip(query, now)
-                      or self._search(query, now, context))
+                      or self._site_answer(query) or self._search(query, now, context))
         if (self.router and "directions" not in result and ROUTE_WORDS_RE.search(query.lower())
                 and self._place_of(result)):
             start = result.get("start")
@@ -649,7 +740,8 @@ class CampusIndex:
         monday = today - timedelta(days=today.weekday())
         month_end = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         return {
-            "events": [self._event_payload(r, by_id.get(r["room_id"]), stamp) for r in rows],
+            "events": [self._event_payload(r, by_id.get(r["room_id"]), stamp, self.event_place(r["place"]))
+                       for r in rows],
             "count": len(rows), "total": total,
             "ranges": {name: {"from": a.isoformat(), "to": b.isoformat()} for name, (a, b) in {
                 "today": (today, today),
@@ -660,8 +752,9 @@ class CampusIndex:
 
     def event_payload(self, row: dict, stamp: str) -> dict:
         """An event as the events page shows it."""
-        return self._event_payload(row, self.directory_room(row.get("room_value") or row.get("room_number") or "")
-                                   if (row.get("room_number") or row.get("room_value")) else None, stamp)
+        room = self.directory_room(row.get("room_value") or row.get("room_number") or "") \
+            if (row.get("room_number") or row.get("room_value")) else None
+        return self._event_payload(row, room, stamp, self.event_place(row["place"]))
 
     def class_room(self, room: dict) -> str:
         return self._class_room(room)
@@ -671,12 +764,12 @@ class CampusIndex:
         from SDU Life), shaped like a row of the events table: its room by the
         directory's id, its id marked so it isn't taken for one shipped in
         campus.db. A copied one is changed at its source, not here."""
-        room = self.directory_room(row.get("room_number")) if row.get("room_number") else None
+        room = self.directory_room(row.get("room_number")) if row.get("room_number") \
+            else self.event_place(row.get("place")).get("room")
         return {**row, "event_id": f"a{row['event_id']}", "room_id": room["room_id"] if room else None,
                 "editable": not row.get("source")}
 
-    @staticmethod
-    def _event_payload(row: dict, room: dict | None, stamp: str) -> dict:
+    def _event_payload(self, row: dict, room: dict | None, stamp: str, spot: dict | None = None) -> dict:
         return {"event_id": row["event_id"], "title": row["title"], "description": row["description"],
                 "link": row.get("link"), "editable": bool(row.get("editable")),
                 "source": row.get("source"), "organizer": row.get("organizer"),
@@ -690,8 +783,18 @@ class CampusIndex:
                 "time": event_times(row["starts_at"], row["ends_at"]),
                 "starts_at": row["starts_at"], "ends_at": row["ends_at"],
                 "on_now": row["starts_at"] <= stamp < row["ends_at"],
-                "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room else None,
+                "where": self._event_where(room, spot or {}),
                 "ask": row["title"]}
+
+    def _event_where(self, room: dict | None, spot: dict) -> str | None:
+        """Where on campus an event is, beside the place as SDU Life gives it."""
+        if room:
+            return f"Floor {room['floor_number']} · Block {room['building_id']}"
+        if spot.get("blocks"):
+            return self.blocks_label(spot["blocks"])
+        if spot.get("building"):
+            return "a separate building"
+        return None
 
     def _event_answer(self, query: str, now: datetime | None,
                       added: Callable[[], list[dict]] | None = None) -> dict | None:
@@ -711,14 +814,45 @@ class CampusIndex:
         when = f"{day}, {event_times(event['starts_at'], event['ends_at'])}"
         occasion = {"label": "Event", "title": event["title"], "when": when, "aside": event["description"]}
         room = next((r for r in self.rooms if r["room_id"] == event["room_id"]), None)
+        spot = self.event_place(event["place"]) if not room else {}
+        if spot.get("blocks"):
+            answer = self._block_answer(spot["block"])
+            answer["summary"] = (f"{event['title']} is on {when}, at {event['place']}. "
+                                 f"SDU Life names no room, so the plan shows "
+                                 f"{self.blocks_label(spot['blocks'])}.")
+            answer["occasion"] = occasion
+            answer["map"] = self._blocks_area(spot["blocks"], answer["map"])
+            return answer
         if not room:
-            return {"kind": "event", "title": event["title"],
-                    "summary": f"{event['title']} is on {when}, at {event['place']}.",
+            if spot.get("building"):
+                answer = self._site_answer(spot["building"])
+                answer.update({"kind": "event", "title": event["title"], "occasion": occasion,
+                               "place": event["place"],
+                               "summary": f"{event['title']} is on {when}, at {spot['building']}. "
+                                          f"{answer['summary']}"})
+                return answer
+            elif event["place"] == "Place not announced":
+                summary = f"{event['title']} is on {when}. SDU Life doesn't say where yet."
+            else:
+                summary = (f"{event['title']} is on {when}, at {event['place']}. That isn't on the "
+                           "plans, so there's no room to show and no route to it.")
+            return {"kind": "event", "title": event["title"], "summary": summary,
                     "occasion": occasion, "place": event["place"], "suggestions": []}
         answer = self._room_answer(room)
         answer["summary"] = f"{event['title']} is on {when}, in {answer['title']}."
         answer["occasion"] = occasion
         return answer
+
+    @staticmethod
+    def _site_answer(query: str) -> dict | None:
+        """A building of the grounds asked for by name ("SDU Life", "общежитие"):
+        lit on the Campus view, with the walk there from the main building."""
+        from .site import find_building, site_map
+        b = find_building(query)
+        if not b:
+            return None
+        return {"kind": "site", "title": b["label"], "summary": b["about"], "map": site_map(b["code"]),
+                "building": {"code": b["code"], "label": b["label"], "sub": b["sub"]}, "suggestions": []}
 
     # ------------------------------------------------------------ next class
     def _next_class_answer(self, classes: list[dict] | None, now: datetime | None) -> dict:

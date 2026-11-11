@@ -164,7 +164,8 @@ function eventRow(ev) {
       title="${esc(ev.title)}${where ? ` (${esc(ev.where)})` : ""}"
       aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.organizer ? `, by ${ev.organizer}` : ""}${ev.on_now ? ", on now" : ""}`)}">
       <span class="ev-date"><span>${esc(weekday)}</span><b>${esc(dayNum)}</b><span>${esc(month)}</span></span>
-      <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)} · ${esc(ev.time)}${
+      <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)}${
+        ev.where ? ` <span class="ev-spot">${icon("pin")}${esc(ev.where)}</span>` : ""} · ${esc(ev.time)}${
         ev.organizer ? ` · ${esc(ev.organizer)}` : ""}${ev.corrected ? ` · <span class="ev-fixed">checked against the poster</span>` : ""}</span>${
         ev.description ? `<span class="ev-desc">${esc(ev.description)}</span>` : ""}</span>
       ${ev.on_now ? `<span class="state">On now</span>` : ""}</a>

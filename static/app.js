@@ -371,7 +371,8 @@ function fillPlaces() {
   add("Main entrance");
   state.floors.forEach((f) => f.landmarks.filter((lm) => lm.type === "exit" && !/main entrance/.test(lm.name))
     .forEach((lm) => add(capitalise(lm.name))));
-  state.floors.forEach((f) => f.rooms.forEach((r) => add(r.ask || r.code, `${r.label} · Floor ${f.floor}, Block ${r.block}`)));
+  state.floors.forEach((f) => f.rooms.forEach((r) => add(r.ask || r.code,
+    f.site ? `${r.label} · ${r.sub || "on the campus grounds"}` : `${r.label} · Floor ${f.floor}, Block ${r.block}`)));
   list.innerHTML = opts.join("");
 }
 
@@ -541,6 +542,8 @@ function renderCard(d) {
           <p class="id-sub">${esc(shortName(b.name))}</p>
         </div>
       </div>
+      ${occasion(d)}
+      ${d.occasion ? `<p class="lede">${esc(d.summary)}</p>` : ""}
       ${fields([
         { label: "Rooms", value: b.rooms },
         { label: "Floors", value: b.floors.join(", ") },
@@ -592,8 +595,22 @@ function renderCard(d) {
     card.innerHTML = `
       <header class="prompt-head">${icon("clock")}<h3>${esc(d.title)}</h3></header>
       ${occasion(d, false)}
-      <p class="lede">${esc(d.place)} isn't on the plans, so there's no room to show and no route to it.</p>
-      ${foot(d, false, "Show the event again")}`;
+      <p class="lede">${esc(d.summary)}</p>
+      ${foot(d, !!d.map, "Show the event again")}`;
+  } else if (d.kind === "site") {
+    // a building of the grounds, apart from the main one: shown on the Campus view
+    const b = d.building;
+    card.classList.add("card");
+    card.innerHTML = `
+      <header class="card-band"><span>SDU University</span><span class="band-where">Campus grounds</span></header>
+      <div class="card-id site-id">
+        <div class="id-main">
+          <h3 class="code named">${esc(b.label)}</h3>
+          <p class="id-sub">${esc(capitalise(b.sub))}</p>
+        </div>
+      </div>
+      <p class="lede">${esc(d.summary)}</p>
+      ${foot(d, true)}`;
   } else {
     const isError = d.kind === "error";
     card.classList.add("prompt", isError ? "is-error" : "is-miss");
@@ -655,6 +672,19 @@ function drawFloor(floor) {
   }, canvas);
 
   const layer = (name) => el("g", { class: `lay-${name}` }, svg);
+  // the Campus view: the drives and the sports grounds lie under the buildings
+  if (floor.site) {
+    const ground = layer("grounds");
+    (floor.roads || []).forEach((r) => el("polyline", { class: `road ${r.kind}`, points: path(r.points) }, ground));
+    (floor.grounds || []).forEach((g) => {
+      el("polygon", { class: "ground", points: path(g.points) }, ground);
+      if (g.label) {
+        const xs = g.points.map((p) => p[0]), ys = g.points.map((p) => p[1]);
+        el("text", { class: "ground-label", x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                     y: (Math.min(...ys) + Math.max(...ys)) / 2 + 6 }, ground).textContent = g.label;
+      }
+    });
+  }
   const shell = layer("shell");
   const circulation = layer("circulation");
   const features = layer("features");
@@ -727,7 +757,9 @@ function drawFloor(floor) {
         el("text", { class: "barrel", x: room.cx, y: room.cy + 17 }, g).textContent = room.barrel;
       }
     } else {
-      const label = el("text", { x: room.x, y: room.y + (room.sub ? -3 : 4.5) }, g);
+      // a building of the grounds has a bigger name, and its note further under it
+      const big = room.type === "BUILDING";
+      const label = el("text", { x: room.x, y: room.y + (room.sub ? (big ? -14 : -3) : 4.5) }, g);
       if (room.angle) label.setAttribute("transform", `rotate(${room.angle} ${room.x} ${room.y})`);
       label.textContent = room.label;
       if (room.service && !room.angle) {
@@ -737,7 +769,7 @@ function drawFloor(floor) {
       }
       if (room.sub) {
         // a second line for the floor note: "Red Canteen" / "3rd floor"
-        const sub = el("text", { class: "sub", x: room.x, y: room.y + 14 }, g);
+        const sub = el("text", { class: "sub", x: room.x, y: room.y + (big ? 40 : 14) }, g);
         if (room.angle) sub.setAttribute("transform", `rotate(${room.angle} ${room.x} ${room.y})`);
         sub.textContent = room.sub;
       }
@@ -745,6 +777,12 @@ function drawFloor(floor) {
     const open = () => ask(room.ask || room.code);
     g.addEventListener("click", open);
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+
+  (floor.labels || []).forEach((l) => {
+    const g = el("g", { class: l.letter ? "site-letter" : "site-label" }, blocks);
+    el("text", { x: l.x, y: l.y }, g).textContent = l.text;
+    if (l.sub) el("text", { class: "sub", x: l.x, y: l.y + 56 }, g).textContent = l.sub;
   });
 
   floor.blocks.forEach((b) => {
@@ -790,7 +828,7 @@ function paintResult() {
   if (!layer) return;
   layer.innerHTML = "";
   $("#canvas").querySelectorAll(".room.is-target, .room.is-near").forEach((g) => {
-    g.classList.remove("is-target", "is-near", "hl-passed", "hl-opposite", "hl-neighbour", "hl-start");
+    g.classList.remove("is-target", "is-near", "hl-passed", "hl-opposite", "hl-neighbour", "hl-start", "hl-area");
   });
 
   const routeHere = paintRoute(layer);
@@ -815,7 +853,14 @@ function paintResult() {
     el("circle", { cx: l.x, cy: l.y, r: 17 }, g);
   }
 
-  const target = $(`#canvas .room[data-code="${CSS.escape(map.code || map.room_number)}"]`);
+  // on the Campus view, the walk from the main building's door to the building
+  if (map.walk && !routeHere) {
+    const line = el("polyline", { class: "site-walk", points: path(map.walk) }, layer);
+    el("title", {}, line).textContent = `From the ${map.walk_from}`;
+  }
+
+  // an event that names blocks, not a room: the blocks are lit, no room is the target
+  const target = map.area ? null : $(`#canvas .room[data-code="${CSS.escape(map.code || map.room_number)}"]`);
   if (target) target.classList.add("is-target");
 
   const pin = el("g", { class: "target" }, layer);
@@ -827,7 +872,7 @@ function paintResult() {
   // across the name printed in the middle
   el("circle", { class: map.radius ? "pulse wide" : "pulse", cx: map.x, cy: map.y, r: reach }, pin);
   const flag = el("g", { class: "flag", transform: `translate(${map.x}, ${flagY})` }, pin);
-  const label = map.room_number;
+  const label = map.label || map.room_number;
   const w = 26 + label.length * 12.5;
   el("polygon", { points: "-8,12 8,12 0,21" }, flag);
   el("rect", { class: "face", x: -w / 2, y: -22, width: w, height: 34, rx: 3 }, flag);
@@ -997,7 +1042,7 @@ function chevrons(line, len) {
 }
 
 function showResultOnMap(d) {
-  const placed = ["room", "service", "block", "list"].includes(d.kind) && d.map;
+  const placed = ["room", "service", "block", "list", "site", "event"].includes(d.kind) && d.map;
   if (!placed) {
     // a new question always takes the last answer's room off the plan, even
     // when this answer has no room of its own to put there
@@ -1075,6 +1120,8 @@ function openFloor(number, { focus = null, fitFirst = true, clearResult = false 
   if (focus) {
     if (fitFirst || changed) fitView(false);
     requestAnimationFrame(() => focusRoom(focus, true));
+  } else if (changed && floor.site) {
+    fitView(false);
   } else if (changed) {
     const r = stageRect();
     const zoomed = before && before.s > before.fit * 1.05;
@@ -1092,7 +1139,10 @@ function openFloor(number, { focus = null, fitFirst = true, clearResult = false 
 function renderControls() {
   const floorSeg = $("#floor-seg");
   floorSeg.innerHTML = `<span class="lbl">Floor</span>` + state.floors.map((f) =>
-    `<button type="button" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="Floor ${f.floor}">${f.floor}</button>`).join("");
+    f.site
+      ? `<button type="button" class="site" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="The campus grounds">Campus</button>`
+      : `<button type="button" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="Floor ${f.floor}">${f.floor}</button>`).join("");
+  $(".map").classList.toggle("is-site", !!state.floor.site);
   floorSeg.querySelectorAll("button").forEach((b) => b.addEventListener("click",
     () => openFloor(Number(b.dataset.floor), { clearResult: true })));
 
@@ -1118,6 +1168,11 @@ function renderControls() {
 /** Which block sits at the centre of the stage: filled on the rail, named in the bar. */
 function markInView(r = stageRect()) {
   if (!state.floor) return;
+  if (state.floor.site) {
+    state.inView = null;
+    $("#map-where").innerHTML = `<b>Campus</b><span>Grounds</span>`;
+    return;
+  }
   const v = state.view;
   let id = null;
   if (v.s > v.fit * 1.15) {
@@ -1263,6 +1318,8 @@ function focusRoom(map, animate, keep = 0) {
   if (!shapes.length) { focusOn(map.x, map.y, Math.max(keep, ROOM_ZOOM), animate); return; }
   const pts = shapes.flatMap((shape) => shape.kind === "circle"
     ? [[shape.cx - shape.r, shape.cy - shape.r], [shape.cx + shape.r, shape.cy + shape.r]] : shape.points);
+  // a building of the grounds is framed with the walk to it from the main building
+  if (map.walk) pts.push(...map.walk);
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y1 = Math.max(...ys);
   // the flag stands over the room's outline (or the ping round a small one)
@@ -1528,7 +1585,7 @@ async function boot() {
   loadHeader();
   try {
     const data = await api("/api/map");
-    state.floors = data.floors;
+    state.floors = data.site ? [...data.floors, data.site] : data.floors;   // the Campus view last
     openFloor(1);
     fillPlaces();
   } catch (err) {

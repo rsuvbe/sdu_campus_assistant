@@ -28,6 +28,7 @@ import math
 import re
 
 from .engine import APPROXIMATE_SOURCES, BLOCK_ORDER, NORTH_BLOCKS, barrel_name, base_name, display_code, ask_text
+from .site import build_site
 
 # Vertical offset applied to the back sheet of each floor, in plan pixels.
 # Each value keeps the block-to-block pitch measured on the front sheet
@@ -490,6 +491,7 @@ class CampusMap:
         self._placement: dict[str, tuple[float, float]] = {}
         self._points: dict[str, dict] = {}
         self.floors: dict[int, dict] = {}
+        self.site: dict | None = None     # the Campus view, built on first use
         self._build()
 
     # ------------------------------------------------------------- transform
@@ -506,6 +508,12 @@ class CampusMap:
 
     def floor_list(self) -> list[dict]:
         return [self.floors[f] for f in sorted(self.floors)]
+
+    def site_view(self) -> dict | None:
+        """The Campus view (app/site.py): the grounds, drawn round floor 1's outline."""
+        if self.site is None and 1 in self.floors:
+            self.site = build_site(self.floors[1])
+        return self.site
 
     # ----------------------------------------------------------------- build
     def _build(self) -> None:
