@@ -42,6 +42,9 @@ PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)')
 EVENT_START_RE = re.compile(r'\{\s*"id"\s*:\s*\d{1,9}\s*,\s*"title"\s*:')
 URL_RE = re.compile(r"https?://|forms\.gle|www\.", re.I)
 DATE_OR_TIME_RE = re.compile(r"^[\d\s.:/–—-]+$")     # "12.11", "18:00", "12.11 – 18:00"
+# SDU Life keeps its posters in one bucket; a picture anywhere else is not fetched
+POSTER_RE = re.compile(r"^https://s3\.twcstorage\.ru/240b4d6f-sdu-life/[A-Za-z0-9/_.-]{1,200}\.(?:webp|png|jpe?g)$")
+POSTER_MAX_BYTES = 6 * 1024 * 1024
 
 
 class SourceError(Exception):
@@ -126,11 +129,27 @@ def parse_events(body: bytes) -> list[dict]:
             continue
         fields["source_id"] = str(int(source_id))
         fields["organizer"] = _one_line(str(item.get("organizer") or ""), 120) or None
+        image = str(item.get("image") or "")
+        fields["image"] = image if POSTER_RE.match(image) else None
         events.append(fields)
     if not events:
         raise SourceError("no events on the page")
     events.sort(key=lambda e: (e["starts_at"], e["title"]))
     return events
+
+
+def fetch_poster(url: str) -> tuple[bytes, str]:
+    """An event's poster from SDU Life's bucket, and its media type, for the
+    administrator's browser to read (the bucket doesn't let a page read it)."""
+    if not POSTER_RE.match(url or ""):
+        raise SourceError("not a poster of SDU Life")
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "image/*"})
+    with urllib.request.urlopen(request, timeout=10) as res:   # noqa: S310 (checked against POSTER_RE)
+        kind = res.headers.get_content_type()
+        body = res.read(POSTER_MAX_BYTES + 1)
+    if not kind.startswith("image/") or len(body) > POSTER_MAX_BYTES:
+        raise SourceError("the poster isn't a picture of a usual size")
+    return body, kind
 
 
 class SduLifeSync:

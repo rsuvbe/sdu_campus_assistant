@@ -300,7 +300,8 @@ SQLITE_SCHEMA = """
         organizer   TEXT,
         synced_at   TEXT,              -- campus time of the copy that last saw it
         -- 1: an administrator corrected its place and times from the poster; a copy keeps them
-        corrected   INTEGER NOT NULL DEFAULT 0
+        corrected   INTEGER NOT NULL DEFAULT 0,
+        image       TEXT               -- the poster on SDU Life, for an administrator to read
     );
     CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id);
@@ -352,12 +353,13 @@ POSTGRES_SCHEMA = [
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS organizer TEXT",
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS synced_at TEXT",
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS corrected INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS image TEXT",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id)",
 ]
 
 # columns campus_events gained after it first went live, for an SQLite file made before them
 EVENT_COLUMNS = {"search_text": "TEXT NOT NULL DEFAULT ''", "source": "TEXT", "source_id": "TEXT",
-                 "organizer": "TEXT", "synced_at": "TEXT", "corrected": "INTEGER NOT NULL DEFAULT 0"}
+                 "organizer": "TEXT", "synced_at": "TEXT", "corrected": "INTEGER NOT NULL DEFAULT 0", "image": "TEXT"}
 
 
 CLASS_FIELDS = ('class_id, subject, day_of_week AS day, start_time AS start, '
@@ -639,7 +641,7 @@ class UserStore:
 
     # ---------------------------------------------------------------- events
     EVENT_FIELDS = ("event_id, title, description, place, room_number, starts_at, ends_at, link, source, organizer,"
-                    " corrected")
+                    " corrected, image")
 
     def campus_events(self, after: str | None = None, words: list[str] | tuple = (),
                       start: str | None = None, end: str | None = None) -> list[dict]:
@@ -702,6 +704,11 @@ class UserStore:
                                (event_id,)).fetchone()
         return row is not None
 
+    def event_image(self, event_id: int) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT image FROM campus_events WHERE event_id = ?", (event_id,)).fetchone()
+        return row["image"] if row else None
+
     def event_source(self, event_id: int) -> str | None:
         """Where an event was copied from, or None: added here, or not there at all."""
         with self._connect() as conn:
@@ -719,8 +726,8 @@ class UserStore:
             for e in events:
                 conn.execute(
                     "INSERT INTO campus_events (title, description, place, room_number, starts_at, ends_at, link,"
-                    " created_at, search_text, source, source_id, organizer, synced_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    " created_at, search_text, source, source_id, organizer, synced_at, image)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                     " ON CONFLICT (source, source_id) DO UPDATE SET title = excluded.title,"
                     " description = excluded.description,"
                     " place = CASE WHEN campus_events.corrected = 1 THEN campus_events.place ELSE excluded.place END,"
@@ -731,10 +738,10 @@ class UserStore:
                     " ends_at = CASE WHEN campus_events.corrected = 1 THEN campus_events.ends_at"
                     " ELSE excluded.ends_at END,"
                     " link = excluded.link, search_text = excluded.search_text,"
-                    " organizer = excluded.organizer, synced_at = excluded.synced_at",
+                    " organizer = excluded.organizer, synced_at = excluded.synced_at, image = excluded.image",
                     (e["title"], e["description"], e["place"], e.get("room_number"), e["starts_at"],
                      e["ends_at"], e["link"], _now().isoformat(), search_text(e["title"], e["description"]),
-                     source, e["source_id"], e.get("organizer"), stamp))
+                     source, e["source_id"], e.get("organizer"), stamp, e.get("image")))
             gone = 0
             if seen:
                 marks = ", ".join("?" for _ in seen)

@@ -25,10 +25,11 @@ EVENTS = [
     {"id": 301, "title": "ZHAUAP BER!", "date": "2030-11-12T12:30:00Z", "hasTime": True,
      "organizer": "GAP", "location": "12.11\nMini Red Hall\n18:00",
      "description": "Интеллектуалдық ойын.\n\nBring a team of four.", "category": ["Games"],
-     "attendees": 3, "image": "https://s3.example/x.webp", "blur": None},
+     "attendees": 3, "image": "https://s3.twcstorage.ru/240b4d6f-sdu-life/igpalife/media/event_banners/1/q.webp",
+     "blur": None},
     {"id": 302, "title": "Health Day", "date": "2030-11-13T04:00:00Z", "hasTime": True,
      "organizer": "RC SDU", "location": "", "description": "Free check-ups.", "category": [],
-     "attendees": 0, "image": None, "blur": None},
+     "attendees": 0, "image": "https://elsewhere.example/poster.webp", "blur": None},
     {"id": 303, "title": "Research Poster Day", "date": "2030-11-14T00:00:00Z", "hasTime": False,
      "organizer": "", "location": "Registration: https://forms.gle/abc\nF202",
      "description": "Posters by every school.", "category": [], "attendees": 0, "image": None, "blur": None},
@@ -346,3 +347,78 @@ def test_with_copying_turned_off_the_events_page_has_no_source(monkeypatch):
     monkeypatch.setattr(main, "sdulife", None)
     data = account(4102).get("/api/events").json()
     assert data["sources"] == []
+
+
+# ------------------------------------------------------------------ posters
+POSTER = "https://s3.twcstorage.ru/240b4d6f-sdu-life/igpalife/media/event_banners/1/q.webp"
+
+
+def test_only_a_poster_in_sdu_lifes_bucket_is_kept():
+    quiz, health, poster_day = parse_events(page())
+    assert quiz["image"] == POSTER
+    assert health["image"] is None and poster_day["image"] is None
+
+
+def test_an_administrator_gets_the_poster_through_the_site(live, monkeypatch):
+    asked = []
+
+    def fake(url):
+        asked.append(url)
+        return b"RIFF....WEBP", "image/webp"
+
+    monkeypatch.setattr(main, "fetch_poster", fake)
+    admin = account(4101)
+    events = admin.get("/api/events").json()["events"]
+    quiz, health = events[0], events[1]
+    assert quiz["poster"] == f"/api/events/{quiz['event_id']}/poster" and health["poster"] is None
+    res = admin.get(quiz["poster"])
+    assert res.status_code == 200 and res.content == b"RIFF....WEBP"
+    assert res.headers["content-type"] == "image/webp" and asked == [POSTER]
+    assert admin.get(f"/api/events/{health['event_id']}/poster").status_code == 404
+    # a student doesn't, and nothing is fetched for them
+    assert account(4102).get(quiz["poster"]).status_code == 403 and len(asked) == 1
+
+
+def test_a_poster_that_cant_be_fetched_is_a_502(live, monkeypatch):
+    def broken(url):
+        raise OSError("timed out")
+
+    monkeypatch.setattr(main, "fetch_poster", broken)
+    admin = account(4101)
+    quiz = admin.get("/api/events").json()["events"][0]
+    assert admin.get(quiz["poster"]).status_code == 502
+
+
+def test_a_picture_elsewhere_is_never_fetched():
+    from app.sdulife import fetch_poster
+    for url in ("https://elsewhere.example/x.webp", "http://s3.twcstorage.ru/240b4d6f-sdu-life/a.webp",
+                "https://s3.twcstorage.ru/other-bucket/a.webp", "https://s3.twcstorage.ru/240b4d6f-sdu-life/../x.svg"):
+        with pytest.raises(SourceError):
+            fetch_poster(url)
+
+
+# what tesseract read off real SDU Life posters (11 November 2026), and what the
+# page's reader takes from it: it fills the form, a person checks it
+POSTER_TEXTS = {
+    "Health Day MEDICAL CHECK-UP 12 | November 09:00-16:00 G-H block": ("09:00", "16:00", ["G-H block"]),
+    "aiqyn A New Reality 24 қараша 17:50 Blue Hall": ("17:50", None, ["Blue Hall"]),
+    "EDU JOB FAIR 2026 @ 11 NOVEMBER, 10:00-14:00 @ G-H BLOCK AREA": ("10:00", "14:00", ["G-H block"]),
+    "NIGHT AT THE MUSEUM 27.11.2026 17:30-20:30 From WiFi zone to F block": ("17:30", "20:30", ["WiFi zone", "F block"]),
+    "13/11/26 Qamqor Gala SDU | Red Hall | 18:00": ("18:00", None, ["Red Hall"]),
+    "FILM HUNTER 12.11.2026 SDU LIFE": (None, None, []),
+}
+
+
+@pytest.mark.skipif(__import__("shutil").which("node") is None, reason="node is not installed")
+def test_the_pages_poster_reader_takes_times_and_places_not_dates():
+    import subprocess
+    from pathlib import Path
+    script = Path(__file__).resolve().parent.parent / "static" / "poster-ocr.js"
+    out = subprocess.run(["node", "-e", "const P = require(process.argv[1]);"
+                          " const texts = JSON.parse(process.argv[2]);"
+                          " console.log(JSON.stringify(texts.map((t) => P.readPoster(t))))",
+                          str(script), json.dumps(list(POSTER_TEXTS))],
+                         capture_output=True, text=True, check=True, timeout=30).stdout
+    for found, (start, end, places) in zip(json.loads(out), POSTER_TEXTS.values()):
+        assert (found["start"], found["end"]) == (start, end)
+        assert [p.lower() for p in found["places"]] == [p.lower() for p in places]

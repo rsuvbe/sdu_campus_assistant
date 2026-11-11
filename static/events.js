@@ -245,6 +245,7 @@ function openEventForm(ev, preset = {}) {
   $("#ef-submit").textContent = copied ? "Save the correction" : ev ? "Save changes" : "Add the event";
   $("#ef-note").hidden = !copied;
   [EF.title, EF.description, EF.link].forEach((sel) => { $(sel).readOnly = copied; });
+  showPoster(copied ? ev : null);
   const values = ev ? { title: ev.title, description: ev.description, starts: ev.starts_input, ends: ev.ends_input,
                         room: ev.room_value || "", place: ev.place, link: ev.link || "" }
                     : { title: "", description: "", starts: "", ends: "", room: "", place: "", link: "", ...preset };
@@ -252,6 +253,96 @@ function openEventForm(ev, preset = {}) {
   const d = $("#ev-dialog");
   if (!d.open) d.showModal();
   $(copied ? EF.starts : EF.title).focus();
+}
+
+/* ----------------------------------------- reading the poster (administrators) */
+const TESSERACT = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+let posterRun = 0;          // a newer dialog drops what an older reading finds
+
+function loadTesseract() {
+  return new Promise((resolve, reject) => {
+    if (window.Tesseract) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = TESSERACT;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("the text reader couldn't be loaded"));
+    document.head.append(s);
+  });
+}
+
+function showPoster(ev) {
+  const fig = $("#ef-poster");
+  const run = ++posterRun;
+  document.querySelectorAll("#ev-form .guess").forEach((f) => f.classList.remove("guess"));
+  fig.hidden = !ev?.poster;
+  if (fig.hidden) return;
+  const img = $("#ef-poster-img");
+  const say = (text) => { if (run === posterRun) $("#ef-ocr").textContent = text; };
+  say("Loading the poster…");
+  img.onerror = () => say("SDU Life's poster couldn't be loaded. Type the place and the times from it.");
+  img.onload = () => readPoster(img, ev, run, say);
+  img.src = ev.poster;
+}
+
+// two readings, as the poster is and larger in grey: each catches what the other misses
+function versions(img) {
+  return [1, 2].map((scale) => {
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth * scale;
+    c.height = img.naturalHeight * scale;
+    const ctx = c.getContext("2d");
+    if (scale > 1) ctx.filter = "grayscale(1) contrast(1.4)";
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  });
+}
+
+async function readPoster(img, ev, run, say) {
+  let worker = null;
+  try {
+    say("Reading the poster (the reader loads once, about 4 MB)…");
+    await loadTesseract();
+    worker = await Tesseract.createWorker("eng");
+    await worker.setParameters({ tessedit_pageseg_mode: "11" });
+    let text = "";
+    for (const canvas of versions(img)) text += "\n" + (await worker.recognize(canvas)).data.text;
+    if (run !== posterRun) return;
+    fillFromPoster(PosterOCR.readPoster(text), ev, say);
+  } catch (err) {
+    say(`The poster couldn't be read (${err.message}). Type the place and the times from it.`);
+  } finally {
+    worker?.terminate();
+  }
+}
+
+function fillFromPoster(found, ev, say) {
+  const day = ev.starts_input.slice(0, 10);              // the day stays SDU Life's
+  const filled = [];
+  const guess = (sel, value) => { $(sel).value = value; $(sel).closest(".field").classList.add("guess"); };
+  if (found.start) {
+    const length = new Date(ev.ends_input) - new Date(ev.starts_input);
+    guess(EF.starts, `${day}T${found.start}`);
+    let ends = found.end ? `${day}T${found.end}` : null;
+    if (!ends || ends <= `${day}T${found.start}`) {
+      const end = new Date(new Date(`${day}T${found.start}`).getTime() + length);
+      ends = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}T${
+        String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
+    }
+    guess(EF.ends, ends);
+    filled.push(found.end ? `${found.start}–${found.end}` : found.start);
+  }
+  if (found.places.length) {
+    const place = found.places[0];
+    const key = place.toLowerCase().replace(/\s+/g, "");
+    const room = [...$("#ef-rooms").options].find((o) =>
+      [o.value, o.label].some((v) => v.toLowerCase().replace(/\s+/g, "") === key));
+    if (room) guess(EF.room, room.value);
+    guess(EF.place, found.places.join(", "));
+    filled.push(found.places.join(", "));
+  }
+  say(filled.length
+    ? `Read off the poster: ${filled.join(", ")}. The reader mistakes 3 for 5 and drops digits, so check them against the picture before saving.`
+    : "Nothing could be read off this poster. Type the place and the times from it.");
 }
 
 function efClear() {

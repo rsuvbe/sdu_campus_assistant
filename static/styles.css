@@ -1331,3 +1331,9 @@ a.dir-row { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .reminder-toast, .sch-dialog[open], .sch-page { animation: none; }
 }
+/* the poster beside the correction form, and what was read off it */
+.ef-poster { margin: 0; display: grid; gap: var(--s2); }
+.ef-poster[hidden] { display: none; }
+.ef-poster img { width: 100%; max-height: 360px; object-fit: contain; background: var(--stock); border: 1px solid var(--line); border-radius: 8px; }
+.ef-ocr { font-size: var(--t-13); color: var(--ink-2); }
+.ev-form .field.guess input { border-color: #D9824B; box-shadow: 0 0 0 1px #D9824B; }

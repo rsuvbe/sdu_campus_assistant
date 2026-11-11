@@ -31,7 +31,7 @@ from .floorplan import CampusMap
 from .routing import Router
 from .mailer import mail_configured, send_reset_link
 from .news import NewsFeed
-from .sdulife import SduLifeSync
+from .sdulife import SduLifeSync, fetch_poster
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("CAMPUS_DB", BASE_DIR / "data" / "campus.db"))
@@ -588,6 +588,21 @@ def delete_event(event_id: str, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail="That event isn't there any more.")
     _events_changed()
     return {"ok": True}
+
+
+@app.get("/api/events/{event_id}/poster", tags=["events"])
+def event_poster(event_id: str, user: dict = Depends(require_admin)):
+    """The poster of an event copied from SDU Life, passed through this site so
+    the administrator's browser may read the place and the time off it."""
+    image = users.event_image(_event_id(event_id))
+    if not image:
+        raise HTTPException(status_code=404, detail="This event has no poster.")
+    try:
+        body, kind = fetch_poster(image)
+    except Exception:                      # noqa: BLE001 — unreachable, too big, not a picture
+        raise HTTPException(status_code=502, detail="SDU Life's poster couldn't be fetched just now.") from None
+    return Response(body, media_type=kind, headers={"Cache-Control": "private, max-age=86400",
+                                                    "X-Content-Type-Options": "nosniff"})
 
 
 @app.delete("/api/events/{event_id}/correction", tags=["events"])

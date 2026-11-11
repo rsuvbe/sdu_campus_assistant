@@ -111,6 +111,7 @@ page is read (`app/sdulife.py`).
 | **What is kept** | Title, description (up to 1000 characters), place, organizer, start, and a link to the event on SDU Life. SDU Life gives no end time: an event is taken to last two hours, and one without a time the whole day. Organisers put registration links, dates and hours in the place field, so those lines are dropped; an empty one becomes "Place not announced". A place that names a room of the directory (`F202`) lights it up on the plan |
 | **Changes** | A second copy updates each event in place by its SDU Life id. An upcoming one SDU Life no longer lists was called off and is deleted; one that has started stays. A copied event can't be deleted here (409), and its title and description are changed on SDU Life |
 | **Corrected from the poster** | SDU Life's place and times are often vaguer or different from the poster's. An administrator presses **Correct place and time** and sets the room, place, start and end as the poster gives them (`PUT /api/events/a<id>`); the event is marked `corrected`, later copies keep those four fields and still bring the title and description, and the row says "checked against the poster". **Undo correction** (`DELETE /api/events/a<id>/correction`) copies SDU Life's back at once |
+| **Reading the poster** | The correction form shows the event's poster (fetched through `GET /api/events/a<id>/poster`, administrators only, and only from SDU Life's bucket, as the bucket doesn't let a page read it) and reads it in the browser with tesseract.js (`static/poster-ocr.js`): the hours and the hall, block or zone it finds fill the form, outlined, for the administrator to check against the picture. Nothing is saved on the reader's say-so: tesseract read 17:30 as 17:50 and 18:00 as 08:00 on some of the posters of 11 November. The day stays SDU Life's |
 | **Turning it off** | `SDULIFE_SYNC=0`; the tests do, and never go to the network |
 
 **Next: the posters.** Each SDU Life event has a banner, and the banner is
@@ -120,11 +121,11 @@ CENTRE" or "SDU University" (QAMQOR GALA in Red Hall, AIQYN in Blue Hall, SDU
 Team Relay in Sport Hall), an end time for four (Health Day 09:00–16:00, EDU
 JOB FAIR 10:00–14:00, Night at the Museum 17:30–20:30, Quanysh Alemi over two
 days), and a different start for six, by up to five hours (K-POP Random Dance:
-13:00 in the fields, 18:00 on the poster). The descriptions name no rooms. The
-plan: read each poster once with a vision model (stylised fonts are beyond
-tesseract), keep the result by event id and image URL, let it fill the place
-and the end, and decide how a start time that disagrees is shown. It needs an
-`ANTHROPIC_API_KEY`. Blue Hall and Sport Hall are not in the directory yet.
+13:00 in the fields, 18:00 on the poster). The descriptions name no rooms. Without an
+API key the posters are read by tesseract in the administrator's browser and
+only fill the correction form (below); a vision model would read the stylised
+ones too, and could fill it on its own. Blue Hall and Sport Hall are not in the
+directory yet.
 
 ## Events and SDU news — November 2026
 

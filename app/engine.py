@@ -681,6 +681,8 @@ class CampusIndex:
                 "link": row.get("link"), "editable": bool(row.get("editable")),
                 "source": row.get("source"), "organizer": row.get("organizer"),
                 "corrected": bool(row.get("corrected")),
+                # the poster through this site (GET /api/events/{id}/poster), for an administrator
+                "poster": f"/api/events/{row['event_id']}/poster" if row.get("image") else None,
                 "room_value": row.get("room_number") or (room["room_number"] if room else None),
                 "starts_input": row["starts_at"].replace(" ", "T"), "ends_input": row["ends_at"].replace(" ", "T"),
                 "place": row["place"], "room": room["room_number"] if room else None,
