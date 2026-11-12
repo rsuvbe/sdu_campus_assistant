@@ -32,7 +32,7 @@ from .engine import CampusIndex, campus_now
 from .floorplan import CampusMap
 from .routing import Router
 from .mailer import mail_configured, send_reset_link
-from .news import NewsFeed
+from .news import NewsFeed, fetch_picture
 from .sdulife import SduLifeSync, fetch_poster
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -630,6 +630,22 @@ def sync_events(user: dict = Depends(require_admin)):
     if sdulife.ok is False:
         raise HTTPException(status_code=502, detail="SDU Life couldn't be read just now. Try again later.")
     return sdulife.status()
+
+
+@app.get("/api/news/picture", tags=["events"])
+def news_picture(src: str = Query(..., max_length=400)):
+    """A news story's picture, passed through this site from sdu.edu.kz's uploads
+    (nothing else is fetched). The pictures are public and never change under
+    their name, so the browser and Vercel's edge keep them for a week."""
+    try:
+        body, kind = fetch_picture(src)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not a picture of sdu.edu.kz.") from None
+    except Exception:                      # noqa: BLE001 — unreachable or too slow
+        raise HTTPException(status_code=502, detail="sdu.edu.kz couldn't be reached just now.") from None
+    return Response(body, media_type=kind, headers={
+        "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
+        "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/api/news", tags=["events"])

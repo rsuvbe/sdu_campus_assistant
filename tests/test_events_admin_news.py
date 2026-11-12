@@ -300,3 +300,33 @@ def test_the_events_page_shows_the_news_and_the_administrators_tools():
     assert "/api/news" in js and 'rel="noopener noreferrer"' in js
     # the tools come only when the server says this account is an administrator
     assert "admin = !!(await res.json()).user.admin" in js
+
+
+# ------------------------------------------------------- the stories' pictures
+def test_a_storys_picture_comes_through_this_site():
+    # a browser can be kept from sdu.edu.kz's own pictures; the page asks this site
+    item = NewsFeed(fetch=lambda: FEED).latest()["items"][1]
+    assert item["image"] == ("/api/news/picture?src="
+                             "https%3A%2F%2Fsdu.edu.kz%2Fwp-content%2Fuploads%2F2026%2F11%2Fopen-day.jpeg")
+
+
+def test_the_picture_is_passed_through_and_kept_for_a_week(monkeypatch):
+    seen = []
+    monkeypatch.setattr(main, "fetch_picture", lambda src: (seen.append(src) or b"\xff\xd8jpeg", "image/jpeg"))
+    res = TestClient(app).get("/api/news/picture",
+                              params={"src": "https://sdu.edu.kz/wp-content/uploads/2026/11/open-day.jpeg"})
+    assert res.status_code == 200 and res.content == b"\xff\xd8jpeg" and res.headers["content-type"] == "image/jpeg"
+    assert "max-age=604800" in res.headers["cache-control"] and "s-maxage" in res.headers["cache-control"]
+    assert seen == ["https://sdu.edu.kz/wp-content/uploads/2026/11/open-day.jpeg"]
+
+
+@pytest.mark.parametrize("src", ["https://elsewhere.example/a.jpg", "https://sdu.edu.kz/wp-admin/a.jpg",
+                                 "http://sdu.edu.kz/wp-content/uploads/a.jpg",
+                                 "https://sdu.edu.kz/wp-content/uploads/a.php"])
+def test_nothing_but_sdu_pictures_is_fetched(src):
+    assert TestClient(app).get("/api/news/picture", params={"src": src}).status_code == 404
+
+
+def test_a_picture_that_fails_gets_the_plain_cover():
+    js = (main.STATIC_DIR / "events.js").read_text()
+    assert 'img.addEventListener("error", () => plain(img), { once: true })' in js

@@ -18,6 +18,7 @@ import re
 import threading
 import time
 import urllib.request
+from urllib.parse import quote
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -74,6 +75,32 @@ def _picture(content: str) -> str | None:
         if SITE.match(src) and "/wp-content/uploads/" in src:
             return src
     return None
+
+
+PICTURE_RE = re.compile(r"^https://sdu\.edu\.kz/wp-content/uploads/\S{1,300}\.(?:jpe?g|png|webp|gif)$", re.I)
+PICTURE_MAX_BYTES = 4 * 1024 * 1024
+
+
+def picture_path(url: str | None) -> str | None:
+    """Where the page gets a story's picture: through this site (GET
+    /api/news/picture), not from sdu.edu.kz itself. A browser can be kept from
+    another site's pictures (its own blocker, a network, the site guarding its
+    files), and then the news showed no covers at all."""
+    return f"/api/news/picture?src={quote(url, safe='')}" if url and PICTURE_RE.match(url) else None
+
+
+def fetch_picture(url: str) -> tuple[bytes, str]:
+    """A story's picture from sdu.edu.kz's uploads, and its media type."""
+    if not PICTURE_RE.match(url or ""):
+        raise ValueError("not a picture of sdu.edu.kz")
+    request = urllib.request.Request(quote(url, safe=":/%-._~"),
+                                     headers={"User-Agent": USER_AGENT, "Accept": "image/*"})
+    with urllib.request.urlopen(request, timeout=10) as res:   # noqa: S310 (checked against PICTURE_RE)
+        kind = res.headers.get_content_type()
+        body = res.read(PICTURE_MAX_BYTES + 1)
+    if not kind.startswith("image/") or len(body) > PICTURE_MAX_BYTES:
+        raise ValueError("not a picture of a usual size")
+    return body, kind
 
 
 def parse_feed(body: bytes) -> list[dict]:
@@ -133,6 +160,7 @@ class NewsFeed:
                 self._next_try = now + RETRY
             finally:
                 self._lock.release()
-        return {"items": self._items, "source": NEWS_PAGE,
+        items = [{**item, "image": picture_path(item.get("image"))} for item in self._items]
+        return {"items": items, "source": NEWS_PAGE,
                 "fetched_at": self._fetched_at.strftime("%Y-%m-%d %H:%M") if self._fetched_at else None,
                 "stale": not self._ok}

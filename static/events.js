@@ -188,6 +188,13 @@ async function loadNews() {
       return;
     }
     list.innerHTML = news.map(newsItem).join("");
+    // a picture that can't be had gets the same plain cover as a story with none
+    const plain = (img) => img.replaceWith(Object.assign(document.createElement("span"),
+      { className: "news-pic none", ariaHidden: "true" }));
+    list.querySelectorAll("img.news-pic").forEach((img) => {
+      if (img.complete && !img.naturalWidth && img.currentSrc) plain(img);
+      else img.addEventListener("error", () => plain(img), { once: true });
+    });
     list.querySelectorAll("[data-make]").forEach((b) => b.addEventListener("click", () => {
       const item = news[Number(b.dataset.make)];
       openEventForm(null, { title: item.title, description: item.excerpt, link: item.link });
