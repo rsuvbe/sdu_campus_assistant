@@ -30,6 +30,7 @@ import heapq
 import math
 
 from .engine import APPROXIMATE_SOURCES, NORTH_BLOCKS, NORTH_FOYER_Y, human_list, ordinal, spoken
+from .i18n import t, tn
 
 MAIN_ENTRANCE = "EXIT_F1_MAIN"
 # One flight of stairs, as a length of corridor (plan pixels). Most of a flight's
@@ -707,8 +708,9 @@ class Router:
         """A start or end point: ("room", room number) or ("exit", landmark id)."""
         if kind == "exit" and key in self.exits:
             ex = self.exits[key]
-            label = "the main entrance" if key == MAIN_ENTRANCE else f"the {ex['name']}"
-            return {"kind": "exit", "key": key, "node": ex["node"], "label": label,
+            label = t("the main entrance") if key == MAIN_ENTRANCE else t("the {name}", name=t(ex["name"]))
+            sign = t("Main entrance") if key == MAIN_ENTRANCE else t(ex["name"])
+            return {"kind": "exit", "key": key, "node": ex["node"], "label": label, "sign": sign[0].upper() + sign[1:],
                     "floor": self.nodes[ex["node"]]["floor"]}
         if kind == "room" and key in self.room_node:
             room = self.rooms[key]
@@ -751,14 +753,15 @@ class Router:
         """The walk from one place to another, as steps and as lines on the plan."""
         base = {"kind": "route", "from": self._public(start), "to": self._public(end)}
         if start["node"] == end["node"]:
-            return {**base, "steps": [f"You're already at {end['label']}."], "step_floors": [end["floor"]], "signs": [],
+            here = t("You're already at {place}.", place=end["label"])
+            return {**base, "steps": [here], "step_floors": [end["floor"]], "signs": [],
                     "legs": [], "stairs": [], "floors": [end["floor"]], "note": None,
-                    "summary": f"You're already at {end['label']}."}
+                    "summary": here}
         found = self._shortest(start["node"], end["node"])
         if not found:
             return {**base, "steps": [], "step_floors": [], "signs": [], "legs": [], "stairs": [], "floors": [],
-                    "note": None, "summary": f"There's no walk on the plans from {start['label']} "
-                                             f"to {end['label']}."}
+                    "note": None, "summary": t("There's no walk on the plans from {start} to {end}.",
+                                               start=start["label"], end=end["label"])}
         _, nodes, edges = found
         legs = self._legs(nodes, edges)
         steps, signs, step_floors = self._describe(legs, start, end)
@@ -786,18 +789,19 @@ class Router:
             na, nb = self.nodes[a], self.nodes[b]
             if na["floor"] != nb["floor"]:
                 marks.append({"floor": na["floor"], "x": na["x"], "y": na["y"], "mark": list(na["mark"]),
-                              "to": nb["floor"], "name": self.stairs[a]["name"]})
+                              "to": nb["floor"], "name": t(self.stairs[a]["name"])})
                 marks.append({"floor": nb["floor"], "x": nb["x"], "y": nb["y"], "mark": list(nb["mark"]),
-                              "to": na["floor"], "name": self.stairs[b]["name"], "arrive": True})
+                              "to": na["floor"], "name": t(self.stairs[b]["name"]), "arrive": True})
         approx = [p["label"] for p in (start, end) if p["kind"] == "room"
                   and self.rooms[p["key"]]["source"] in APPROXIMATE_SOURCES]
-        note = ("Block I isn't digitised yet, so the last part of this route is a best guess."
+        note = (t("Block I isn't digitised yet, so the last part of this route is a best guess.")
                 if approx else None)
-        change = (f", floor {floors[0]} to floor {floors[-1]}" if len(floors) > 1
-                  else f", all on floor {floors[0]}")
+        summary = (t("From {start} to {end}, floor {a} to floor {b}.", start=start["label"], end=end["label"],
+                     a=floors[0], b=floors[-1]) if len(floors) > 1 else
+                   t("From {start} to {end}, all on floor {a}.", start=start["label"], end=end["label"], a=floors[0]))
         return {**base, "steps": steps, "step_floors": step_floors, "signs": signs, "legs": lines,
                 "stairs": marks, "floors": floors,
-                "note": note, "summary": f"From {start['label']} to {end['label']}{change}."}
+                "note": note, "summary": summary}
 
     def _unhook(self, floor: int, pts: list, own: list) -> list:
         """A turn back sharper than a right angle, where the walk could have cut
@@ -871,17 +875,20 @@ class Router:
         state = {"floor": None, "cur": start["floor"]}
         step_floors: list[int] = []
 
-        def say(text: str) -> None:
-            if state["floor"] and not text.startswith("At the"):
-                text = f"On floor {state['floor']}, {text[0].lower()}{text[1:]}"
+        def say(text: str, stairs_top: bool = False) -> None:
+            if state["floor"] and not stairs_top:
+                text = t("On floor {floor}, {step}", floor=state["floor"], step=text[0].lower() + text[1:])
             state["floor"] = None
             steps.append(text)
             step_floors.append(state["cur"])
 
         def climb(i: int) -> tuple[str, int]:
             up, to_floor = self._stairs_change(legs, i)
-            signs.append({"icon": "stairs", "text": f"Floor {to_floor}"})
+            signs.append({"icon": "stairs", "text": t("Floor {n}", n=to_floor)})
             return up, to_floor
+
+        def turned(turn: str) -> str:
+            return t("left") if turn == "left" else t("right")
 
         def final(k: int) -> bool:
             return (end_room is not None and k < len(legs) and legs[k]["kind"] in ("room", "open")
@@ -889,11 +896,11 @@ class Router:
 
         if start["kind"] == "exit":
             if start["key"] == MAIN_ENTRANCE:
-                say("Come in through the main entrance into the main lobby.")
-                signs.append({"icon": "entrance", "text": "Main entrance"})
+                say(t("Come in through the main entrance into the main lobby."))
+                signs.append({"icon": "entrance", "text": t("Main entrance")})
             else:
-                say(f"Come in by the {self.exits[start['key']]['name']}.")
-                signs.append({"icon": "entrance", "text": "Entrance"})
+                say(t("Come in by the {name}.", name=t(self.exits[start["key"]]["name"])))
+                signs.append({"icon": "entrance", "text": t("Entrance")})
         else:
             name = start["label"].removeprefix("the ")
             signs.append({"icon": "door", "text": name[0].upper() + name[1:]})
@@ -914,12 +921,14 @@ class Router:
             if final(i) and i == 0 and start_room and start_room["zone"] == end_room["zone"] == "west":
                 a, b = self._pt(self.room_node[start_room["room_number"]]), self._pt(self.room_node[end_room["room_number"]])
                 if abs(b[1] - a[1]) < 80:
-                    steps.append(f"Leave {label}: {spoken(end_room)} is right beside it, on the same side "
-                                 f"of the central corridor.")
+                    steps.append(t("Leave {start}: {room} is right beside it, on the same side "
+                                   "of the central corridor.", start=label, room=spoken(end_room)))
+                elif b[1] < a[1]:
+                    steps.append(t("Leave {start} and, keeping to the west side of the central corridor, "
+                                   "walk back towards the main lobby to {room}.", start=label, room=spoken(end_room)))
                 else:
-                    lobby_way = "back towards" if b[1] < a[1] else "away from"
-                    steps.append(f"Leave {label} and, keeping to the west side of the central corridor, "
-                                 f"walk {lobby_way} the main lobby to {spoken(end_room)}.")
+                    steps.append(t("Leave {start} and, keeping to the west side of the central corridor, "
+                                   "walk away from the main lobby to {room}.", start=label, room=spoken(end_room)))
                 step_floors.append(state["cur"])
                 break
             if final(i):
@@ -935,7 +944,8 @@ class Router:
 
             if kind == "stairs":
                 up, to_floor = climb(i)
-                say(f"Take the {self.stairs[leg['nodes'][0]]['name']} {up} to floor {to_floor}.")
+                say(t("Take the {stairs} {up} to floor {floor}.", stairs=t(self.stairs[leg["nodes"][0]]["name"]),
+                      up=t(up), floor=to_floor))
                 state["floor"] = state["cur"] = to_floor
                 heading = None
                 i += 1
@@ -945,15 +955,18 @@ class Router:
                 first, last = self.nodes[leg["nodes"][0]], self.nodes[leg["nodes"][-1]]
                 if nxt and nxt["kind"] == "stairs":
                     up, to_floor = climb(i + 1)
-                    name = self.stairs[nxt["nodes"][0]]["name"]
+                    name = t(self.stairs[nxt["nodes"][0]]["name"])
+                    values = {"stairs": name, "up": t(up), "floor": to_floor, "start": label}
                     if not leaving and leg["zone"] == "west" and first["kind"] == "spine":
                         # a staircase off the corridor's west side (up to the Red Canteen)
-                        say(f"Cross to the west side of the central corridor and take the "
-                            f"{name} {up} to floor {to_floor}.")
+                        say(t("Cross to the west side of the central corridor and take the "
+                              "{stairs} {up} to floor {floor}.", **values))
+                    elif leaving:
+                        say(t("Leave {start}, go to the {stairs} and take it {up} to floor {floor}.", **values))
+                    elif leg["zone"] == "lobby":
+                        say(t("Cross the main lobby to the {stairs} and take it {up} to floor {floor}.", **values))
                     else:
-                        lead = (f"Leave {label}, go" if leaving else
-                                "Cross the main lobby" if leg["zone"] == "lobby" else "Go")
-                        say(f"{lead} to the {name} and take it {up} to floor {to_floor}.")
+                        say(t("Go to the {stairs} and take it {up} to floor {floor}.", **values))
                     state["floor"] = state["cur"] = to_floor
                     leaving, heading = False, None
                     i += 2
@@ -964,17 +977,17 @@ class Router:
                         k += 1
                     foyer_next = final(k) and end_room["zone"] == "north"
                     if leaving:
-                        say(f"Leave {label} and cross to the central corridor." if not foyer_next
-                            else f"Leave {label} and go back into the main lobby.")
+                        say(t("Leave {start} and cross to the central corridor.", start=label) if not foyer_next
+                            else t("Leave {start} and go back into the main lobby.", start=label))
                     elif foyer_next:
                         pass                        # the foyer step starts from the lobby itself
                     elif first["kind"] == "stairs" and i > 0 and legs[i - 1]["kind"] == "stairs":
-                        say("At the top of the stairs, walk over to the central corridor." if self._went_up(legs, i)
-                            else "At the bottom of the stairs, walk over to the central corridor.")
+                        say(t("At the top of the stairs, walk over to the central corridor.") if self._went_up(legs, i)
+                            else t("At the bottom of the stairs, walk over to the central corridor."), stairs_top=True)
                     elif leg["zone"] == "lobby":
-                        say("Cross the main lobby to the central corridor.")
+                        say(t("Cross the main lobby to the central corridor."))
                     else:
-                        say("Walk over to the central corridor.")
+                        say(t("Walk over to the central corridor."))
                     leaving = False
                 heading = leg["tail"]
                 i += 1
@@ -995,47 +1008,53 @@ class Router:
                     continue
                 if last.get("start") and nxt and nxt["kind"] == "stairs":
                     up, to_floor = climb(i + 1)
+                    values = {"start": label, "turn": turned(turn), "block": block, "up": t(up), "floor": to_floor}
                     if leaving:
-                        lead = (f"Leave {label}, turn {turn} and walk back along the Block {block} wing"
+                        lead = (t("Leave {start}, turn {turn} and walk back along the Block {block} wing", **values)
                                 if turn in ("left", "right") else
-                                f"Leave {label} and walk back along the Block {block} wing")
-                        say(f"{lead} to the staircase at its start, by the central corridor, "
-                            f"and take it {up} to floor {to_floor}.")
+                                t("Leave {start} and walk back along the Block {block} wing", **values))
+                        say(t("{lead} to the staircase at its start, by the central corridor, "
+                              "and take it {up} to floor {floor}.", lead=lead, **values))
                     elif first["kind"] == "spine":
-                        lead = (f"Turn {turn} into the Block {block} wing" if turn in ("left", "right")
-                                else f"Go into the Block {block} wing")
-                        say(f"{lead}: the staircase is right at its start. Take it {up} to floor {to_floor}.")
+                        lead = (t("Turn {turn} into the Block {block} wing", **values) if turn in ("left", "right")
+                                else t("Go into the Block {block} wing", **values))
+                        say(t("{lead}: the staircase is right at its start. Take it {up} to floor {floor}.",
+                              lead=lead, **values))
                     else:
-                        say(f"Take the staircase at the start of the Block {block} wing {up} to floor {to_floor}.")
+                        say(t("Take the staircase at the start of the Block {block} wing {up} to floor {floor}.",
+                              **values))
                     state["floor"] = state["cur"] = to_floor
                     leaving, heading = False, None
                     i += 2
                     continue
                 to_end = last["kind"] in ("wing_end", "stairs")
+                values = {"start": label, "turn": turned(turn), "block": block}
                 if to_end:
                     if leaving:
-                        lead = (f"Leave {label}, turn {turn} and walk to the far end of the Block {block} wing"
+                        lead = (t("Leave {start}, turn {turn} and walk to the far end of the Block {block} wing", **values)
                                 if turn in ("left", "right") else
-                                f"Leave {label} and walk to the far end of the Block {block} wing")
+                                t("Leave {start} and walk to the far end of the Block {block} wing", **values))
                     elif turn in ("left", "right"):
-                        lead = f"Turn {turn} into the Block {block} wing and walk to its far end"
+                        lead = t("Turn {turn} into the Block {block} wing and walk to its far end", **values)
                     else:
-                        lead = f"Walk to the far end of the Block {block} wing"
+                        lead = t("Walk to the far end of the Block {block} wing", **values)
                     if nxt and nxt["kind"] == "stairs":
                         up, to_floor = climb(i + 1)
-                        say(f"{lead}; take the stairwell there {up} to floor {to_floor}.")
+                        say(t("{lead}; take the stairwell there {up} to floor {floor}.", lead=lead, up=t(up),
+                              floor=to_floor))
                         state["floor"] = state["cur"] = to_floor
                         leaving, heading = False, None
                         i += 2
                         continue
-                    say(f"{lead}.")
+                    say(t("{lead}.", lead=lead))
                 else:
                     if leaving:
-                        say(f"Leave {label}, turn {turn} and walk back along the Block {block} wing "
-                            f"to the central corridor." if turn in ("left", "right") else
-                            f"Leave {label} and walk back along the Block {block} wing to the central corridor.")
+                        say(t("Leave {start}, turn {turn} and walk back along the Block {block} wing "
+                              "to the central corridor.", **values) if turn in ("left", "right") else
+                            t("Leave {start} and walk back along the Block {block} wing to the central corridor.",
+                              **values))
                     else:
-                        say(f"Walk back along the Block {block} wing to the central corridor.")
+                        say(t("Walk back along the Block {block} wing to the central corridor.", **values))
                 leaving = False
                 heading = leg["tail"]
                 i += 1
@@ -1065,23 +1084,24 @@ class Router:
                 if y1 < y0:
                     passed.reverse()
                 turn = _turn(heading, leg["head"]) if heading else "straight"
+                values = {"start": label, "turn": turned(turn)}
                 if leaving:
-                    lead = (f"Leave {label}, turn {turn} and follow the central corridor"
-                            if turn in ("left", "right") else f"Leave {label} and follow the central corridor")
+                    lead = (t("Leave {start}, turn {turn} and follow the central corridor", **values)
+                            if turn in ("left", "right") else t("Leave {start} and follow the central corridor", **values))
                 elif turn in ("left", "right"):
-                    lead = f"Turn {turn} into the central corridor and follow it"
+                    lead = t("Turn {turn} into the central corridor and follow it", **values)
                 else:
-                    lead = "Follow the central corridor"
-                past = (f" past Block {passed[0]}" if len(passed) == 1 else
-                        f" past Blocks {human_list(passed)}" if passed else "")
+                    lead = t("Follow the central corridor")
+                past = (t(" past Block {block}", block=passed[0]) if len(passed) == 1 else
+                        t(" past Blocks {list}", list=human_list(passed)) if passed else "")
                 towards_lobby = nxt is not None and nxt["kind"] == "open" and nxt["zone"] in ("lobby", "foyer")
                 if towards_lobby and to_block["id"] == self.corridor_blocks[floor][0]["id"]:
-                    target = " back towards the main lobby"
+                    target = t(" back towards the main lobby")
                 elif to_block["id"] == from_block["id"]:
-                    target = f" along Block {to_block['id']}"
+                    target = t(" along Block {block}", block=to_block["id"])
                 else:
-                    target = f" to Block {to_block['id']}"
-                say(f"{lead}{past}{target}.")
+                    target = t(" to Block {block}", block=to_block["id"])
+                say(t("{lead}{past}{target}.", lead=lead, past=past, target=target))
                 leaving = False
                 heading = leg["tail"]
                 i += 1
@@ -1110,16 +1130,18 @@ class Router:
         code = spoken(room)
         number = room["room_number"]
         prev = legs[i - 1] if i > 0 else None
-        on_floor = f"On floor {new_floor}, " if new_floor else ""
-
         def lead(text: str) -> str:
-            text = on_floor + (text[0].lower() + text[1:] if on_floor else text)
+            if new_floor:
+                return t("On floor {floor}, {step}", floor=new_floor, step=text[0].lower() + text[1:])
             return text
+
+        def side_of(mine: str) -> str:
+            return t(" on your left") if mine == "left" else t(" on your right")
 
         came_up = self.nodes[legs[i]["nodes"][0]]
         hall = self._shape.get((came_up["floor"], number))
         if came_up["kind"] == "stairs" and hall and hall.contains(self._pt(legs[i]["nodes"][0])):
-            return lead(f"The stairs come up inside {code}.")
+            return lead(t("The stairs come up inside {room}.", room=code))
 
         if number in self.doors and prev is not None and prev["kind"] == "wing":
             door = self.doors[number]
@@ -1151,38 +1173,48 @@ class Router:
                 turn = _turn(heading, walk) if heading else "straight"
                 if _side(walk, start_door["door"], start_door["room"]) != mine and \
                         abs(along(start_door) - along(door)) * wing["length"] <= OPPOSITE_REACH:
-                    return f"Leave {leaving}: {code} is directly across the corridor."
-                opening = f"Leave {leaving} and turn {turn}: " if turn in ("left", "right") else f"Leave {leaving}: "
-                nth = "next" if pos == 1 else ordinal(pos)
-                text = f"{code} is the {nth} door on your {mine}"
-                text += f", just after {human_list(before)}." if before else "."
+                    return t("Leave {start}: {room} is directly across the corridor.", start=leaving, room=code)
+                opening = (t("Leave {start} and turn {turn}: ", start=leaving,
+                             turn=t("left") if turn == "left" else t("right"))
+                           if turn in ("left", "right") else t("Leave {start}: ", start=leaving))
+                values = {"room": code, "side": side_of(mine), "nth": ordinal(pos), "pos": pos,
+                          "list": human_list(before)}
+                if pos == 1:
+                    text = t("{room} is the next door{side}.", **values)
+                elif before:
+                    text = t("{room} is the {nth} door{side}, just after {list}.", **values)
+                else:
+                    text = t("{room} is the {nth} door{side}.", **values)
                 return opening + text
             if entry.get("start"):
                 # the staircase at the wing's start: the wing runs on from it, and a
                 # door or two may be behind it, by the corridor
-                opening = lead(f"Turn back towards the central corridor: " if backwards
-                               else f"Walk on along the Block {wing['block']} wing: ")
-                first_txt = "right by the stairs"
+                opening = lead(t("Turn back towards the central corridor: ") if backwards
+                               else t("Walk on along the Block {block} wing: ", block=wing["block"]))
+                first_txt = t("right by the stairs")
             elif entry["kind"] in ("wing_end", "stairs"):
-                opening = lead(f"Walk back along the Block {wing['block']} wing: ")
-                first_txt = "right by the stairwell" if entry["kind"] == "stairs" else "at the far end"
+                opening = lead(t("Walk back along the Block {block} wing: ", block=wing["block"]))
+                first_txt = t("right by the stairwell") if entry["kind"] == "stairs" else t("at the far end")
             else:
                 turn = _turn(heading, walk) if heading else "straight"
-                opening = lead(f"Turn {turn} into the Block {wing['block']} wing: " if turn in ("left", "right")
-                               else f"Go into the Block {wing['block']} wing: ")
-                first_txt = "right as you enter the wing"
+                opening = lead(t("Turn {turn} into the Block {block} wing: ", block=wing["block"],
+                                 turn=t("left") if turn == "left" else t("right")) if turn in ("left", "right")
+                               else t("Go into the Block {block} wing: ", block=wing["block"]))
+                first_txt = t("right as you enter the wing")
+            values = {"room": code, "side": side_of(mine), "nth": ordinal(pos), "pos": pos,
+                      "list": human_list(before), "where": first_txt}
             if pos == 1:
-                text = f"{code} is the first door on your {mine}, {first_txt}."
+                text = t("{room} is the first door{side}, {where}.", **values)
             elif last_on_side and entry["kind"] == "spine":
-                text = (f"{code} is the last door on your {mine}, at the far end of the wing — "
-                        f"you'll pass {human_list(before)} on the way.")
+                text = t("{room} is the last door{side}, at the far end of the wing — "
+                         "you'll pass {list} on the way.", **values)
             else:
-                text = f"{code} is the {ordinal(pos)} door on your {mine}, just after {human_list(before)}."
+                text = t("{room} is the {nth} door{side}, just after {list}.", **values)
             if opposite:
-                text += f" Directly across the corridor is {spoken(self.rooms[opposite['code']])}."
+                text += " " + t("Directly across the corridor is {room}.", room=spoken(self.rooms[opposite["code"]]))
             return opening + text
 
-        opening = f"Leave {leaving}. " if leaving else ""
+        opening = t("Leave {start}. ", start=leaving) if leaving else ""
         if room["zone"] == "corridor":
             node = self.nodes[self.room_node[number]]
             walk = heading or (0.0, 1.0)
@@ -1193,39 +1225,45 @@ class Router:
                           key=lambda r: abs(r["y"] - room["y"]))
             above = [r for r in near if r["y"] < room["y"]][:1]
             below = [r for r in near if r["y"] > room["y"]][:1]
+            values = {"room": code, "side": side_of(side)}
             if above and below:
-                tail = f", between {spoken(above[0])} and {spoken(below[0])}."
+                text = t("{room} opens straight onto the central corridor{side}, between {a} and {b}.",
+                         a=spoken(above[0]), b=spoken(below[0]), **values)
             elif near:
-                tail = f", next to {spoken(near[0])}."
+                text = t("{room} opens straight onto the central corridor{side}, next to {a}.",
+                         a=spoken(near[0]), **values)
             else:
-                tail = "."
-            return opening + lead(f"{code} opens straight onto the central corridor, on your {side}{tail}")
+                text = t("{room} opens straight onto the central corridor{side}.", **values)
+            return opening + lead(text)
         across = self.index._across(room) if room["zone"] == "west" else None
         if leaving and across is not None and spoken(across) == leaving:
-            return f"Leave {leaving}: {code} is directly across the central corridor."
+            return t("Leave {start}: {room} is directly across the central corridor.", start=leaving, room=code)
         if room["zone"] == "north":
             return opening + lead(self.index._north_step(room, [], {}))
-        return opening + lead(self.index._west_step(room, f"Block {room['building_id']}", [], {}))
+        return opening + lead(self.index._west_step(room, t("Block {block}", block=room["building_id"]), [], {}))
 
     def _foyer_walk(self, start_room: dict, room: dict, leaving: str) -> str:
         """From one door on the Block B foyer to another, without going back to the lobby."""
         row = sorted((r for r in self.index.rooms if r["zone"] == "north"
                       and r["floor_number"] == room["floor_number"]), key=lambda r: r["x"])
         away = room["x"] > start_room["x"]          # away from the lobby, towards Red Hall
-        lead = (f"Step out of {leaving} into the Block B foyer and walk "
-                + ("away from the main lobby" if away else "back towards the main lobby"))
+        lead = (t("Step out of {start} into the Block B foyer and walk away from the main lobby", start=leaving)
+                if away else
+                t("Step out of {start} into the Block B foyer and walk back towards the main lobby", start=leaving))
         if room is row[-1] and away:
-            return f"{lead}: {spoken(room)} is at the far end of the foyer."
+            return t("{lead}: {room} is at the far end of the foyer.", lead=lead, room=spoken(room))
         north = room["y"] < NORTH_FOYER_Y
         side = ("left" if north else "right") if away else ("right" if north else "left")
         lo, hi = sorted((start_room["x"], room["x"]))
         passed = [r for r in row if r is not room and r is not start_room and lo < r["x"] < hi
                   and (r["y"] < NORTH_FOYER_Y) == north]
         passed.sort(key=lambda r: r["x"], reverse=not away)
+        values = {"room": spoken(room), "side": t(" on your left") if side == "left" else t(" on your right"),
+                  "nth": ordinal(len(passed) + 1), "pos": len(passed) + 1,
+                  "list": human_list([spoken(r) for r in passed[-2:]])}
         if not passed:
-            return f"{lead}: {spoken(room)} is the next door on your {side}."
-        return (f"{lead}: {spoken(room)} is the {ordinal(len(passed) + 1)} door on your {side}, "
-                f"just after {human_list([spoken(r) for r in passed[-2:]])}.")
+            return t("{lead}: {text}", lead=lead, text=t("{room} is the next door{side}.", **values))
+        return t("{lead}: {text}", lead=lead, text=t("{room} is the {nth} door{side}, just after {list}.", **values))
 
     def _arrival_signs(self, end: dict, room: dict | None) -> list[dict]:
         if room is None:
@@ -1233,7 +1271,8 @@ class Router:
         label = end["label"].removeprefix("the ")       # a sign says "Restroom", not "The restroom"
         label = label[0].upper() + label[1:]
         if room["zone"] == "north":
-            return [{"icon": "ahead", "text": "Block B foyer"}, {"icon": "door", "text": label}]
+            return [{"icon": "ahead", "text": t("Block B foyer")}, {"icon": "door", "text": label}]
         if room["zone"] == "wing":
-            return [{"icon": "ahead", "text": f"Block {room['building_id']} wing"}, {"icon": "door", "text": label}]
-        return [{"icon": "ahead", "text": f"Block {room['building_id']}"}, {"icon": "door", "text": label}]
+            return [{"icon": "ahead", "text": t("Block {block} wing", block=room["building_id"])},
+                    {"icon": "door", "text": label}]
+        return [{"icon": "ahead", "text": t("Block {block}", block=room["building_id"])}, {"icon": "door", "text": label}]

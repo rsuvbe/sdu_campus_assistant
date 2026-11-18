@@ -419,7 +419,7 @@ def test_us14_task_every_result_on_the_plan_can_be_routed_to(question):
 def test_us14_task_the_card_offers_the_action_and_a_start_picker_defaulting_to_the_entrance():
     assert "How do I get there?" in APP_JS and "data-directions" in APP_JS
     assert 'list="places"' in APP_JS and '<datalist id="places">' in INDEX_HTML
-    assert 'add("Main entrance")' in APP_JS
+    assert 'add(t("Main entrance"))' in APP_JS
     # the route is fetched without a start, so the server's default (the entrance) applies
     assert "/api/route?" in APP_JS and '`&from=${encodeURIComponent(from)}` : ""' in APP_JS
 
@@ -637,7 +637,10 @@ def test_a_page_is_tagged_by_what_it_holds_not_by_its_date_and_size(client, tmp_
     import app.main as main
     page = client.get("/")
     tag = page.headers["etag"]
-    assert tag == main.content_tag(main.STATIC_DIR / "index.html") and "last-modified" not in page.headers
+    # since Sprint 6 a page is sent in the interface language (app/pages.py): its tag
+    # is made of the page as sent
+    import hashlib
+    assert tag == '"' + hashlib.sha256(page.content).hexdigest()[:32] + '"' and "last-modified" not in page.headers
     assert client.get("/", headers={"If-None-Match": tag}).status_code == 304
     assert client.get("/", headers={"If-None-Match": '"a-tag-of-date-and-size"'}).status_code == 200
     one, two = tmp_path / "a.html", tmp_path / "b.html"

@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=110">
+<link rel="stylesheet" href="/static/styles.css?v=111">
 </head>
 <body class="app-body">
 <a class="skip" href="#q">Skip to search</a>
@@ -52,6 +52,9 @@
   <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6.5h16V20H4zM4 10.5h16M8.5 3.5v5M15.5 3.5v5"/></symbol>
   <symbol id="i-week" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17zM3.5 9.5h17M9 9.5V19M14.5 9.5V19"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5s1.1-5.9 3.6-8.5z"/></symbol>
 </svg>
 
 <div class="app">
@@ -65,6 +68,7 @@
       </span>
     </a>
     <div class="bar-end">
+      <div class="theme-switch lang-switch" data-lang-switch></div>
       <div class="theme-switch" data-theme-switch></div>
       <div class="account" id="account" hidden>
         <span class="who" id="account-who"></span>
@@ -93,11 +97,28 @@
         <span>Find</span><svg class="i" aria-hidden="true"><use href="#i-send"/></svg>
       </button>
     </div>
-    <p class="ask-hint" id="q-hint">A code as it's written on the door, or your own words, in English or Russian.</p>
+    <p class="ask-hint" id="q-hint">A code as it's written on the door, or your own words, in English, Russian or Kazakh.</p>
   </form>
 
   <section class="panel" aria-label="Answers">
     <div class="thread" id="thread">
+      <!-- US23: an account's starred rooms and recent questions, one tap away: first on
+           the page, and under the answers once a question is asked -->
+      <section class="mine" id="mine" aria-labelledby="mine-title" hidden>
+        <h2 class="visually-hidden" id="mine-title">Your places</h2>
+        <div class="mine-part" id="mine-starred" hidden>
+          <h3 class="field-label">Starred</h3>
+          <ul class="mine-favs" id="mine-starred-list"></ul>
+        </div>
+        <div class="mine-part" id="mine-recent" hidden>
+          <div class="mine-head">
+            <h3 class="field-label">Recent searches</h3>
+            <button type="button" class="btn-text mine-clear" id="mine-clear">Clear</button>
+          </div>
+          <ul class="mine-recent" id="mine-recent-list"></ul>
+        </div>
+      </section>
+
       <article class="welcome" id="welcome">
         <h2 class="sec-title">Try one of these</h2>
         <ul class="destinations" id="examples" aria-label="Try one of these"></ul>
@@ -105,6 +126,7 @@
       </article>
 
       <div class="log" id="log" aria-live="polite"></div>
+
 
       <a class="events-link" id="timetable-link" href="/schedule" hidden><svg class="i" aria-hidden="true"><use href="#i-week"/></svg><span>Your timetable</span><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
       <a class="events-link" href="/events"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span>Campus events</span><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>
@@ -156,8 +178,9 @@
   </section>
 
 </div>
-<script src="/static/theme.js?v=7"></script>
-<script src="/static/reminders.js?v=2"></script>
-<script src="/static/app.js?v=95"></script>
+<script src="/static/i18n.js?v=1"></script>
+<script src="/static/theme.js?v=8"></script>
+<script src="/static/reminders.js?v=3"></script>
+<script src="/static/app.js?v=96"></script>
 </body>
 </html>

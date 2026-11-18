@@ -27,12 +27,14 @@ from pydantic import BaseModel, Field
 
 from .auth import (GUEST, MAX_CLASSES, RESET_MINUTES, ROLE_VISITOR, SESSION_COOKIE, AuthError, UserStore,
                    clean_class, clean_event, database_url, default_db_path, normalise_email, seed_account)
+from . import i18n
 from .ics import timetable_calendar
 from .engine import CampusIndex, campus_now
 from .floorplan import CampusMap
 from .routing import Router
 from .mailer import mail_configured, send_reset_link
 from .news import NewsFeed, fetch_picture
+from .pages import render as render_page
 from .sdulife import SduLifeSync, fetch_poster
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -47,8 +49,8 @@ SECURE_COOKIES = os.environ.get("CAMPUS_SECURE_COOKIES", "").lower() in ("1", "t
 PUBLIC_URL = (os.environ.get("CAMPUS_PUBLIC_URL")
               or (f"https://{os.environ['VERCEL_PROJECT_PRODUCTION_URL']}"
                   if os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") else "")).rstrip("/")
-RESET_SENT = (f"If an account exists for that address, a link to choose a new password is on "
-              f"its way. It works once, for {RESET_MINUTES} minutes.")
+RESET_SENT = ("If an account exists for that address, a link to choose a new password is on "
+              "its way. It works once, for {n} minutes.")
 
 index = CampusIndex.load(DB_PATH)
 campus_map = CampusMap(index)
@@ -66,6 +68,8 @@ app = FastAPI(
 )
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"],
                    allow_headers=["*"])
+# every request is answered in the interface language its `sdu-lang` cookie names (US21)
+app.add_middleware(i18n.LanguageMiddleware)
 
 
 def current_user(request: Request) -> dict:
@@ -76,7 +80,7 @@ def current_user(request: Request) -> dict:
     """
     user = users.session_user(request.cookies.get(SESSION_COOKIE))
     if not user:
-        raise HTTPException(status_code=401, detail="Open the campus assistant to continue.")
+        raise HTTPException(status_code=401, detail=i18n.t("Open the campus assistant to continue."))
     return user
 
 
@@ -85,7 +89,7 @@ def require_account(user: dict = Depends(current_user)) -> dict:
     route, a reminder."""
     if user["role"] == ROLE_VISITOR:
         raise HTTPException(status_code=403,
-                            detail="Sign in with your SDU account to use this.")
+                            detail=i18n.t("Sign in with your SDU account to use this."))
     return user
 
 
@@ -100,7 +104,7 @@ def is_admin(user: dict | None) -> bool:
 
 def require_admin(user: dict = Depends(require_account)) -> dict:
     if not is_admin(user):
-        raise HTTPException(status_code=403, detail="Only the site's administrators can change events.")
+        raise HTTPException(status_code=403, detail=i18n.t("Only the site's administrators can change events."))
     return user
 
 
@@ -216,20 +220,20 @@ def forgot_password(request: Request, background: BackgroundTasks,
         issued = users.request_reset(email)
         if not issued:
             return {"ok": True, "delivery": "screen", "reset_url": None,
-                    "message": "There's no account for that address, or a link was made for it under a "
-                               "minute ago. Check the address, or wait a moment and ask again."}
+                    "message": i18n.t("There's no account for that address, or a link was made for it under a "
+                                      "minute ago. Check the address, or wait a moment and ask again.")}
         _, token = issued
         return {"ok": True, "delivery": "screen", "reset_url": f"/login?mode=reset#reset={token}",
-                "message": "No mail server is set up on this computer, so the reset link is right here. "
-                           f"It works once, for {RESET_MINUTES} minutes."}
+                "message": i18n.t("No mail server is set up on this computer, so the reset link is right here. "
+                                  "It works once, for {n} minutes.", n=RESET_MINUTES)}
 
     if not mail_configured() or not PUBLIC_URL:
         logging.getLogger("campus.mail").error(
             "Password reset requested, but mail is not set up: set CAMPUS_BREVO_API_KEY (or "
             "CAMPUS_SMTP_HOST) and CAMPUS_PUBLIC_URL.")
         return {"ok": False, "delivery": "unavailable",
-                "message": "Password reset by e-mail isn't switched on for this site yet. "
-                           "Ask the site's administrator to reset your password."}
+                "message": i18n.t("Password reset by e-mail isn't switched on for this site yet. "
+                                  "Ask the site's administrator to reset your password.")}
 
     issued = users.request_reset(email)
     if issued:
@@ -237,7 +241,7 @@ def forgot_password(request: Request, background: BackgroundTasks,
         # the token rides in the fragment, which browsers never send to a server
         background.add_task(send_reset_link, user["email"], f"{PUBLIC_URL}/login?mode=reset#reset={token}",
                             RESET_MINUTES)
-    return {"ok": True, "delivery": "email", "message": RESET_SENT}
+    return {"ok": True, "delivery": "email", "message": i18n.t(RESET_SENT, n=RESET_MINUTES)}
 
 
 @app.post("/api/auth/reset", tags=["accounts"])
@@ -263,7 +267,7 @@ def change_password(request: Request, current_password: str = Body("", embed=Tru
                               keep_token=request.cookies.get(SESSION_COOKIE))
     except AuthError as err:
         raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
-    return {"ok": True, "message": "Your password is changed. Other devices have been signed out."}
+    return {"ok": True, "message": i18n.t("Your password is changed. Other devices have been signed out.")}
 
 
 @app.post("/api/auth/guest", tags=["accounts"])
@@ -302,16 +306,66 @@ def stats(user: dict = Depends(current_user)):
 
 
 @app.get("/api/search", tags=["US1 search"])
-def search(q: str = Query(..., min_length=1, max_length=200,
+def search(request: Request, q: str = Query(..., min_length=1, max_length=200,
                           description="Free-form question, e.g. 'Where is D103?'"),
            context: str | None = Query(None, max_length=8,
                                        description="The `context` of the previous answer, so a "
                                                    "follow-up like 'Engineering' resolves '204'"),
+           record: bool = Query(True, description="Keep the question in the asker's recent searches "
+                                                  "(US23). The page sends 0 for a press on the plan."),
            user: dict = Depends(current_user)):
     """Answer a free-form question about a room, a block, a campus service or the
     asker's own next class."""
-    timetable = None if user["role"] == ROLE_VISITOR else (lambda: users.classes(user["user_id"]))
-    return index.search(q, context=context, timetable=timetable, events=added_events)
+    visitor = user["role"] == ROLE_VISITOR
+    timetable = None if visitor else (lambda: users.classes(user["user_id"]))
+    result = index.search(q, context=context, timetable=timetable, events=added_events,
+                          lang=i18n.detect(q) or i18n.current())
+    if not visitor and record:
+        # US23: an account's questions are kept; a visitor's never are
+        users.record_search(user["user_id"], q)
+    return result
+
+
+# ------------------------------------------------- US23: history, favourites
+@app.get("/api/history", tags=["history and favourites"])
+def search_history(user: dict = Depends(require_account)):
+    """Your latest questions, newest first. A visitor keeps none (403)."""
+    return {"history": users.history(user["user_id"])}
+
+
+@app.delete("/api/history", tags=["history and favourites"])
+def clear_search_history(user: dict = Depends(require_account)):
+    users.clear_history(user["user_id"])
+    return {"ok": True}
+
+
+@app.get("/api/favourites", tags=["history and favourites"])
+def favourites(user: dict = Depends(require_account)):
+    """The rooms you starred, each with what to ask to open it again."""
+    return {"favourites": [p for p in (index.favourite_payload(code)
+                                       for code in users.favourites(user["user_id"])) if p]}
+
+
+@app.put("/api/favourites/{room}", tags=["history and favourites"])
+def star_room(room: str, user: dict = Depends(require_account)):
+    """Star a room of the directory (its code, hall name or alias)."""
+    found = index.directory_room(room)
+    if not found:
+        raise HTTPException(status_code=404, detail=i18n.t("That room isn't in the directory."))
+    try:
+        users.add_favourite(user["user_id"], found["room_number"])
+    except AuthError as err:
+        raise HTTPException(status_code=400, detail={"field": err.field, "message": err.message})
+    return index.favourite_payload(found["room_number"])
+
+
+@app.delete("/api/favourites/{room}", tags=["history and favourites"])
+def unstar_room(room: str, user: dict = Depends(require_account)):
+    found = index.directory_room(room)
+    code = found["room_number"] if found else room
+    if not users.remove_favourite(user["user_id"], code):
+        raise HTTPException(status_code=404, detail=i18n.t("That room isn't starred."))
+    return {"ok": True}
 
 
 @app.get("/api/route", tags=["directions"])
@@ -323,9 +377,13 @@ def route(to: str = Query(..., min_length=1, max_length=200,
           via: str | None = Query(None, max_length=120,
                                   description="To a building of the grounds: the door of floor 1 to "
                                               "go out by, one of the route's `alternatives`."),
+          lang: str | None = Query(None, max_length=2,
+                                   description="The language of the question the route belongs to "
+                                               "(US22); the interface's when left out."),
           user: dict = Depends(current_user)):
     """Step-by-step walking directions between two places, drawn on the plans too."""
-    return index.directions(to, frm, via)
+    with i18n.use(lang or i18n.current()):
+        return index.directions(to, frm, via)
 
 
 @app.get("/api/map", tags=["map"])
@@ -366,11 +424,12 @@ def _class_fields(form: ClassForm) -> tuple[dict, str]:
     room = index.directory_room(form.room)
     if not room:
         raise HTTPException(status_code=400, detail={
-            "field": "room", "message": "Choose a room from the list, like D103 or Hall A1."})
+            "field": "room", "message": i18n.t("Choose a room from the list, like D103 or Hall A1.")})
     return fields, room["room_number"]
 
 
-NOT_YOURS = HTTPException(status_code=404, detail="That class isn't in your timetable.")
+def not_yours() -> HTTPException:
+    return HTTPException(status_code=404, detail=i18n.t("That class isn't in your timetable."))
 
 
 @app.get("/api/rooms", tags=["timetable"])
@@ -398,7 +457,7 @@ def add_class(form: ClassForm, user: dict = Depends(require_account)):
 def get_class(class_id: int, user: dict = Depends(require_account)):
     entry = users.get_class(user["user_id"], class_id)
     if not entry:
-        raise NOT_YOURS
+        raise not_yours()
     return index.class_payload(entry)
 
 
@@ -407,14 +466,14 @@ def edit_class(class_id: int, form: ClassForm, user: dict = Depends(require_acco
     fields, room = _class_fields(form)
     entry = users.update_class(user["user_id"], class_id, fields, room)
     if not entry:
-        raise NOT_YOURS
+        raise not_yours()
     return index.class_payload(entry)
 
 
 @app.delete("/api/schedule/{class_id}", tags=["timetable"])
 def delete_class(class_id: int, user: dict = Depends(require_account)):
     if not users.delete_class(user["user_id"], class_id):
-        raise NOT_YOURS
+        raise not_yours()
     return {"ok": True}
 
 
@@ -442,7 +501,7 @@ def import_classes(form: ImportForm, user: dict = Depends(require_account)):
     """A whole week at once, as checked on the import preview. Every class is
     checked first; one that is wrong stops the import, naming its row."""
     if not form.classes:
-        raise HTTPException(status_code=400, detail={"field": "classes", "message": "There are no classes to save."})
+        raise HTTPException(status_code=400, detail={"field": "classes", "message": i18n.t("There are no classes to save.")})
     entries = []
     for row, entry in enumerate(form.classes):
         try:
@@ -483,7 +542,8 @@ def _event_date(value: str | None, field: str) -> date | None:
         return date.fromisoformat(value)
     except ValueError:
         raise HTTPException(status_code=400, detail={
-            "field": field, "message": f"Give the {'first' if field == 'from' else 'last'} day as year-month-day, like 2026-11-14."})
+            "field": field, "message": i18n.t("Give the first day as year-month-day, like 2026-11-14." if field == "from"
+                                              else "Give the last day as year-month-day, like 2026-11-14.")})
 
 
 @app.get("/api/events", tags=["events"])
@@ -499,7 +559,7 @@ def events(q: str | None = Query(None, max_length=200,
     start, end = _event_date(frm, "from"), _event_date(to, "to")
     if start and end and start > end:
         raise HTTPException(status_code=400, detail={
-            "field": "to", "message": "The last day can't be before the first."})
+            "field": "to", "message": i18n.t("The last day can't be before the first.")})
     # the same query, run on the events an administrator added (US20)
     stamp = campus_now().strftime("%Y-%m-%d %H:%M")
     _sync_sdulife()
@@ -528,10 +588,10 @@ def _event_fields(form: EventForm) -> tuple[dict, str | None]:
         room = index.directory_room(form.room)
         if not room:
             raise HTTPException(status_code=400, detail={
-                "field": "room", "message": "Choose a room from the list, or leave it empty for a place off the plans."})
+                "field": "room", "message": i18n.t("Choose a room from the list, or leave it empty for a place off the plans.")})
     place = form.place.strip() or (index.class_room(room) if room else "")
     if not place:
-        raise HTTPException(status_code=400, detail={"field": "place", "message": "Say where it is, or choose a room."})
+        raise HTTPException(status_code=400, detail={"field": "place", "message": i18n.t("Say where it is, or choose a room.")})
     try:
         fields = clean_event(form.title, form.description, place, form.starts, form.ends, form.link)
     except AuthError as err:
@@ -544,7 +604,7 @@ def _event_id(event_id: str) -> int:
     one shipped in campus.db, which is changed there and not here."""
     match = re.fullmatch(r"a(\d{1,18})", event_id)
     if not match:
-        raise HTTPException(status_code=404, detail="That event can't be changed here.")
+        raise HTTPException(status_code=404, detail=i18n.t("That event can't be changed here."))
     return int(match[1])
 
 
@@ -554,7 +614,7 @@ def _added_id(event_id: str) -> int:
     corrected here."""
     number = _event_id(event_id)
     if users.event_source(number):
-        raise HTTPException(status_code=409, detail="This event comes from SDU Life; change it there.")
+        raise HTTPException(status_code=409, detail=i18n.t("This event comes from SDU Life; change it there."))
     return number
 
 
@@ -583,7 +643,7 @@ def edit_event(event_id: str, form: EventForm, user: dict = Depends(require_admi
     else:
         row = users.update_event(number, fields, room)
     if not row:
-        raise HTTPException(status_code=404, detail="That event isn't there any more.")
+        raise HTTPException(status_code=404, detail=i18n.t("That event isn't there any more."))
     _events_changed()
     return _event_out(row)
 
@@ -591,7 +651,7 @@ def edit_event(event_id: str, form: EventForm, user: dict = Depends(require_admi
 @app.delete("/api/events/{event_id}", tags=["events"])
 def delete_event(event_id: str, user: dict = Depends(require_admin)):
     if not users.delete_event(_added_id(event_id)):
-        raise HTTPException(status_code=404, detail="That event isn't there any more.")
+        raise HTTPException(status_code=404, detail=i18n.t("That event isn't there any more."))
     _events_changed()
     return {"ok": True}
 
@@ -602,11 +662,11 @@ def event_poster(event_id: str, user: dict = Depends(require_admin)):
     the administrator's browser may read the place and the time off it."""
     image = users.event_image(_event_id(event_id))
     if not image:
-        raise HTTPException(status_code=404, detail="This event has no poster.")
+        raise HTTPException(status_code=404, detail=i18n.t("This event has no poster."))
     try:
         body, kind = fetch_poster(image)
     except Exception:                      # noqa: BLE001 — unreachable, too big, not a picture
-        raise HTTPException(status_code=502, detail="SDU Life's poster couldn't be fetched just now.") from None
+        raise HTTPException(status_code=502, detail=i18n.t("SDU Life's poster couldn't be fetched just now.")) from None
     return Response(body, media_type=kind, headers={"Cache-Control": "private, max-age=86400",
                                                     "X-Content-Type-Options": "nosniff"})
 
@@ -615,7 +675,7 @@ def event_poster(event_id: str, user: dict = Depends(require_admin)):
 def uncorrect_event(event_id: str, user: dict = Depends(require_admin)):
     """Drop a correction: the event takes SDU Life's place and times again, now."""
     if not users.uncorrect_event(_event_id(event_id)):
-        raise HTTPException(status_code=404, detail="That event has no correction to undo.")
+        raise HTTPException(status_code=404, detail=i18n.t("That event has no correction to undo."))
     _sync_sdulife(force=True)
     _events_changed()
     return {"ok": True}
@@ -625,10 +685,10 @@ def uncorrect_event(event_id: str, user: dict = Depends(require_admin)):
 def sync_events(user: dict = Depends(require_admin)):
     """An administrator copies SDU Life's events now, without waiting for the half hour."""
     if not sdulife:
-        raise HTTPException(status_code=404, detail="Copying from SDU Life is turned off on this server.")
+        raise HTTPException(status_code=404, detail=i18n.t("Copying from SDU Life is turned off on this server."))
     _sync_sdulife(force=True)
     if sdulife.ok is False:
-        raise HTTPException(status_code=502, detail="SDU Life couldn't be read just now. Try again later.")
+        raise HTTPException(status_code=502, detail=i18n.t("SDU Life couldn't be read just now. Try again later."))
     return sdulife.status()
 
 
@@ -640,9 +700,9 @@ def news_picture(src: str = Query(..., max_length=400)):
     try:
         body, kind = fetch_picture(src)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Not a picture of sdu.edu.kz.") from None
+        raise HTTPException(status_code=404, detail=i18n.t("Not a picture of sdu.edu.kz.")) from None
     except Exception:                      # noqa: BLE001 — unreachable or too slow
-        raise HTTPException(status_code=502, detail="sdu.edu.kz couldn't be reached just now.") from None
+        raise HTTPException(status_code=502, detail=i18n.t("sdu.edu.kz couldn't be reached just now.")) from None
     return Response(body, media_type=kind, headers={
         "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
         "X-Content-Type-Options": "nosniff"})
@@ -732,6 +792,17 @@ def safe_next(path: str | None) -> str:
     return "/"
 
 
+def page_file(request: Request, name: str) -> Response:
+    """A page in the interface language (US21, app/pages.py), with the ETag of what
+    is sent; 304 when the browser already has it."""
+    body = render_page(STATIC_DIR / name, i18n.current())
+    tag = '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+    headers = {**PAGE_HEADERS, "ETag": tag, "Vary": "Cookie"}
+    if tag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type="text/html; charset=utf-8", headers=headers)
+
+
 def _page(request: Request, name: str):
     """A page behind the door: the file, or the sign-in page, which brings the
     visitor back here (with its question, /?ask=...) once they are in."""
@@ -739,7 +810,7 @@ def _page(request: Request, name: str):
         here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         target = "/login" if here == "/" else f"/login?next={quote(here, safe='')}"
         return RedirectResponse(target, status_code=303)
-    return tagged_file(request, STATIC_DIR / name, PAGE_HEADERS)
+    return page_file(request, name)
 
 
 @app.get("/", include_in_schema=False)
@@ -776,4 +847,4 @@ def login_page(request: Request, mode: str | None = None, next: str | None = Non
     user = users.session_user(request.cookies.get(SESSION_COOKIE))
     if mode != "reset" and user and user["role"] != ROLE_VISITOR:
         return RedirectResponse(safe_next(next), status_code=303)
-    return tagged_file(request, STATIC_DIR / "auth.html", PAGE_HEADERS)
+    return page_file(request, "auth.html")

@@ -38,6 +38,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
+from .i18n import t
+
 EMAIL_RE = re.compile(r"^(\d{9})@sdu\.edu\.kz$", re.IGNORECASE)          # a student's
 STAFF_RE = re.compile(r"^([a-z]+(?:-[a-z]+)*)\.([a-z]+(?:-[a-z]+)*)@sdu\.edu\.kz$", re.IGNORECASE)
 
@@ -78,7 +80,9 @@ EMAIL_HINT = ("Use your SDU address: your student number (240103048@sdu.edu.kz),
 class AuthError(Exception):
     """A sign-up or sign-in the server refuses, with a message for the form."""
 
-    def __init__(self, message: str, field: str = "email") -> None:
+    def __init__(self, message: str, field: str = "email", **values) -> None:
+        # in the language of the request (app/i18n.py); the template is the English text
+        message = t(message, **values)
         super().__init__(message)
         self.message = message
         self.field = field
@@ -113,7 +117,7 @@ def normalise_name(raw: str | None) -> str:
     if not name:
         raise AuthError("Enter your full name.", "full_name")
     if len(name) > MAX_NAME:
-        raise AuthError(f"A name can be at most {MAX_NAME} characters.", "full_name")
+        raise AuthError("A name can be at most {n} characters.", "full_name", n=MAX_NAME)
     if len(re.sub(r"[^\w]|\d|_", "", name)) < 2 or not NAME_RE.match(name):
         raise AuthError("Use letters only, as your name is written: Aidana Serikova.", "full_name")
     return name
@@ -126,7 +130,7 @@ def clean_class(subject: str, day: int, start: str, end: str) -> dict:
     if not subject:
         raise AuthError("Enter the subject.", "subject")
     if len(subject) > MAX_SUBJECT:
-        raise AuthError(f"A subject can be at most {MAX_SUBJECT} characters.", "subject")
+        raise AuthError("A subject can be at most {n} characters.", "subject", n=MAX_SUBJECT)
     if day not in range(7):
         raise AuthError("Choose the day of the week.", "day")
     if not TIME_RE.match(start or ""):
@@ -156,11 +160,11 @@ def clean_event(title: str, description: str, place: str, starts: str, ends: str
     if not title:
         raise AuthError("Give the event a title.", "title")
     if len(title) > MAX_EVENT_TITLE:
-        raise AuthError(f"A title can be at most {MAX_EVENT_TITLE} characters.", "title")
+        raise AuthError("A title can be at most {n} characters.", "title", n=MAX_EVENT_TITLE)
     if len(description) > MAX_EVENT_TEXT:
-        raise AuthError(f"A description can be at most {MAX_EVENT_TEXT} characters.", "description")
+        raise AuthError("A description can be at most {n} characters.", "description", n=MAX_EVENT_TEXT)
     if len(place) > MAX_EVENT_PLACE:
-        raise AuthError(f"A place can be at most {MAX_EVENT_PLACE} characters.", "place")
+        raise AuthError("A place can be at most {n} characters.", "place", n=MAX_EVENT_PLACE)
     times = []
     for value, field, word in ((starts, "starts", "starts"), (ends, "ends", "ends")):
         m = EVENT_TIME_RE.match((value or "").strip())
@@ -169,7 +173,8 @@ def clean_event(title: str, description: str, place: str, starts: str, ends: str
                 raise ValueError
             datetime.fromisoformat(f"{m[1]}T{m[2]}")
         except ValueError:
-            raise AuthError(f"Give the day and time it {word}.", field) from None
+            raise AuthError("Give the day and time it starts." if word == "starts"
+                            else "Give the day and time it ends.", field) from None
         times.append(f"{m[1]} {m[2]}")
     if times[1] <= times[0]:
         raise AuthError("An event has to end after it starts.", "ends")
@@ -188,13 +193,14 @@ def student_id(email: str) -> str:
     return match.group(1) if match else ""
 
 
-def password_problems(password: str, email: str = "") -> list[str]:
-    """Every rule the password breaks, in the order they are shown on the form."""
+def password_problems(password: str, email: str = "", translate: bool = False) -> list[str]:
+    """Every rule the password breaks, in the order they are shown on the form;
+    with `translate`, in the language of the request."""
     problems = []
     if len(password) < MIN_PASSWORD:
-        problems.append(f"at least {MIN_PASSWORD} characters")
+        problems.append(("at least {n} characters", MIN_PASSWORD))
     if len(password) > MAX_PASSWORD:
-        problems.append(f"no more than {MAX_PASSWORD} characters")
+        problems.append(("no more than {n} characters", MAX_PASSWORD))
     if not any(c.isupper() for c in password):
         problems.append("an uppercase letter")
     if not any(c.islower() for c in password):
@@ -214,13 +220,14 @@ def password_problems(password: str, email: str = "") -> list[str]:
         problems.append("something other than your name")
     if password.lower() in BANNED_PASSWORDS:
         problems.append("a password that isn't on the common-password list")
-    return problems
+    say = t if translate else (lambda text, **values: text.format(**values))
+    return [say(p[0], n=p[1]) if isinstance(p, tuple) else say(p) for p in problems]
 
 
 def validate_password(password: str, email: str = "") -> None:
-    problems = password_problems(password, email)
+    problems = password_problems(password, email, translate=True)
     if problems:
-        raise AuthError("Your password needs " + ", ".join(problems) + ".", "password")
+        raise AuthError("Your password needs {list}.", "password", list=", ".join(problems))
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:
@@ -305,6 +312,19 @@ SQLITE_SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS idx_campus_events_ends ON campus_events(ends_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id);
+    -- US23: an account's recent questions and starred rooms; a visitor has neither
+    CREATE TABLE IF NOT EXISTS search_history (
+        user_id  INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        query    TEXT NOT NULL,
+        asked_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, query)
+    );
+    CREATE TABLE IF NOT EXISTS favourites (
+        user_id     INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        room_number TEXT NOT NULL,      -- rooms.room_number in campus.db
+        added_at    TEXT NOT NULL,
+        PRIMARY KEY (user_id, room_number)
+    );
 """
 POSTGRES_SCHEMA = [
     """CREATE TABLE IF NOT EXISTS users (
@@ -355,7 +375,21 @@ POSTGRES_SCHEMA = [
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS corrected INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE campus_events ADD COLUMN IF NOT EXISTS image TEXT",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_campus_events_source ON campus_events(source, source_id)",
+    """CREATE TABLE IF NOT EXISTS search_history (
+        user_id  BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        query    TEXT NOT NULL,
+        asked_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, query))""",
+    """CREATE TABLE IF NOT EXISTS favourites (
+        user_id     BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        room_number TEXT NOT NULL,
+        added_at    TEXT NOT NULL,
+        PRIMARY KEY (user_id, room_number))""",
 ]
+
+# US23: how many recent questions an account keeps, and how many rooms it may star
+HISTORY_KEEP = 10
+MAX_FAVOURITES = 30
 
 # columns campus_events gained after it first went live, for an SQLite file made before them
 EVENT_COLUMNS = {"search_text": "TEXT NOT NULL DEFAULT ''", "source": "TEXT", "source_id": "TEXT",
@@ -606,7 +640,7 @@ class UserStore:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) AS n FROM classes WHERE user_id = ?", (user_id,)).fetchone()
             if count["n"] >= MAX_CLASSES:
-                raise AuthError(f"A timetable can hold at most {MAX_CLASSES} classes.", "subject")
+                raise AuthError("A timetable can hold at most {n} classes.", "subject", n=MAX_CLASSES)
             row = conn.execute(
                 "INSERT INTO classes (user_id, subject, day_of_week, start_time, end_time, room_number)"
                 f" VALUES (?, ?, ?, ?, ?, ?) RETURNING {CLASS_FIELDS}",
@@ -631,7 +665,7 @@ class UserStore:
                 conn.execute("DELETE FROM classes WHERE user_id = ?", (user_id,))
             count = conn.execute("SELECT COUNT(*) AS n FROM classes WHERE user_id = ?", (user_id,)).fetchone()
             if count["n"] + len(entries) > MAX_CLASSES:
-                raise AuthError(f"A timetable can hold at most {MAX_CLASSES} classes.", "classes")
+                raise AuthError("A timetable can hold at most {n} classes.", "classes", n=MAX_CLASSES)
             for fields, room_number in entries:
                 conn.execute(
                     "INSERT INTO classes (user_id, subject, day_of_week, start_time, end_time, room_number)"
@@ -778,6 +812,57 @@ class UserStore:
         with self._connect() as conn:
             row = conn.execute("DELETE FROM classes WHERE class_id = ? AND user_id = ?"
                                " RETURNING class_id", (class_id, user_id)).fetchone()
+        return row is not None
+
+    # --------------------------------------------- search history, favourites
+    def record_search(self, user_id: int, query: str) -> None:
+        """US23: keep an account's question; asked again, it moves to the top.
+        Only the latest HISTORY_KEEP stay."""
+        query = " ".join(query.split())[:200]
+        if not query:
+            return
+        stamp = _now().isoformat()
+        with self._connect() as conn:
+            conn.execute("DELETE FROM search_history WHERE user_id = ? AND query = ?", (user_id, query))
+            conn.execute("INSERT INTO search_history (user_id, query, asked_at) VALUES (?, ?, ?)",
+                         (user_id, query, stamp))
+            conn.execute(
+                "DELETE FROM search_history WHERE user_id = ? AND query NOT IN"
+                " (SELECT query FROM search_history WHERE user_id = ? ORDER BY asked_at DESC LIMIT ?)",
+                (user_id, user_id, HISTORY_KEEP))
+
+    def history(self, user_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT query, asked_at FROM search_history WHERE user_id = ?"
+                                " ORDER BY asked_at DESC LIMIT ?", (user_id, HISTORY_KEEP)).fetchall()
+        return [dict(r) for r in rows]
+
+    def clear_history(self, user_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM search_history WHERE user_id = ?", (user_id,))
+
+    def favourites(self, user_id: int) -> list[str]:
+        """The room numbers an account starred, the first starred first."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT room_number FROM favourites WHERE user_id = ?"
+                                " ORDER BY added_at, room_number", (user_id,)).fetchall()
+        return [r["room_number"] for r in rows]
+
+    def add_favourite(self, user_id: int, room_number: str) -> None:
+        with self._connect() as conn:
+            if conn.execute("SELECT 1 FROM favourites WHERE user_id = ? AND room_number = ?",
+                            (user_id, room_number)).fetchone():
+                return
+            count = conn.execute("SELECT COUNT(*) AS n FROM favourites WHERE user_id = ?", (user_id,)).fetchone()
+            if count["n"] >= MAX_FAVOURITES:
+                raise AuthError("You can star at most {n} places.", "room", n=MAX_FAVOURITES)
+            conn.execute("INSERT INTO favourites (user_id, room_number, added_at) VALUES (?, ?, ?)",
+                         (user_id, room_number, _now().isoformat()))
+
+    def remove_favourite(self, user_id: int, room_number: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute("DELETE FROM favourites WHERE user_id = ? AND room_number = ?"
+                               " RETURNING room_number", (user_id, room_number)).fetchone()
         return row is not None
 
     @staticmethod

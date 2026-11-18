@@ -145,7 +145,7 @@
       rows.push({ r, start: times[0] || null, end: times[1] || null });
     }
     const known = rows.filter((row) => row.start);
-    if (!known.length) return { classes: [], problem: "Couldn't read the hours in the first column." };
+    if (!known.length) return { classes: [], problem: /* i18n */ "Couldn't read the hours in the first column." };
     /* The rows are an hour apart, so one offset fits them all: the one most of
        the times that were read agree on. A time read wrong ("1:30" for 11:30)
        is outvoted, and an hour the OCR missed is filled in. */

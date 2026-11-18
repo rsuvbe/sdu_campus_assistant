@@ -18,12 +18,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=110">
+<link rel="stylesheet" href="/static/styles.css?v=111">
 <link rel="stylesheet" href="/static/auth.css?v=69">
 </head>
 <body class="profile-body">
 
 <svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5s1.1-5.9 3.6-8.5z"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
   <symbol id="i-steppe" viewBox="0 0 24 24"><path d="M2.5 17.5h19M5 21h14"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5V9M6 9.5l1.6 1.6M18 9.5l-1.6 1.6"/></symbol>
@@ -44,6 +45,7 @@
     </span>
   </a>
   <div class="bar-end">
+    <div class="theme-switch lang-switch" data-lang-switch></div>
     <div class="theme-switch" data-theme-switch></div>
     <a class="icon-btn back" href="/"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg><span>Back to the map</span></a>
   </div>
@@ -139,8 +141,9 @@
     </section>
   </div>
 </main>
-<script src="/static/theme.js?v=7"></script>
-<script src="/static/reminders.js?v=2"></script>
-<script src="/static/profile.js?v=7"></script>
+<script src="/static/i18n.js?v=1"></script>
+<script src="/static/theme.js?v=8"></script>
+<script src="/static/reminders.js?v=3"></script>
+<script src="/static/profile.js?v=8"></script>
 </body>
 </html>

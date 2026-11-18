@@ -96,6 +96,22 @@ is made up, so the page says no events have been added yet; the story sheet's
 their own in a copy of the database. An event goes in as a row in
 `data/campus.sql`, then `python3 tools/build_db.py`.
 
+## Sprint 6 — Languages, history and favourites, the phone
+
+Checked story by story against the story sheet in `tests/test_sprint_6.py`:
+every responsibility, QA scenario and (Pass)/(Fail) test script of US21 to US24.
+
+| Story | What it is now |
+|---|---|
+| US21 Interface Language Switch | Kazakh, Russian and English, from a switch beside the theme one on every page. Every text is in three local files, `static/i18n/en.json`, `ru.json`, `kk.json`, each with `pages` (the texts of the HTML), `script` (what the scripts write, through `t()`/`tn()` in `static/i18n.js`) and `answers` (what the server writes: answers, routes, opening hours, error messages, through `app/i18n.py`). A key is the English text itself; counted texts carry Russian's three forms. The choice is the `sdu-lang` cookie (a year), so the server sends every page already translated (`app/pages.py`: nothing flashes in English) and every API answer in that language. Nothing is machine-translated: a text a file lacks shows in English. `python3 tools/i18n.py` writes `en.json` from the code and lists what `ru`/`kk` lack (`--check` fails the build on a gap or a wrong `{placeholder}`) |
+| US22 Search in Kazakh and Russian | `app/questions/en.py`, `ru.py`, `kk.py`: one file of patterns per language, each with its regression list (the same ten rooms in all three). A Kazakh question is split at its case endings (`D103-тен F204-ке қалай барамын?` → from D103 to F204; `кітапханаға` → to the library; `G блогы`, `3-қабат`, `келесі сабағым`) before the parser reads it; Russian gets the room kinds and cases the parser lacked (`лаборатории`, `лекционный зал`, `до библиотеки`). The answer, its steps and the route are in the question's language; a bare code (`D103`) takes the interface's. **How do I get there?** keeps the question's language (`/api/route?lang=`) |
+| US23 Search History and Favourites | Tables `search_history` and `favourites`, keyed by account. The last 10 questions are kept (asked again, one moves up; a press on the plan is not kept), listed on the main page under **Recent searches**, one tap repeats one, **Clear** empties it. **Star** on a room's or service's card; starred rooms are chips at the top of the page, a cross unstars. `/api/history`, `/api/favourites/{room}` (PUT/DELETE). A visitor gets 403 and nothing is written |
+| US24 Mobile Layout | Plain CSS. Every page was walked at 375 px in all three languages with a headless Chromium: no page scrolls sideways; controls are at least 44 px on a phone; long Russian and Kazakh words wrap inside their card (the route card used to push past the screen in Russian). The plan already filled the width with pinch and drag (Sprint 3) |
+
+**Translations still to read by a person:** the Russian and Kazakh files were
+written for this sprint; the team should read the Kazakh one before it is
+called final, the route steps above all.
+
 ## Events from SDU Life — November 2026
 
 SDU Life (`life.sdu.edu.kz`), the university's student platform, lists the

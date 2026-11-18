@@ -681,8 +681,12 @@ def test_us19_rooms_and_services_are_still_answered_as_before():
                                "мероприятия", "Какие события в университете", "афиша"])
 def test_us19_a_question_about_events_is_pointed_at_the_events_page(q):
     a = index.search(q, now=NOV_10)
-    assert a["kind"] == "needs_account" and a["title"] == "Campus events"
-    assert a["link"] == {"href": "/events", "label": "See upcoming events"}
+    # since Sprint 6 (US22) the answer is in the question's language
+    from app import i18n
+    with i18n.use(i18n.detect(q) or "en"):
+        title, label = i18n.t("Campus events"), i18n.t("See upcoming events")
+    assert a["kind"] == "needs_account" and a["title"] == title
+    assert a["link"] == {"href": "/events", "label": label}
     assert "d.link" in APP_JS
 
 
@@ -779,7 +783,7 @@ def test_us20_pass_a_word_search_narrows_the_list_and_the_count_says_how_far():
     page = index.events(q="library", now=NOV_10)
     assert [e["title"] for e in page["events"]] == [BOOK_FAIR, "Winter Exam Study Night"]
     assert (page["count"], page["total"]) == (2, 12)
-    assert "of ${data.total} upcoming events" in EVENTS_JS
+    assert '"{count} of {n} upcoming events"' in EVENTS_JS
 
 
 def test_us20_scenario_1_word_search_shows_only_matching_events_and_the_count(nov_10, visitor):

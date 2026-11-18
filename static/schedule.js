@@ -8,7 +8,7 @@
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const R = window.SDUReminders;
-const SHORT = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const SHORT = [t("Mo"), t("Tu"), t("We"), t("Th"), t("Fr"), t("Sa"), t("Su")];
 const FIRST = 8 * 60 + 30;     // the portal's day: 08:30 ...
 const LAST = 22 * 60 + 20;     // ... to 22:20
 const hhmm = (n) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
@@ -38,7 +38,7 @@ async function loadWeek() {
       .map((r) => `<option value="${esc(r.value)}" label="${esc(r.label)}"></option>`).join("");
     changed();
   } catch (err) {
-    $("#sch-grid").innerHTML = `<p class="tt-empty">Couldn't load your timetable (${esc(err.message)}). Reload the page to try again.</p>`;
+    $("#sch-grid").innerHTML = `<p class="tt-empty">${esc(t("Couldn't load your timetable ({error}). Reload the page to try again.", { error: err.message }))}</p>`;
   }
 }
 
@@ -49,8 +49,8 @@ function changed() {
   renderNext();
   R.setClasses(classes);
   const n = classes.length;
-  $("#sch-count").textContent = n ? `${n} class${n === 1 ? "" : "es"} a week · only you can see it`
-    : "Only you can see it.";
+  $("#sch-count").textContent = n ? tn(n, "{n} class a week · only you can see it", "{n} classes a week · only you can see it")
+    : t("Only you can see it.");
 }
 
 /* ------------------------------------------------------------ the grid */
@@ -70,9 +70,9 @@ function renderGrid() {
   const today = R.campus().day;
   const next = R.nextClass(classes).next;
 
-  let html = `<div class="sch-corner">Day/<br>Hour</div>`;
+  let html = `<div class="sch-corner">${esc(t("Day/"))}<br>${esc(t("Hour"))}</div>`;
   for (let d = 0; d < days; d++) {
-    html += `<div class="sch-dayhead${d === today ? " today" : ""}"><b>${SHORT[d]}</b><span>${d === today ? "Today" : R.DAY_NAMES[d]}</span></div>`;
+    html += `<div class="sch-dayhead${d === today ? " today" : ""}"><b>${SHORT[d]}</b><span>${esc(d === today ? t("Today") : t(R.DAY_NAMES[d]))}</span></div>`;
   }
   html += `<div class="sch-hours">${Array.from({ length: slots }, (_, i) =>
     `<div class="sch-hour"><b>${hhmm(first + i * 60)}</b><span>${hhmm(first + i * 60 + 50)}</span></div>`).join("")}</div>`;
@@ -81,7 +81,7 @@ function renderGrid() {
     html += `<div class="sch-col${d === today ? " today" : ""}" data-day="${d}">`;
     for (let i = 0; i < slots; i++) {
       const at = hhmm(first + i * 60);
-      html += `<button type="button" class="sch-slot" data-day="${d}" data-at="${at}" aria-label="Add a class on ${R.DAY_NAMES[d]} at ${at}"></button>`;
+      html += `<button type="button" class="sch-slot" data-day="${d}" data-at="${at}" aria-label="${esc(t("Add a class on {day} at {time}", { day: t(R.DAY_NAMES[d]), time: at }))}"></button>`;
     }
     for (const { c, lane, lanes } of placed(mine)) {
       const top = (R.minutes(c.start) - first) / 60;
@@ -92,7 +92,7 @@ function renderGrid() {
       html += `<button type="button" class="sch-class${short}${c.on_campus === false ? " away" : ""}${next && next.class_id === c.class_id ? " next" : ""}"
         data-id="${c.class_id}"
         style="--top:${top};--len:${len};--lane:${lane};--lanes:${lanes}"
-        aria-label="${esc(c.subject)}, ${esc(c.day_name)} ${esc(c.start)} to ${esc(c.end)}, ${esc(c.room_label)}">
+        aria-label="${esc(t("{subject}, {day} {start} to {end}, {room}", { subject: c.subject, day: c.day_name, start: c.start, end: c.end, room: c.room_label }))}">
         <span class="sch-code">${esc(name)}${group ? ` <i>[${esc(group)}]</i>` : ""}</span>
         <span class="sch-room"><svg class="i" aria-hidden="true"><use href="#i-pin"/></svg>${esc(c.room_label)}</span>
         <span class="sch-span">${esc(c.start)}–${esc(c.end)}</span>
@@ -109,8 +109,8 @@ function renderGrid() {
     openForm(null, { day: +b.dataset.day, start: b.dataset.at })));
   grid.querySelectorAll(".sch-class").forEach((b) => b.addEventListener("click", () => openCard(+b.dataset.id)));
   $("#sch-hint").textContent = classes.length
-    ? "Tap a class for the way to it, or an empty hour to add one there."
-    : "Your week is empty. Import a screenshot of the portal's Course Schedule, or tap an hour to add a class.";
+    ? t("Tap a class for the way to it, or an empty hour to add one there.")
+    : t("Your week is empty. Import a screenshot of the portal's Course Schedule, or tap an hour to add a class.");
   drawNow();
   scrollToToday();
 }
@@ -173,11 +173,11 @@ function renderNext() {
   const away = next.on_campus === false;
   box.innerHTML = `
     <div class="sch-next-text">
-      <p class="field-label">Your next class${onNow ? ` · on now: ${esc(onNow.subject)} until ${esc(onNow.end)}` : ""}</p>
+      <p class="field-label">${esc(t("Your next class"))}${onNow ? ` · ${esc(t("on now: {subject} until {end}", { subject: onNow.subject, end: onNow.end }))}` : ""}</p>
       <p class="sch-next-title">${esc(next.subject)}</p>
       <p class="sch-next-when">${esc(when[0].toUpperCase() + when.slice(1))}, ${esc(next.start)}–${esc(next.end)} · <b>${esc(next.room_label)}</b> · ${esc(next.where)}</p>
     </div>
-    ${away ? "" : `<a class="btn-go" href="${R.NEXT_ROUTE}">How do I get there<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>`}`;
+    ${away ? "" : `<a class="btn-go" href="${R.NEXT_ROUTE}">${esc(t("How do I get there"))}<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></a>`}`;
   box.hidden = false;
 }
 
@@ -208,7 +208,7 @@ function openCard(id) {
   route.hidden = c.on_campus === false;
   route.href = R.routeTo(c);
   const del = $("#cc-delete");
-  del.textContent = "Delete";
+  del.textContent = t("Delete");
   delete del.dataset.sure;
   openDialog($("#class-card"));
 }
@@ -222,7 +222,7 @@ $("#cc-delete").addEventListener("click", async (e) => {
   const button = e.currentTarget;
   if (!button.dataset.sure) {             // a second press deletes
     button.dataset.sure = "1";
-    button.textContent = "Press again to delete";
+    button.textContent = t("Press again to delete");
     return;
   }
   try {
@@ -233,7 +233,7 @@ $("#cc-delete").addEventListener("click", async (e) => {
     $("#class-card").close();
     changed();
   } catch (err) {
-    button.textContent = `Couldn't delete (${err.message})`;
+    button.textContent = t("Couldn't delete ({error})", { error: err.message });
   }
 });
 
@@ -241,8 +241,8 @@ $("#cc-delete").addEventListener("click", async (e) => {
 function openForm(entry, preset = {}) {
   editing = entry ? entry.class_id : null;
   ttClear();
-  $("#tt-form-title").textContent = entry ? "Edit the class" : "Add a class";
-  $("#tt-submit").textContent = entry ? "Save changes" : "Add class";
+  $("#tt-form-title").textContent = entry ? t("Edit the class") : t("Add a class");
+  $("#tt-submit").textContent = entry ? t("Save changes") : t("Add class");
   $("#tt-subject").value = entry ? entry.subject : "";
   $("#tt-day").value = entry ? entry.day : (preset.day ?? R.campus().day % 7);
   $("#tt-start").value = entry ? entry.start : (preset.start || "");
@@ -270,11 +270,11 @@ async function saveClass(event) {
   ttClear();
   const body = { subject: $("#tt-subject").value.trim(), day: Number($("#tt-day").value),
                  start: $("#tt-start").value, end: $("#tt-end").value, room: $("#tt-room").value.trim() };
-  if (!body.subject) return ttError("Enter the subject.", "subject");
-  if (!body.start) return ttError("Enter when the class starts.", "start");
-  if (!body.end) return ttError("Enter when the class ends.", "end");
-  if (body.end <= body.start) return ttError("A class has to end after it starts.", "end");
-  if (!body.room) return ttError("Choose the room.", "room");
+  if (!body.subject) return ttError(t("Enter the subject."), "subject");
+  if (!body.start) return ttError(t("Enter when the class starts."), "start");
+  if (!body.end) return ttError(t("Enter when the class ends."), "end");
+  if (body.end <= body.start) return ttError(t("A class has to end after it starts."), "end");
+  if (!body.room) return ttError(t("Choose the room."), "room");
 
   const button = $("#tt-submit");
   button.disabled = true;
@@ -294,10 +294,10 @@ async function saveClass(event) {
     } else {
       const d = data.detail;
       if (d && typeof d === "object") ttError(d.message, d.field);
-      else ttError(typeof d === "string" ? d : "Something went wrong. Try again.");
+      else ttError(typeof d === "string" ? d : t("Something went wrong. Try again."));
     }
   } catch (err) {
-    ttError(`Couldn't reach the server (${err.message}).`);
+    ttError(t("Couldn't reach the server ({error}).", { error: err.message }));
   }
   button.disabled = false;
 }
@@ -317,11 +317,11 @@ function setupReminders() {
     toggle.querySelector("span").textContent = on ? "Turn off reminders" : "Turn on reminders";
     $("#rm-ics").href = `/api/schedule.ics?lead=${mins}`;
     const perm = "Notification" in window ? Notification.permission : "unsupported";
-    $("#rm-state").textContent = !on ? "Reminders are off."
-      : perm === "granted" ? `On: a notification and a note on the page ${mins} minutes before each class.`
-      : perm === "denied" ? `On, as a note on the page ${mins} minutes before each class. Notifications are blocked for this site in your browser's settings.`
-      : perm === "unsupported" ? `On, as a note on the page ${mins} minutes before each class. This browser can't show notifications; add the calendar file for those.`
-      : `On, as a note on the page ${mins} minutes before each class.`;
+    $("#rm-state").textContent = !on ? t("Reminders are off.")
+      : perm === "granted" ? t("On: a notification and a note on the page {n} minutes before each class.", { n: mins })
+      : perm === "denied" ? t("On, as a note on the page {n} minutes before each class. Notifications are blocked for this site in your browser's settings.", { n: mins })
+      : perm === "unsupported" ? t("On, as a note on the page {n} minutes before each class. This browser can't show notifications; add the calendar file for those.", { n: mins })
+      : t("On, as a note on the page {n} minutes before each class.", { n: mins });
   };
   lead.addEventListener("change", () => { R.save({ lead: Number(lead.value) }); paint(); });
   toggle.addEventListener("click", async () => {
@@ -378,7 +378,7 @@ function loadScript(src) {
     const s = document.createElement("script");
     s.src = src;
     s.onload = resolve;
-    s.onerror = () => reject(new Error("couldn't load the text reader"));
+    s.onerror = () => reject(new Error(t("couldn't load the text reader")));
     document.head.append(s);
   });
 }
@@ -387,14 +387,14 @@ function imageOf(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("that file isn't a picture this browser can open"));
+    img.onerror = () => reject(new Error(t("that file isn't a picture this browser can open")));
     img.src = URL.createObjectURL(file);
   });
 }
 
 async function readShot(file) {
   importStep("work");
-  progress(0.02, "Opening the picture…");
+  progress(0.02, t("Opening the picture…"));
   let worker = null;
   try {
     const img = await imageOf(file);
@@ -408,7 +408,7 @@ async function readShot(file) {
     const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     const grid = ScheduleOCR.findGrid(pixels);
-    if (!grid) throw new Error("no timetable table found in it. Take the screenshot of the portal's Course Schedule, with the whole table in view");
+    if (!grid) throw new Error(t("no timetable table found in it. Take the screenshot of the portal's Course Schedule, with the whole table in view"));
 
     // small text reads better larger: about 2400 pixels across, by a whole
     // factor, which keeps every letter's strokes the same width
@@ -419,11 +419,11 @@ async function readShot(file) {
     big.height = ready.height;
     big.getContext("2d").putImageData(new ImageData(ready.data, ready.width, ready.height), 0, 0);
 
-    progress(0.08, "Loading the text reader (once, about 4 MB)…");
+    progress(0.08, t("Loading the text reader (once, about 4 MB)…"));
     await loadScript(TESSERACT);
     worker = await Tesseract.createWorker("eng", 1, {
       logger: (m) => {
-        if (m.status === "recognizing text") progress(0.25 + m.progress * 0.65, `Reading the timetable… ${Math.round(m.progress * 100)}%`);
+        if (m.status === "recognizing text") progress(0.25 + m.progress * 0.65, t("Reading the timetable… {n}%", { n: Math.round(m.progress * 100) }));
         else if (/load/.test(m.status)) progress(0.08 + (m.progress || 0) * 0.17);
       },
     });
@@ -431,10 +431,10 @@ async function readShot(file) {
     const { data } = await worker.recognize(big);
     const words = data.words.map((w) => ({ text: w.text, bbox: w.bbox }));
     const { classes: found, problem } = ScheduleOCR.readTable(words, grid, scale);
-    if (problem) throw new Error(problem.replace(/\.$/, "").toLowerCase());
-    if (!found.length) throw new Error("no classes found in the table");
+    if (problem) throw new Error(t(problem).replace(/\.$/, "").toLowerCase());
+    if (!found.length) throw new Error(t("no classes found in the table"));
 
-    progress(0.95, "Finding the rooms on the plans…");
+    progress(0.95, t("Finding the rooms on the plans…"));
     const res = await fetch("/api/schedule/rooms", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(found.map((c) => ({ room: c.room || "" }))),
@@ -448,7 +448,7 @@ async function readShot(file) {
     importStep("pick");
     const lead = $("#im-pick .auth-lead");
     lead.dataset.text ??= lead.innerHTML;
-    lead.innerHTML = `<span class="form-error">Couldn't read it: ${esc(err.message)}.</span> ${lead.dataset.text}`;
+    lead.innerHTML = `<span class="form-error">${esc(t("Couldn't read it: {error}.", { error: err.message }))}</span> ${lead.dataset.text}`;
   } finally {
     if (worker) worker.terminate();
   }
@@ -458,21 +458,22 @@ function showReview() {
   importStep("review");
   const n = reviewRows.length;
   const away = reviewRows.filter((r) => !r.on_campus).length;
-  $("#im-found").textContent = `Found ${n} class${n === 1 ? "" : "es"}. Check them against your screenshot and put right anything read wrong`
-    + (away ? `. ${away} room${away === 1 ? " isn't" : "s aren't"} in the room directory (an online class, another building): `
-              + `choose a room from the list to keep ${away === 1 ? "it" : "them"}, or leave ${away === 1 ? "it" : "them"} out.` : ".");
-  $("#im-shot").innerHTML = `<img src="${shotUrl}" alt="Your screenshot">`;
+  $("#im-found").textContent = tn(n, "Found {n} class. Check them against your screenshot and put right anything read wrong.",
+    "Found {n} classes. Check them against your screenshot and put right anything read wrong.")
+    + (away ? " " + tn(away, "{n} room isn't in the room directory (an online class, another building): choose a room from the list to keep it, or leave it out.",
+      "{n} rooms aren't in the room directory (an online class, another building): choose a room from the list to keep them, or leave them out.") : "");
+  $("#im-shot").innerHTML = `<img src="${shotUrl}" alt="${esc(t("Your screenshot"))}">`;
   $("#im-mode").hidden = !classes.length;
   $("#im-error").hidden = true;
   $("#im-rows").innerHTML = reviewRows.map((r, i) => `
     <tr data-row="${i}">
-      <td><input type="checkbox" data-f="keep" ${r.keep ? "checked" : ""} aria-label="Keep this class"></td>
-      <td><input type="text" data-f="subject" maxlength="80" value="${esc(r.subject + (r.section ? ` [${r.section}]` : ""))}" aria-label="Subject"></td>
-      <td><select data-f="day" aria-label="Day">${SHORT.map((d, k) => `<option value="${k}"${k === r.day ? " selected" : ""}>${d}</option>`).join("")}</select></td>
-      <td><input type="time" data-f="start" value="${esc(r.start)}" aria-label="Starts"></td>
-      <td><input type="time" data-f="end" value="${esc(r.end)}" aria-label="Ends"></td>
-      <td><input type="text" data-f="room" list="tt-rooms" maxlength="80" value="${esc(r.room_value)}" aria-label="Room">
-          <span class="im-where${r.on_campus ? "" : " away"}">${esc(r.on_campus ? r.where : "Not in the room directory")}</span></td>
+      <td><input type="checkbox" data-f="keep" ${r.keep ? "checked" : ""} aria-label="${esc(t("Keep this class"))}"></td>
+      <td><input type="text" data-f="subject" maxlength="80" value="${esc(r.subject + (r.section ? ` [${r.section}]` : ""))}" aria-label="${esc(t("Subject"))}"></td>
+      <td><select data-f="day" aria-label="${esc(t("Day"))}">${SHORT.map((d, k) => `<option value="${k}"${k === r.day ? " selected" : ""}>${d}</option>`).join("")}</select></td>
+      <td><input type="time" data-f="start" value="${esc(r.start)}" aria-label="${esc(t("Starts"))}"></td>
+      <td><input type="time" data-f="end" value="${esc(r.end)}" aria-label="${esc(t("Ends"))}"></td>
+      <td><input type="text" data-f="room" list="tt-rooms" maxlength="80" value="${esc(r.room_value)}" aria-label="${esc(t("Room"))}">
+          <span class="im-where${r.on_campus ? "" : " away"}">${esc(r.on_campus ? r.where : t("Not in the room directory"))}</span></td>
     </tr>`).join("");
 }
 
@@ -497,7 +498,7 @@ $("#im-rows").addEventListener("input", (e) => {
       row.on_campus = found.on_campus;
       if (found.on_campus) row.room_value = found.room_value;
       const where = tr.querySelector(".im-where");
-      where.textContent = found.on_campus ? found.where : "Not in the room directory";
+      where.textContent = found.on_campus ? found.where : t("Not in the room directory");
       where.classList.toggle("away", !found.on_campus);
       // a room from the list now: the class can be kept
       if (found.on_campus && !row.keep) { row.keep = true; tr.querySelector('[data-f="keep"]').checked = true; tr.classList.remove("off"); }
@@ -511,11 +512,11 @@ $("#im-save").addEventListener("click", async () => {
   const box = $("#im-error");
   box.hidden = true;
   document.querySelectorAll("#im-rows tr").forEach((tr) => tr.classList.remove("bad"));
-  if (!keep.length) { box.textContent = "Tick at least one class to save."; box.hidden = false; return; }
+  if (!keep.length) { box.textContent = t("Tick at least one class to save."); box.hidden = false; return; }
   const roomless = keep.find(({ r }) => !r.on_campus);
   if (roomless) {
     document.querySelector(`#im-rows tr[data-row="${roomless.i}"]`)?.classList.add("bad");
-    box.textContent = `${roomless.r.subject}: choose its room from the list, or untick it.`;
+    box.textContent = t("{subject}: choose its room from the list, or untick it.", { subject: roomless.r.subject });
     box.hidden = false;
     return;
   }
@@ -539,11 +540,11 @@ $("#im-save").addEventListener("click", async () => {
       const d = data.detail;
       const at = d && typeof d === "object" && d.row != null ? keep[d.row] : null;
       if (at) document.querySelector(`#im-rows tr[data-row="${at.i}"]`)?.classList.add("bad");
-      box.textContent = (d && d.message) || (typeof d === "string" ? d : "Something went wrong. Try again.");
+      box.textContent = (d && d.message) || (typeof d === "string" ? d : t("Something went wrong. Try again."));
       box.hidden = false;
     }
   } catch (err) {
-    box.textContent = `Couldn't reach the server (${err.message}).`;
+    box.textContent = t("Couldn't reach the server ({error}).", { error: err.message });
     box.hidden = false;
   }
   button.disabled = false;

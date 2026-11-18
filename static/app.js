@@ -7,14 +7,17 @@ const icon = (name, cls = "i") => `<svg class="${cls}" aria-hidden="true"><use h
 
 // Starting points: what you'd read on the door, then how people actually ask.
 // Each one is a real question the assistant answers.
+// In Russian and Kazakh the questions are asked in that language (US22).
 const EXAMPLES = [
-  { tag: "D103", text: "Where is D103?", label: "A classroom by its door code" },
-  { tag: "A1", text: "Hall A1", label: "The round hall everyone calls A1" },
-  { tag: "Д217", text: "Кабинет Д217", label: "Asked in Russian" },
-  { tag: "204", text: "Room 204", label: "A number that's in several blocks" },
-  { tag: "Route", text: "From D103 to F204", label: "Directions from one room to another", plain: true },
-  { tag: "Library", text: "Is the library open?", plain: true },
-  { tag: "Next class", text: "Where is my next class?", plain: true },
+  { tag: "D103", text: t("Where is D103?"), label: t("A classroom by its door code") },
+  { tag: "A1", text: t("Hall A1"), label: t("The round hall everyone calls A1") },
+  LANG === "kk" ? { tag: "Д217", text: "Кабинет Д217", label: t("Asked in Russian") }
+    : LANG === "ru" ? { tag: "F204", text: "F204 қайда?", label: t("Asked in Kazakh") }
+    : { tag: "Д217", text: "Кабинет Д217", label: t("Asked in Russian") },
+  { tag: "204", text: t("Room 204"), label: t("A number that's in several blocks") },
+  { tag: t("Route"), text: t("From D103 to F204"), label: t("Directions from one room to another"), plain: true },
+  { tag: t("Library"), text: t("Is the library open?"), plain: true },
+  { tag: t("Next class"), text: t("Where is my next class?"), plain: true },
 ];
 
 // Room labels are part of the drawing, so they only make sense once the plan is
@@ -69,20 +72,22 @@ async function loadHeader() {
     $("#account").hidden = false;
     // a visitor carries a visitor pass; an account holder, their name
     // on a phone the pass is just "Visitor", the second word stays for screen readers
-    if (visitor) who.innerHTML = `Visitor<span class="pass-word"> pass</span>`;
+    if (visitor) who.innerHTML = `${esc(t("Visitor"))}<span class="pass-word"> ${esc(t("pass"))}</span>`;
     else who.textContent = user.full_name || user.student_id;
     who.classList.toggle("pass", visitor);
-    who.title = visitor ? "Looking around without an account" : user.email;
-    $("#signout-label").textContent = visitor ? "Sign in" : "Sign out";
+    who.title = visitor ? t("Looking around without an account") : user.email;
+    $("#signout-label").textContent = visitor ? t("Sign in") : t("Sign out");
     $("#profile-link").hidden = visitor;   // a visitor has no account, so no profile
     $("#timetable-link").hidden = visitor; // nor a timetable
-    $("#signout").setAttribute("aria-label", visitor ? "Sign in with an SDU account" : "Sign out");
-    $("#signout").title = visitor ? "You're looking around as a visitor" : `Signed in as ${user.full_name || user.email}`;
+    $("#signout").setAttribute("aria-label", visitor ? t("Sign in with an SDU account") : t("Sign out"));
+    $("#signout").title = visitor ? t("You're looking around as a visitor") : t("Signed in as {name}", { name: user.full_name || user.email });
+    state.account = !visitor;
+    if (!visitor) loadMine();
   } catch { /* the 401 above already redirected */ }
 
   try {
     const s = await api("/api/stats");
-    $("#stats-line").textContent = `SDU University · ${s.rooms} rooms on 3 floors`;
+    $("#stats-line").textContent = tn(s.rooms, "SDU University · {n} room on 3 floors", "SDU University · {n} rooms on 3 floors");
   } catch { /* keep default copy */ }
 
   loadServices();
@@ -102,8 +107,8 @@ async function loadServices() {
   }
   const open = services.filter((svc) => svc.open_now === true).length;
   $("#dir-summary").innerHTML = open
-    ? `<i class="lamp open" aria-hidden="true"></i><span>${open} open now</span>`
-    : "All closed right now";
+    ? `<i class="lamp open" aria-hidden="true"></i><span>${esc(tn(open, "{n} open now", "{n} open now"))}</span>`
+    : esc(t("All closed right now"));
 
   const groups = [];
   services.forEach((svc) => {
@@ -119,7 +124,7 @@ async function loadServices() {
   box.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
 
   const filter = $("#dir-filter");
-  const chips = [{ key: "", label: "All" }, ...groups];
+  const chips = [{ key: "", label: t("All") }, ...groups];
   filter.innerHTML = chips.map((c) =>
     `<button type="button" class="chip" data-group="${esc(c.key)}" aria-pressed="${c.key === ""}">${esc(c.label)}</button>`).join("");
   filter.querySelectorAll(".chip").forEach((chip) => chip.addEventListener("click", () => {
@@ -133,8 +138,8 @@ async function loadServices() {
 
 function serviceRow(svc) {
   const cls = svc.open_now === true ? "open" : svc.open_now === false ? "closed" : "";
-  const where = svc.location ? svc.location.text : "Not on the plans yet";
-  const aside = svc.kind === "rooms" ? `${svc.location.count} rooms` : shortStatus(svc);
+  const where = svc.location ? svc.location.text : t("Not on the plans yet");
+  const aside = svc.kind === "rooms" ? tn(svc.location.count, "{n} room", "{n} rooms") : shortStatus(svc);
   const status = svc.status;
   // long office names are shown by their short name; the full one is in the tooltip
   return `<li><button type="button" class="dir-row ${cls}${svc.kind === "rooms" ? " rooms" : ""}" data-ask="${esc(svc.ask)}"
@@ -147,9 +152,14 @@ function serviceRow(svc) {
 function shortStatus(svc) {
   // the row has room for the closing time only; the lunch break and the rest
   // of the sentence are in the row's tooltip and in the answer
-  if (svc.open_now === true) return (svc.status.match(/until \d{1,2}:\d{2}/) || ["open"])[0];
-  if (svc.open_now === false) return (svc.status.match(/opens .*?\d{1,2}:\d{2}/) || ["closed"])[0];
-  return "no hours yet";
+  const time = (svc.status.match(/\d{1,2}:\d{2}/) || [""])[0];
+  if (svc.open_now === true) return time ? t("until {time}", { time }) : t("open");
+  if (svc.open_now === false) {
+    if (!time) return t("closed");
+    const day = /tomorrow|завтра|ертең/i.test(svc.status) ? t("tomorrow") : "";
+    return day ? t("opens {day} {time}", { day, time }) : t("opens {time}", { time });
+  }
+  return t("no hours yet");
 }
 
 /* ------------------------------------------------------------ conversation */
@@ -165,7 +175,7 @@ function renderExamples() {
   });
 }
 
-async function ask(text) {
+async function ask(text, record = true) {
   const query = text.trim();
   if (!query) return;
   const log = $("#log");
@@ -181,7 +191,7 @@ async function ask(text) {
   log.querySelectorAll(".turn:not(.past)").forEach((t) => t.classList.add("past"));
   const turn = document.createElement("section");
   turn.className = "turn";
-  turn.setAttribute("aria-label", `Answer to: ${query}`);
+  turn.setAttribute("aria-label", t("Answer to: {query}", { query }));
   const q = document.createElement("p");
   q.className = "q";
   q.innerHTML = `${icon("search")}<span></span>`;
@@ -197,17 +207,17 @@ async function ask(text) {
   pending.innerHTML = `<div class="card-band"><span class="skel" style="width:6rem"></span></div>
     <div class="card-id"><div class="portrait"></div>
     <div class="id-main"><span class="skel tall" style="width:7rem"></span><span class="skel" style="width:11rem"></span></div></div>
-    <span class="visually-hidden">Finding ${esc(query)}…</span>`;
+    <span class="visually-hidden">${esc(t("Finding {query}…", { query }))}</span>`;
   const showPending = setTimeout(() => turn.appendChild(pending), LOADING_DELAY);
   go.disabled = true;
 
   let data;
   try {
     const carried = state.context ? `&context=${encodeURIComponent(state.context)}` : "";
-    data = await api(`/api/search?q=${encodeURIComponent(query)}${carried}`);
+    data = await api(`/api/search?q=${encodeURIComponent(query)}${carried}${record ? "" : "&record=0"}`);
   } catch (err) {
-    data = { kind: "error", title: "Couldn't reach the campus server",
-             summary: `The request didn't go through (${err.message}). Check your connection and ask again.`,
+    data = { kind: "error", title: t("Couldn't reach the campus server"),
+             summary: t("The request didn't go through ({error}). Check your connection and ask again.", { error: err.message }),
              suggestions: [query] };
   }
   clearTimeout(showPending);
@@ -218,6 +228,7 @@ async function ask(text) {
   turn.appendChild(renderCard(data));
   bringIntoView(turn);
   showResultOnMap(data);
+  if (record && state.account && data.kind !== "error") rememberAsked(query);
 }
 
 // The newest turn sits at the top of the answers: on a laptop or in the phone's
@@ -239,7 +250,7 @@ function picks(list, cls = "picks") {
 // The last sign is the door you want.
 function signStrip(route) {
   if (!route || !route.length) return "";
-  return `<ol class="signs" aria-label="Route in brief">${route.map((r, i) => {
+  return `<ol class="signs" aria-label="${esc(t("Route in brief"))}">${route.map((r, i) => {
     const last = i === route.length - 1 && route.length > 1;
     return `<li class="${last ? "dest-sign" : ""}">${icon(r.icon)}<span>${esc(r.text)}</span></li>`;
   }).join("")}</ol>`;
@@ -247,8 +258,8 @@ function signStrip(route) {
 
 function stepsList(steps) {
   if (!steps || !steps.length) return "";
-  return `<ol class="steps">${steps.map((s) => s.startsWith("Landmark:")
-    ? `<li class="landmark">${icon("exit")}<span>${esc(capitalise(s.replace(/^Landmark:\s*/, "")))}</span></li>`
+  return `<ol class="steps">${steps.map((s) => LANDMARK.test(s)
+    ? `<li class="landmark">${icon("exit")}<span>${esc(capitalise(s.replace(LANDMARK, "")))}</span></li>`
     : `<li><span>${esc(s)}</span></li>`).join("")}</ol>`;
 }
 
@@ -259,14 +270,14 @@ function routeBlock(d) {
   const to = d.map?.code;
   if (!to) {
     if (!d.route?.length && !d.steps?.length) return "";
-    return `<section class="route" aria-label="How to get there">
-      <h4 class="field-label">How to get there</h4>${signStrip(d.route)}${stepsList(d.steps)}</section>`;
+    return `<section class="route" aria-label="${esc(t("How to get there"))}">
+      <h4 class="field-label">${esc(t("How to get there"))}</h4>${signStrip(d.route)}${stepsList(d.steps)}</section>`;
   }
-  return `<section class="route" aria-label="How to get there">
-    <h4 class="field-label">How to get there</h4>
-    <div class="trip" data-to="${esc(to)}">${d.directions ? tripBody(d.directions) : `
+  return `<section class="route" aria-label="${esc(t("How to get there"))}">
+    <h4 class="field-label">${esc(t("How to get there"))}</h4>
+    <div class="trip" data-to="${esc(to)}" data-lang="${esc(d.lang || "")}">${d.directions ? tripBody(d.directions) : `
       ${signStrip(d.route)}
-      <button type="button" class="btn-go trip-go" data-directions>${icon("ahead")}How do I get there?</button>`}
+      <button type="button" class="btn-go trip-go" data-directions>${icon("ahead")}${esc(t("How do I get there?"))}</button>`}
     </div></section>`;
 }
 
@@ -277,21 +288,21 @@ function tripBody(r, error = null) {
   const id = `from-${++tripSeq}`;
   const value = r ? startLabel(r.from) : "";
   const form = `<form class="trip-from" data-trip-from>
-      <label class="field-label" for="${id}">${icon("entrance")}Starting from</label>
+      <label class="field-label" for="${id}">${icon("entrance")}${esc(t("Starting from"))}</label>
       <div class="trip-row">
         <input id="${id}" name="from" list="places" value="${esc(value)}" maxlength="200" autocomplete="off"
-          placeholder="Main entrance, or any room" enterkeyhint="go" aria-describedby="${id}-hint">
-        <button type="submit" class="btn-line">Go</button>
+          placeholder="${esc(t("Main entrance, or any room"))}" enterkeyhint="go" aria-describedby="${id}-hint">
+        <button type="submit" class="btn-line">${esc(t("Go"))}</button>
       </div>
-      <p class="trip-hint" id="${id}-hint">Change it to any room, and the route is worked out again from there.</p>
+      <p class="trip-hint" id="${id}-hint">${esc(t("Change it to any room, and the route is worked out again from there."))}</p>
     </form>`;
   if (error) {
     return `${form}<p class="trip-error" role="alert">${icon("alert")}<span><b>${esc(error.title)}.</b> ${esc(error.summary)}</span></p>
       ${picks(error.suggestions)}`;
   }
   const floors = r.floors.length > 1
-    ? `<div class="trip-floors" role="group" aria-label="Show a floor of the route">${r.floors.map((f, i) =>
-        `${i ? icon("right", "i sep") : ""}<button type="button" class="chip" data-route-floor="${f}">Floor ${f}</button>`).join("")}</div>`
+    ? `<div class="trip-floors" role="group" aria-label="${esc(t("Show a floor of the route"))}">${r.floors.map((f, i) =>
+        `${i ? icon("right", "i sep") : ""}<button type="button" class="chip" data-route-floor="${f}">${esc(t("Floor {n}", { n: f }))}</button>`).join("")}</div>`
     : "";
   const steps = r.steps.map((s, i) => {
     const f = r.step_floors?.[i];
@@ -301,10 +312,10 @@ function tripBody(r, error = null) {
     <p class="trip-sum">${esc(r.summary)}</p>
     ${signStrip(r.signs)}
     ${floors}
-    <ol class="steps trip-steps" aria-label="Step by step">${steps}</ol>
-    ${r.alternatives?.length ? `<div class="trip-alts"><h4 class="field-label">Other ways</h4>${r.alternatives.map((a) =>
+    <ol class="steps trip-steps" aria-label="${esc(t("Step by step"))}">${steps}</ol>
+    ${r.alternatives?.length ? `<div class="trip-alts"><h4 class="field-label">${esc(t("Other ways"))}</h4>${r.alternatives.map((a) =>
       `<button type="button" class="chip" data-via="${esc(a.via)}">${icon("exit")}${esc(a.label)}<span class="alt-len">${
-        a.longer >= 10 ? `${a.longer}% longer` : "about as long"}</span></button>`).join("")}</div>` : ""}
+        esc(a.longer >= 10 ? t("{n}% longer", { n: a.longer }) : t("about as long"))}</span></button>`).join("")}</div>` : ""}
     ${note(r.note)}`;
 }
 
@@ -316,11 +327,11 @@ async function loadTrip(card, d, from, via = null) {
   let r;
   try {
     const q = `to=${encodeURIComponent(trip.dataset.to)}${from ? `&from=${encodeURIComponent(from)}` : ""}${
-      via ? `&via=${encodeURIComponent(via)}` : ""}`;
+      via ? `&via=${encodeURIComponent(via)}` : ""}${trip.dataset.lang ? `&lang=${encodeURIComponent(trip.dataset.lang)}` : ""}`;
     r = await api(`/api/route?${q}`);
   } catch (err) {
-    r = { kind: "route_error", title: "Couldn't reach the campus server",
-          summary: `The request didn't go through (${err.message}). Check your connection and try again.`, suggestions: [] };
+    r = { kind: "route_error", title: t("Couldn't reach the campus server"),
+          summary: t("The request didn't go through ({error}). Check your connection and try again.", { error: err.message }), suggestions: [] };
   }
   trip.removeAttribute("aria-busy");
   if (r.kind === "route_error") {
@@ -375,18 +386,21 @@ function fillPlaces() {
     seen.add(value);
     opts.push(`<option value="${esc(value)}"${label && label !== value ? ` label="${esc(label)}"` : ""}></option>`);
   };
-  add("Main entrance");
-  state.floors.forEach((f) => f.landmarks.filter((lm) => lm.type === "exit" && !/main entrance/.test(lm.name))
-    .forEach((lm) => add(capitalise(lm.name))));
-  state.floors.forEach((f) => f.rooms.forEach((r) => add(r.ask || r.code, `${r.label} · Floor ${f.floor}, Block ${r.block}`)));
+  add(t("Main entrance"));
+  state.floors.forEach((f) => f.landmarks.filter((lm) => lm.type === "exit" && !/main entrance/.test(lm.en || lm.name))
+    .forEach((lm) => add(capitalise(lm.en || lm.name), capitalise(lm.name))));
+  state.floors.forEach((f) => f.rooms.forEach((r) => add(r.ask || r.code,
+    t("{room} · Floor {floor}, Block {block}", { room: r.label, floor: f.floor, block: r.block }))));
   (state.grounds?.buildings || []).forEach((b) => add(b.ask, `${b.label} · ${b.sub}`));
   list.innerHTML = opts.join("");
 }
 
 // Opening hours as a timetable: consecutive days with the same times share a
 // line ("Mon–Fri 08:30–17:30, lunch 12:30–13:30"), the way a door sign prints them.
-const SHORT_DAY = { Monday: "Mon", Tuesday: "Tue", Wednesday: "Wed", Thursday: "Thu", Friday: "Fri", Saturday: "Sat", Sunday: "Sun" };
+const SHORT_DAY = { Monday: t("Mon"), Tuesday: t("Tue"), Wednesday: t("Wed"), Thursday: t("Thu"), Friday: t("Fri"), Saturday: t("Sat"), Sunday: t("Sun") };
 const WEEK = Object.keys(SHORT_DAY);
+// "Landmark:" opens the landmark step, in the language of the answer
+const LANDMARK = /^(?:Landmark|Ориентир|Бағдар):\s*/;
 function hoursLine(hours) {
   if (!hours || !hours.length) return "";
   const runs = [];
@@ -399,18 +413,18 @@ function hoursLine(hours) {
   const rows = runs.map((r) => {
     const days = r.from === r.to ? SHORT_DAY[r.from] : `${SHORT_DAY[r.from]}–${SHORT_DAY[r.to]}`;
     return `<li><span class="days">${days}</span><span class="times">${esc(r.h.open)}–${esc(r.h.close)}</span>${
-      r.h.break ? `<span class="brk">lunch ${esc(r.h.break)}</span>` : ""}</li>`;
+      r.h.break ? `<span class="brk">${esc(t("lunch {time}", { time: r.h.break }))}</span>` : ""}</li>`;
   });
   // say which weekend days are closed, if any
   const covered = new Set(hours.map((h) => h.day));
   const shut = ["Saturday", "Sunday"].filter((d) => !covered.has(d)).map((d) => SHORT_DAY[d]);
-  if (shut.length) rows.push(`<li class="off"><span class="days">${shut.join("–")}</span><span class="times">closed</span></li>`);
-  return `<div class="hours"><h4 class="field-label">${icon("clock")}Opening hours</h4><ul>${rows.join("")}</ul></div>`;
+  if (shut.length) rows.push(`<li class="off"><span class="days">${shut.join("–")}</span><span class="times">${esc(t("closed"))}</span></li>`);
+  return `<div class="hours"><h4 class="field-label">${icon("clock")}${esc(t("Opening hours"))}</h4><ul>${rows.join("")}</ul></div>`;
 }
 
 const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const note = (text) => (text ? `<p class="note">${icon("info")}<span>${esc(text)}</span></p>` : "");
-const shortName = (name) => name.replace(/^Block \w+ — /, "");
+const shortName = (name) => name.replace(/^[^—]*\b[A-I]\b[^—]* — /, "");
 const faculty = (name) => (/ — /.test(name) ? shortName(name) : "");
 
 // The card's labelled fields: one row per fact, nothing ranked by boxes.
@@ -425,8 +439,8 @@ function fields(list) {
 
 function landmarkOf(d) {
   if (d.map?.landmark?.name) return capitalise(d.map.landmark.name);
-  const step = (d.steps || []).find((s) => s.startsWith("Landmark:"));
-  return step ? capitalise(step.replace(/^Landmark:\s*/, "")).replace(/ —.*$/, "") : "";
+  const step = (d.steps || []).find((s) => LANDMARK.test(s));
+  return step ? capitalise(step.replace(LANDMARK, "")).replace(/ —.*$/, "") : "";
 }
 
 /* The portrait: where an ID card has its photo, the destination card has the
@@ -459,12 +473,12 @@ function portrait(d) {
   const exits = floor.landmarks.filter((lm) => lm.type === "exit" && inBox(lm.x, lm.y, 0))
     .map((lm) => `<rect class="ex" x="${lm.x - 11}" y="${lm.y - 11}" width="22" height="22" rx="2"/>`).join("");
   return `<figure class="portrait">
-    <svg viewBox="${vx} ${vy} ${w} ${h}" role="img" aria-label="${esc(m.room_number)} on the floor ${m.floor} plan">
+    <svg viewBox="${vx} ${vy} ${w} ${h}" role="img" aria-label="${esc(t("{room} on the floor {floor} plan", { room: m.room_number, floor: m.floor }))}">
       <g class="p-slab">${floor.areas.map((a) => `<polygon points="${pts(a.points)}"/>`).join("")}</g>
       <g class="p-hall">${floor.circulation.map((c) => `<polygon points="${pts(c.points)}"/>`).join("")}</g>
       <g class="p-rooms">${shapes}</g>${exits}
     </svg>
-    <figcaption>Floor ${esc(m.floor)}</figcaption>
+    <figcaption>${esc(t("Floor {n}", { n: m.floor }))}</figcaption>
   </figure>`;
 }
 
@@ -480,10 +494,11 @@ function occasion(d, withTitle = true) {
   </div>` : "";
 }
 
-function foot(d, withMapLink, again = "Show the route again") {
-  return `<footer class="answer-foot" title="Answered in ${d.elapsed_ms ?? "–"} ms">${
-    withMapLink ? `<button type="button" class="btn-line" data-refocus>${icon("pin")}Show on plan</button>` : ""}
-    <button type="button" class="btn-text" data-expand>${again}${icon("down")}</button></footer>`;
+function foot(d, withMapLink, again = t("Show the route again")) {
+  return `<footer class="answer-foot" title="${esc(t("Answered in {ms} ms", { ms: d.elapsed_ms ?? "–" }))}">${
+    withMapLink ? `<button type="button" class="btn-line" data-refocus>${icon("pin")}${esc(t("Show on plan"))}</button>` : ""}
+    ${starButton(d)}
+    <button type="button" class="btn-text" data-expand>${esc(again)}${icon("down")}</button></footer>`;
 }
 
 function renderCard(d) {
@@ -495,7 +510,7 @@ function renderCard(d) {
     const named = r.room_number.length > 5;
     card.classList.add("card");
     card.innerHTML = `
-      <header class="card-band"><span>SDU University</span><span class="band-where">Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span></header>
+      <header class="card-band"><span>${esc(t("SDU University"))}</span><span class="band-where">${esc(t("Floor {floor} · Block {block}", { floor: r.floor_number, block: r.building_id }))}</span></header>
       ${occasion(d)}
       <div class="card-id">
         ${portrait(d)}
@@ -505,10 +520,10 @@ function renderCard(d) {
         </div>
       </div>
       ${fields([
-        { label: "Block", value: r.building_id },
-        { label: "Floor", value: r.floor_number },
-        { label: "Faculty", value: faculty(r.building_name), wide: true },
-        { label: "Landmark", value: landmarkOf(d), wide: true },
+        { label: t("Block"), value: r.building_id },
+        { label: t("Floor"), value: r.floor_number },
+        { label: t("Faculty"), value: faculty(r.building_name), wide: true },
+        { label: t("Landmark"), value: landmarkOf(d), wide: true },
       ])}
       ${routeBlock(d)}
       ${note(d.note)}
@@ -521,11 +536,11 @@ function renderCard(d) {
     const rows = d.results.map((r, i) => `
       <li${i >= LIST_ROWS ? ' class="more"' : ""}>${d.several ? `<button type="button" class="hit named" data-ask="${esc(r.ask)}">
         <span class="name"><b>${esc(r.room_number)}</b>
-          <span class="sub">${r.status ? `<span class="${r.open === true ? "open" : ""}">${esc(r.status)}</span> · ` : ""}Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span></span>${icon("right")}</button>`
+          <span class="sub">${r.status ? `<span class="${r.open === true ? "open" : ""}">${esc(r.status)}</span> · ` : ""}${esc(t("Floor {floor} · Block {block}", { floor: r.floor_number, block: r.building_id }))}</span></span>${icon("right")}</button>`
       : `<button type="button" class="hit" data-ask="${esc(r.ask)}">
         <span class="tag">${esc(r.room_number)}</span>
         <span class="what">${esc(r.purpose || "")}</span>
-        <span class="loc">Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}</span>${icon("right")}</button>`}</li>`).join("");
+        <span class="loc">${esc(t("Floor {floor} · Block {block}", { floor: r.floor_number, block: r.building_id }))}</span>${icon("right")}</button>`}</li>`).join("");
     card.classList.add("listing");
     card.innerHTML = `
       <header class="listing-head">
@@ -533,7 +548,7 @@ function renderCard(d) {
         <p>${esc(d.summary)}</p>
       </header>
       <ul class="hits">${rows}</ul>
-      ${d.results.length > LIST_ROWS ? `<button type="button" class="btn-line" data-more>Show all ${d.results.length}</button>` : ""}
+      ${d.results.length > LIST_ROWS ? `<button type="button" class="btn-line" data-more>${esc(t("Show all {n}", { n: d.results.length }))}</button>` : ""}
       ${foot(d, !!d.map)}`;
     const more = card.querySelector("[data-more]");
     if (more) more.addEventListener("click", () => { card.querySelector(".hits").classList.add("open"); more.remove(); });
@@ -541,7 +556,9 @@ function renderCard(d) {
     const b = d.block;
     card.classList.add("card");
     card.innerHTML = `
-      <header class="card-band"><span>SDU University</span><span class="band-where">Block ${esc(b.building_id)} · Floor${b.floors.length > 1 ? "s" : ""} ${esc(b.floors.join("–"))}</span></header>
+      <header class="card-band"><span>${esc(t("SDU University"))}</span><span class="band-where">${esc(b.floors.length > 1
+        ? t("Block {block} · Floors {floors}", { block: b.building_id, floors: b.floors.join("–") })
+        : t("Block {block} · Floor {floors}", { block: b.building_id, floors: b.floors.join("–") }))}</span></header>
       <div class="card-id">
         ${portrait(d)}
         <div class="id-main">
@@ -552,12 +569,12 @@ function renderCard(d) {
       ${occasion(d)}
       ${d.occasion ? `<p class="lede">${esc(d.summary)}</p>` : ""}
       ${fields([
-        { label: "Rooms", value: b.rooms },
-        { label: "Floors", value: b.floors.join(", ") },
-        { label: "Landmark", value: landmarkOf(d), wide: true },
+        { label: t("Rooms"), value: b.rooms },
+        { label: t("Floors"), value: b.floors.join(", ") },
+        { label: t("Landmark"), value: landmarkOf(d), wide: true },
       ])}
       ${routeBlock(d)}
-      ${d.suggestions?.length ? `<h4 class="field-label picks-label">Rooms you'll find here</h4>${picks(d.suggestions)}` : ""}
+      ${d.suggestions?.length ? `<h4 class="field-label picks-label">${esc(t("Rooms you'll find here"))}</h4>${picks(d.suggestions)}` : ""}
       ${foot(d, !!d.map)}`;
   } else if (d.kind === "service") {
     const s = d.service;
@@ -567,7 +584,7 @@ function renderCard(d) {
     const head = d.title.length > 22 && s.short_name ? s.short_name : d.title;
     card.classList.add("card");
     card.innerHTML = `
-      <header class="card-band"><span>SDU University</span><span class="band-where">${r ? `Floor ${esc(r.floor_number)} · Block ${esc(r.building_id)}` : "Not on the plans yet"}</span></header>
+      <header class="card-band"><span>${esc(t("SDU University"))}</span><span class="band-where">${esc(r ? t("Floor {floor} · Block {block}", { floor: r.floor_number, block: r.building_id }) : t("Not on the plans yet"))}</span></header>
       <div class="card-id">
         ${portrait(d)}
         <div class="id-main">
@@ -577,15 +594,15 @@ function renderCard(d) {
         </div>
       </div>
       ${fields(r ? [
-        { label: "Block", value: r.building_id },
-        { label: "Floor", value: r.floor_number },
-        { label: "Room", value: r.room_number !== d.title ? r.room_number : "" },
-        { label: "Landmark", value: landmarkOf(d), wide: true },
+        { label: t("Block"), value: r.building_id },
+        { label: t("Floor"), value: r.floor_number },
+        { label: t("Room"), value: r.room_number !== d.title ? r.room_number : "" },
+        { label: t("Landmark"), value: landmarkOf(d), wide: true },
       ] : [])}
       ${hoursLine(s.hours)}
       ${s.notes ? `<p class="extra">${icon("info")}<span>${esc(s.notes)}</span></p>` : ""}
       ${d.map ? routeBlock(d)
-              : `<p class="lede">Its exact room isn't on the digitised plans yet, so there's no route to show.</p>`}
+              : `<p class="lede">${esc(t("Its exact room isn't on the digitised plans yet, so there's no route to show."))}</p>`}
       ${note(d.note)}
       ${picks(d.suggestions)}
       ${foot(d, !!d.map)}`;
@@ -604,17 +621,17 @@ function renderCard(d) {
       ${occasion(d, false)}
       <p class="lede">${esc(d.summary)}</p>
       ${d.map ? routeBlock(d) : ""}
-      ${foot(d, !!d.map, "Show the event again")}`;
+      ${foot(d, !!d.map, t("Show the event again"))}`;
   } else if (d.kind === "site") {
     // a building of the grounds, apart from the main one: shown on the Campus view
     const b = d.building;
     card.classList.add("card");
     card.innerHTML = `
-      <header class="card-band"><span>SDU University</span><span class="band-where">${b.code === "WIFI-ZONE" ? "Floor 1 · Block C" : "Campus grounds"}</span></header>
+      <header class="card-band"><span>${esc(t("SDU University"))}</span><span class="band-where">${esc(b.code === "WIFI-ZONE" ? t("Floor {floor} · Block {block}", { floor: 1, block: "C" }) : t("Campus grounds"))}</span></header>
       <div class="card-id site-id">
         <div class="id-main">
           <h3 class="code named">${esc(d.title)}</h3>
-          <p class="id-sub">${esc(b.hall ? `In ${b.label}` : capitalise(b.sub))}</p>
+          <p class="id-sub">${esc(b.hall ? t("In {place}", { place: b.label }) : capitalise(b.sub))}</p>
         </div>
       </div>
       <p class="lede">${esc(d.summary)}</p>
@@ -627,11 +644,13 @@ function renderCard(d) {
       <header class="prompt-head">${icon(isError ? "alert" : "question")}<h3>${esc(d.title)}</h3></header>
       <p class="lede">${esc(d.summary)}</p>
       ${d.link ? `<a class="btn-go prompt-link" href="${esc(d.link.href)}">${esc(d.link.label)}</a>` : ""}
-      ${d.suggestions?.length ? `<h4 class="field-label picks-label">${isError ? "Ask again" : "Try one of these"}</h4>` : ""}
+      ${d.suggestions?.length ? `<h4 class="field-label picks-label">${esc(isError ? t("Ask again") : t("Try one of these"))}</h4>` : ""}
       ${picks(d.suggestions)}`;
   }
 
   card.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
+  const star = card.querySelector("[data-star]");
+  if (star) star.addEventListener("click", () => toggleStar(star.dataset.star, star));
   const refocus = card.querySelector("[data-refocus]");
   if (refocus) refocus.addEventListener("click", () => {
     if (handset()) setSnap("peek");
@@ -647,6 +666,91 @@ function renderCard(d) {
   return card;
 }
 
+
+/* ------------------------------------------------------------ US23: your places */
+// An account's starred rooms and recent questions, kept on the server with the
+// account; a visitor has neither, and nothing of theirs is sent to be kept.
+const mine = { favourites: [], history: [] };
+
+async function loadMine() {
+  try {
+    const [fav, hist] = await Promise.all([api("/api/favourites"), api("/api/history")]);
+    mine.favourites = fav.favourites;
+    mine.history = hist.history;
+  } catch { return; }
+  renderMine();
+  syncStars();
+}
+
+function renderMine() {
+  const box = $("#mine");
+  if (!box) return;
+  const favs = mine.favourites, hist = mine.history;
+  box.hidden = !state.account || (!favs.length && !hist.length);
+  $("#mine-starred").hidden = !favs.length;
+  $("#mine-starred-list").innerHTML = favs.map((f) => `<li class="fav">
+      <button type="button" class="chip fav-go" data-ask="${esc(f.ask)}" title="${esc(f.where)}">${icon("star", "i star-on")}<span>${esc(f.label)}</span></button>
+      <button type="button" class="fav-x" data-unstar="${esc(f.code)}" aria-label="${esc(t("Unstar {room}", { room: f.label }))}" title="${esc(t("Unstar {room}", { room: f.label }))}">${icon("close")}</button>
+    </li>`).join("");
+  $("#mine-recent").hidden = !hist.length;
+  $("#mine-recent-list").innerHTML = hist.map((h) => `<li><button type="button" class="recent" data-ask="${esc(h.query)}">${icon("clock")}<span>${esc(h.query)}</span></button></li>`).join("");
+  box.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
+  box.querySelectorAll("[data-unstar]").forEach((b) => b.addEventListener("click", () => toggleStar(b.dataset.unstar)));
+}
+
+// a question asked again goes to the top; the server keeps the same list
+function rememberAsked(query) {
+  const q = query.replace(/\s+/g, " ").trim();
+  mine.history = [{ query: q }, ...mine.history.filter((h) => h.query !== q)].slice(0, 10);
+  renderMine();
+}
+
+const starrable = (d) => (d.kind === "room" || d.kind === "service") && d.map?.code && !d.map.site;
+
+function starButton(d) {
+  if (!state.account || !starrable(d)) return "";
+  const on = mine.favourites.some((f) => f.code === d.map.code);
+  return `<button type="button" class="btn-line star-btn" data-star="${esc(d.map.code)}" aria-pressed="${on}">${
+    icon("star", on ? "i star-on" : "i")}<span>${esc(on ? t("Starred") : t("Star"))}</span></button>`;
+}
+
+function syncStars() {
+  document.querySelectorAll("[data-star]").forEach((b) => {
+    const on = mine.favourites.some((f) => f.code === b.dataset.star);
+    b.setAttribute("aria-pressed", String(on));
+    b.innerHTML = `${icon("star", on ? "i star-on" : "i")}<span>${esc(on ? t("Starred") : t("Star"))}</span>`;
+  });
+}
+
+async function toggleStar(code, button) {
+  const on = mine.favourites.some((f) => f.code === code);
+  if (button) button.disabled = true;
+  try {
+    const res = await fetch(`/api/favourites/${encodeURIComponent(code)}`, { method: on ? "DELETE" : "PUT" });
+    if (res.ok || res.status === 404) {
+      if (on) mine.favourites = mine.favourites.filter((f) => f.code !== code);
+      else if (res.ok) mine.favourites = [...mine.favourites, await res.json()];
+    }
+  } catch { /* stays as it was */ }
+  if (button) button.disabled = false;
+  renderMine();
+  syncStars();
+}
+
+/* The plan's own names (rooms, halls, exits, buildings) in the interface
+   language. The English name stays for asking about the place. */
+function translateMap(floors, grounds) {
+  floors.forEach((f) => {
+    f.rooms.forEach((r) => { r.label = t(r.label); if (r.service) r.service = t(r.service); if (r.sub) r.sub = t(r.sub); });
+    f.features.forEach((x) => { if (x.label) { x.en = x.label; x.label = t(x.label); } });
+    f.landmarks.forEach((lm) => { lm.en = lm.name; lm.name = t(lm.name); });
+    (f.blocks || []).forEach((b) => { if (b.name) b.name = t(b.name); });
+  });
+  if (!grounds) return;
+  (grounds.grounds || []).forEach((g) => { if (g.label) g.label = t(g.label); });
+  (grounds.buildings || []).forEach((b) => { b.label = t(b.label); b.sub = t(b.sub); });
+  (grounds.labels || []).forEach((l) => { l.text = t(l.text); if (l.sub) l.sub = t(l.sub); });
+}
 
 /* ------------------------------------------------------------ map: drawing */
 const el = (name, attrs = {}, parent = null) => {
@@ -711,11 +815,11 @@ function drawGrounds(svg) {
   g0.others.forEach((o) => el("polygon", { class: "other-building", points: path(o) }, ground));
   g0.buildings.forEach((b) => {
     const g = el("g", { class: "room t-building", "data-code": b.code, tabindex: "0", role: "button",
-                        "aria-label": `Show ${b.label}` }, ground);
+                        "aria-label": t("Show {place}", { place: b.label }) }, ground);
     el("polygon", { points: path(b.points) }, g);
     el("text", { class: "campus-name", x: b.x, y: b.y }, g).textContent = b.label;
     el("text", { class: "campus-name sub", x: b.x, y: b.y }, g).textContent = b.sub;
-    const open = () => ask(b.ask);
+    const open = () => ask(b.ask, false);
     g.addEventListener("click", open);
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
@@ -725,7 +829,7 @@ function buildFloor(floor, host) {
   const svg = el("svg", {
     class: "plan", viewBox: `0 0 ${floor.width} ${floor.height}`, width: "100%", height: "100%",
     preserveAspectRatio: "xMinYMin meet",
-    role: "img", "aria-label": `Floor ${floor.floor}, blocks ${floor.blocks.map((b) => b.id).join(", ")}`,
+    role: "img", "aria-label": t("Floor {n}, blocks {list}", { n: floor.floor, list: floor.blocks.map((b) => b.id).join(", ") }),
   }, host);
 
   const layer = (name) => el("g", { class: `lay-${name}` }, svg);
@@ -766,12 +870,12 @@ function buildFloor(floor, host) {
     if (f.kind === "wifi") {
       // a place of its own (search "Wi-Fi zone"): lit as the answer, pressed to ask about it
       const spot = el("g", { class: "spot", "data-code": "WIFI-ZONE", tabindex: "0", role: "button",
-                             "aria-label": `Show the ${f.label}` }, features);
+                             "aria-label": t("Show the {place}", { place: f.label }) }, features);
       for (let i = 3; i >= 1; i--) {
         el("circle", { class: "wifi", cx: f.cx, cy: f.cy, r: (f.r * i) / 3 }, spot);
       }
       el("text", { class: "feature-label", x: f.cx, y: f.cy + 5 }, spot).textContent = f.label;
-      const open = () => ask(f.label);
+      const open = () => ask(f.en || f.label, false);
       spot.addEventListener("click", open);
       spot.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     } else {
@@ -796,7 +900,7 @@ function buildFloor(floor, host) {
     const g = el("g", {
       class: `room t-${(room.type || "none").toLowerCase()}${room.approx ? " approx" : ""}`,
       "data-code": room.code, tabindex: "0", role: "button",
-      "aria-label": `Show directions to ${room.label}`,
+      "aria-label": t("Show directions to {room}", { room: room.label }),
     }, rooms);
     if (room.kind === "circle") el("circle", { cx: room.cx, cy: room.cy, r: room.r }, g);
     else el("polygon", { points: path(room.points) }, g);
@@ -823,7 +927,7 @@ function buildFloor(floor, host) {
         sub.textContent = room.sub;
       }
     }
-    const open = () => ask(room.ask || room.code);
+    const open = () => ask(room.ask || room.code, false);
     g.addEventListener("click", open);
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
@@ -832,7 +936,7 @@ function buildFloor(floor, host) {
     const g = el("g", { class: "block-tag" }, blocks);
     el("text", { class: "letter", x: b.tag_x, y: b.tag_y }, g).textContent = b.id;
     el("text", { class: "caption", x: b.tag_x, y: b.tag_y + 34 }, g).textContent =
-      b.annex ? "annex — mirrors H" : `Block ${b.id}`;
+      b.annex ? t("annex — mirrors H") : t("Block {block}", { block: b.id });
   });
 
   // exits and stairs are drawn; amenities like the Wi-Fi zone are already part of the plan
@@ -903,7 +1007,7 @@ function paintResult() {
   // on the Campus view, the walk from the main building's door to the building
   if (map.walk && !routeHere) {
     const line = el("polyline", { class: "site-walk", points: path(map.walk) }, layer);
-    el("title", {}, line).textContent = `From the ${map.walk_from}`;
+    el("title", {}, line).textContent = t("From the {place}", { place: t(map.walk_from) });
   }
 
   // an event that names blocks, not a room: the blocks are lit, no room is the target
@@ -973,7 +1077,7 @@ function paintRoute(layer) {
     const [mx, my] = m.mark || [m.x, m.y];
     // the plan draws the stairwell a few steps past the end of the corridor
     if (Math.hypot(mx - m.x, my - m.y) > 14) el("line", { class: "trip-link", x1: m.x, y1: m.y, x2: mx, y2: my }, g);
-    const text = m.arrive ? `From floor ${m.to}` : `${m.to > f ? "Up" : "Down"} to floor ${m.to}`;
+    const text = m.arrive ? t("From floor {n}", { n: m.to }) : m.to > f ? t("Up to floor {n}", { n: m.to }) : t("Down to floor {n}", { n: m.to });
     // the tag goes on the side away from the corridor the line comes down
     const near = lines.map(({ pts }) => pts).filter((p) => p.length > 1).map((p) =>
       same(p[0], [m.x, m.y]) ? p[1] : same(p[p.length - 1], [m.x, m.y]) ? p[p.length - 2] : null).find(Boolean);
@@ -1099,8 +1203,8 @@ function showResultOnMap(d) {
       paintResult();
       renderControls();
     }
-    if (d.kind === "service") showStageMsg(`${d.title} isn't pinned to a room yet, so there's nothing to show on the plan.`);
-    if (d.kind === "event") showStageMsg("This place isn't on the plans.");
+    if (d.kind === "service") showStageMsg(t("{name} isn't pinned to a room yet, so there's nothing to show on the plan.", { name: d.title }));
+    if (d.kind === "event") showStageMsg(t("This place isn't on the plans."));
     return;
   }
   state.result = d;
@@ -1170,8 +1274,8 @@ function openFloor(number, { focus = null, clearResult = false } = {}) {
 
 function renderControls() {
   const floorSeg = $("#floor-seg");
-  floorSeg.innerHTML = `<span class="lbl">Floor</span>` + state.floors.map((f) =>
-    `<button type="button" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="Floor ${f.floor}">${f.floor}</button>`).join("");
+  floorSeg.innerHTML = `<span class="lbl">${esc(t("Floor"))}</span>` + state.floors.map((f) =>
+    `<button type="button" data-floor="${f.floor}" aria-pressed="${state.floor?.floor === f.floor}" aria-label="${esc(t("Floor {n}", { n: f.floor }))}">${f.floor}</button>`).join("");
   floorSeg.querySelectorAll("button").forEach((b) => b.addEventListener("click",
     () => openFloor(Number(b.dataset.floor), { clearResult: true })));
 
@@ -1219,7 +1323,7 @@ function markInView(r = stageRect()) {
       seg.scrollTo({ left: current.offsetLeft - (seg.clientWidth - current.offsetWidth) / 2, behavior: smooth() });
     }
   });
-  $("#map-where").innerHTML = `<b>Floor ${state.floor.floor}</b><span>${id ? `Block ${id}` : "Whole campus"}</span>`;
+  $("#map-where").innerHTML = `<b>${esc(t("Floor {n}", { n: state.floor.floor }))}</b><span>${esc(id ? t("Block {block}", { block: id }) : t("Whole campus"))}</span>`;
 }
 
 function showStageMsg(text) {
@@ -1535,7 +1639,7 @@ function setSnap(snap, animate = true) {
   $("#map").style.setProperty("--cover", `${state.cover}px`);
   if (!animate) requestAnimationFrame(() => zoom.style.removeProperty("transition"));
   const handle = $("#sheet-handle");
-  handle.setAttribute("aria-label", snap === "full" ? "Show the plan" : "Show more of the answers");
+  handle.setAttribute("aria-label", snap === "full" ? t("Show the plan") : t("Show more of the answers"));
   handle.setAttribute("aria-expanded", String(snap === "full"));
   if (!animate) requestAnimationFrame(() => sheet.classList.remove("dragging"));
   // the answer's room stays in sight above the sheet
@@ -1620,7 +1724,8 @@ async function boot() {
   const frame = $(".app");
   frame.addEventListener("scroll", () => { if (frame.scrollTop || frame.scrollLeft) frame.scrollTo(0, 0); });
   // the full hint is cut mid-word on the narrowest phones
-  if (matchMedia("(max-width: 374px)").matches) $("#q").placeholder = "Room, hall or office";
+  // (the Russian and the Kazakh one, on any phone)
+  if (matchMedia(LANG === "en" ? "(max-width: 374px)" : "(max-width: 479px)").matches) $("#q").placeholder = t("Room, hall or office");
   renderExamples();
   setupSheet();
   setupPanZoom();
@@ -1631,6 +1736,11 @@ async function boot() {
     input.value = "";
     ask(text);
   });
+  $("#mine-clear").addEventListener("click", async () => {
+    try { await fetch("/api/history", { method: "DELETE" }); } catch { return; }
+    mine.history = [];
+    renderMine();
+  });
   $("#signout").addEventListener("click", async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.replace("/login");
@@ -1640,11 +1750,12 @@ async function boot() {
     const data = await api("/api/map");
     state.floors = data.floors;
     state.grounds = data.grounds;
+    translateMap(state.floors, state.grounds);
     openFloor(1);   // the whole campus, with floor 1 in the main building
     fillPlaces();
     predrawFloors();
   } catch (err) {
-    showStageMsg(`Couldn't load the floor plans (${err.message}).`);
+    showStageMsg(t("Couldn't load the floor plans ({error}).", { error: err.message }));
   }
   // the events page sends a press here: /?ask=<the event's title>
   const asked = new URLSearchParams(location.search).get("ask");

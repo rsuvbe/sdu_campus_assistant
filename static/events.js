@@ -65,14 +65,14 @@ async function loadEvents() {
     if (res.status === 401) { window.location.replace("/login?next=%2Fevents"); return; }
     if (res.status === 400) {
       const { detail } = await res.json();
-      if (seq === eventsView.seq) showEventsMessage(detail?.message || "Those dates can't be used.");
+      if (seq === eventsView.seq) showEventsMessage(detail?.message || t("Those dates can't be used."));
       return;
     }
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     data = await res.json();
   } catch (err) {
     if (seq === eventsView.seq) {
-      showEventsMessage(`Couldn't load the events (${err.message}). Check your connection and try again.`, true);
+      showEventsMessage(t("Couldn't load the events ({error}). Check your connection and try again.", { error: err.message }), true);
     }
     return;
   }
@@ -81,10 +81,9 @@ async function loadEvents() {
   eventsView.ranges = data.ranges;
   showSources(data.sources || []);
   $("#ev-controls").hidden = !data.total;     // nothing to search in an empty list
-  const noun = (n) => `${n} ${n === 1 ? "event" : "events"}`;
   $("#ev-count").textContent = !data.total ? ""
-    : data.count === data.total ? `${noun(data.count)} upcoming`
-    : `${data.count} of ${data.total} upcoming events`;
+    : data.count === data.total ? tn(data.count, "{n} event upcoming", "{n} events upcoming")
+    : tn(data.total, "{count} of {n} upcoming event", "{count} of {n} upcoming events", { count: data.count });
 
   shownEvents = data.events;
   if (data.events.length) {
@@ -96,8 +95,8 @@ async function loadEvents() {
   } else if (data.total) {
     // events exist, but the search or the dates took every one of them out
     list.innerHTML = `<div class="ev-empty">
-      <p><b>No upcoming events match.</b> Try another word, or a longer period.</p>
-      <button type="button" class="btn-line" data-ev-clear>Clear search and dates</button></div>`;
+      <p><b>${esc(t("No upcoming events match."))}</b> ${esc(t("Try another word, or a longer period."))}</p>
+      <button type="button" class="btn-line" data-ev-clear>${esc(t("Clear search and dates"))}</button></div>`;
     list.querySelector("[data-ev-clear]").addEventListener("click", () => {
       $("#ev-q").value = $("#ev-from").value = $("#ev-to").value = "";
       eventsView.chip = "";
@@ -105,7 +104,7 @@ async function loadEvents() {
       $("#ev-q").focus();
     });
   } else {
-    list.innerHTML = `<div class="ev-empty"><p><b>No upcoming events yet.</b> They'll appear here, soonest first, as SDU Life announces them. Until then, the university's latest news is below.</p></div>`;
+    list.innerHTML = `<div class="ev-empty"><p><b>${esc(t("No upcoming events yet."))}</b> ${esc(t("They'll appear here, soonest first, as SDU Life announces them. Until then, the university's latest news is below."))}</p></div>`;
   }
 }
 
@@ -115,10 +114,13 @@ function showSources(sources) {
   const life = sources[0];
   box.hidden = !life;
   if (!life) return;
-  const when = life.synced_at ? `, copied ${esc(eventStamp(life.synced_at))}` : "";
-  box.innerHTML = `${icon("refresh")}<span>From <a href="${esc(life.url)}" target="_blank" rel="noopener noreferrer">${esc(life.name)}</a>${when}${
-    life.stale ? " · it couldn't be reached just now" : ""}</span>${
-    admin ? `<button type="button" class="btn-text" data-ev-sync>Update now</button>` : ""}`;
+  const source = `<a href="${esc(life.url)}" target="_blank" rel="noopener noreferrer">${esc(life.name)}</a>`;
+  const from = life.synced_at
+    ? esc(t("From {source}, copied {when}", { when: eventStamp(life.synced_at) })).replace("{source}", source)
+    : esc(t("From {source}")).replace("{source}", source);
+  box.innerHTML = `${icon("refresh")}<span>${from}${
+    life.stale ? esc(t(" · it couldn't be reached just now")) : ""}</span>${
+    admin ? `<button type="button" class="btn-text" data-ev-sync>${esc(t("Update now"))}</button>` : ""}`;
   box.querySelector("[data-ev-sync]")?.addEventListener("click", syncNow);
 }
 
@@ -126,26 +128,26 @@ function showSources(sources) {
 function eventStamp(stamp) {
   const [day, time] = stamp.split(" ");
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
-  if (day === today) return `today at ${time}`;
+  if (day === today) return t("today at {time}", { time });
   const d = new Date(`${day}T00:00`);
-  return `${d.getDate()} ${d.toLocaleString("en-GB", { month: "short" })} at ${time}`;
+  return t("{day} {month} at {time}", { day: d.getDate(), month: d.toLocaleString(LOCALE, { month: "short" }), time });
 }
 
 async function syncNow(e) {
   const button = e.currentTarget;
   button.disabled = true;
-  button.textContent = "Updating…";
+  button.textContent = t("Updating…");
   const res = await fetch("/api/events/sync", { method: "POST" }).catch(() => null);
   if (res && res.ok) { loadEvents(); return; }
   button.disabled = false;
-  button.textContent = "Couldn't update. Try again";
+  button.textContent = t("Couldn't update. Try again");
 }
 
 // a message where the list would be: the server's own words for a bad date, or a failed request
 function showEventsMessage(text, retry = false) {
   $("#ev-count").textContent = "";
   $("#ev-list").innerHTML = `<div class="ev-error" role="alert">${icon("alert")}<span>${esc(text)}</span></div>${
-    retry ? `<button type="button" class="btn-line ev-retry" data-ev-retry>Try again</button>` : ""}`;
+    retry ? `<button type="button" class="btn-line ev-retry" data-ev-retry>${esc(t("Try again"))}</button>` : ""}`;
   $("#ev-list [data-ev-retry]")?.addEventListener("click", loadEvents);
 }
 
@@ -154,21 +156,21 @@ function eventRow(ev) {
   const where = ev.where ? `, ${ev.where}` : "";
   const more = [
     ev.link ? `<a class="btn-text ev-link" href="${esc(ev.link)}" target="_blank" rel="noopener noreferrer">${
-      ev.source === "sdulife" ? "On SDU Life" : "Announcement"}${icon("out-link")}</a>` : "",
-    admin && ev.editable ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">Edit</button>
-      <button type="button" class="btn-text" data-ev-delete="${esc(ev.event_id)}">Delete</button>` : "",
-    admin && ev.source ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">Correct place and time</button>${
-      ev.corrected ? `<button type="button" class="btn-text" data-ev-uncorrect="${esc(ev.event_id)}">Undo correction</button>` : ""}` : "",
+      esc(ev.source === "sdulife" ? t("On SDU Life") : t("Announcement"))}${icon("out-link")}</a>` : "",
+    admin && ev.editable ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">${esc(t("Edit"))}</button>
+      <button type="button" class="btn-text" data-ev-delete="${esc(ev.event_id)}">${esc(t("Delete"))}</button>` : "",
+    admin && ev.source ? `<button type="button" class="btn-text" data-ev-edit="${esc(ev.event_id)}">${esc(t("Correct place and time"))}</button>${
+      ev.corrected ? `<button type="button" class="btn-text" data-ev-uncorrect="${esc(ev.event_id)}">${esc(t("Undo correction"))}</button>` : ""}` : "",
   ].join("");
   return `<li class="ev-item"><a class="dir-row ev-row${ev.on_now ? " open" : ""}" href="/?ask=${encodeURIComponent(ev.ask)}"
       title="${esc(ev.title)}${where ? ` (${esc(ev.where)})` : ""}"
-      aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.organizer ? `, by ${ev.organizer}` : ""}${ev.on_now ? ", on now" : ""}`)}">
+      aria-label="${esc(`${ev.title}, ${ev.date}, ${ev.time}, ${ev.place}${where}${ev.organizer ? `, ${t("by {name}", { name: ev.organizer })}` : ""}${ev.on_now ? `, ${t("on now")}` : ""}`)}">
       <span class="ev-date"><span>${esc(weekday)}</span><b>${esc(dayNum)}</b><span>${esc(month)}</span></span>
       <span class="dir-text ev-text"><b>${esc(ev.title)}</b><span class="where">${esc(ev.place)}${
         ev.where ? ` <span class="ev-spot">${icon("pin")}${esc(ev.where)}</span>` : ""} · ${esc(ev.time)}${
-        ev.organizer ? ` · ${esc(ev.organizer)}` : ""}${ev.corrected ? ` · <span class="ev-fixed">checked against the poster</span>` : ""}</span>${
+        ev.organizer ? ` · ${esc(ev.organizer)}` : ""}${ev.corrected ? ` · <span class="ev-fixed">${esc(t("checked against the poster"))}</span>` : ""}</span>${
         ev.description ? `<span class="ev-desc">${esc(ev.description)}</span>` : ""}</span>
-      ${ev.on_now ? `<span class="state">On now</span>` : ""}</a>
+      ${ev.on_now ? `<span class="state">${esc(t("On now"))}</span>` : ""}</a>
       ${more ? `<div class="ev-more">${more}</div>` : ""}</li>`;
 }
 
@@ -184,7 +186,7 @@ async function loadNews() {
     news = data.items;
     list.removeAttribute("aria-busy");
     if (!news.length) {
-      list.innerHTML = `<li class="ev-empty"><p>The university's site couldn't be reached just now. <a href="${esc(data.source)}" target="_blank" rel="noopener noreferrer">Open sdu.edu.kz</a> for its news.</p></li>`;
+      list.innerHTML = `<li class="ev-empty"><p>${esc(t("The university's site couldn't be reached just now."))} <a href="${esc(data.source)}" target="_blank" rel="noopener noreferrer">${esc(t("Open sdu.edu.kz for its news."))}</a></p></li>`;
       return;
     }
     list.innerHTML = news.map(newsItem).join("");
@@ -200,11 +202,11 @@ async function loadNews() {
       openEventForm(null, { title: item.title, description: item.excerpt, link: item.link });
     }));
     if (data.stale && data.fetched_at) {
-      $("#news-intro").textContent = `The latest from the university's site as of ${data.fetched_at}; it couldn't be reached just now.`;
+      $("#news-intro").textContent = t("The latest from the university's site as of {when}; it couldn't be reached just now.", { when: data.fetched_at });
     }
   } catch (err) {
     list.removeAttribute("aria-busy");
-    list.innerHTML = `<li class="ev-error" role="alert">${icon("alert")}<span>Couldn't load the news (${esc(err.message)}).</span></li>`;
+    list.innerHTML = `<li class="ev-error" role="alert">${icon("alert")}<span>${esc(t("Couldn't load the news ({error}).", { error: err.message }))}</span></li>`;
   }
 }
 
@@ -218,7 +220,7 @@ function newsItem(item, i) {
         ${item.excerpt ? `<span class="news-excerpt">${esc(item.excerpt)}</span>` : ""}
       </span>
     </a>
-    ${admin ? `<button type="button" class="btn-text news-make" data-make="${i}">${icon("plus")}Make it an event</button>` : ""}
+    ${admin ? `<button type="button" class="btn-text news-make" data-make="${i}">${icon("plus")}${esc(t("Make it an event"))}</button>` : ""}
   </li>`;
 }
 
@@ -249,8 +251,8 @@ function openEventForm(ev, preset = {}) {
   editingEvent = ev ? ev.event_id : null;
   efClear();
   const copied = !!ev?.source;      // from SDU Life: only the place and the times are corrected here
-  $("#ef-title").textContent = copied ? "Correct the place and time" : ev ? "Edit the event" : "Add an event";
-  $("#ef-submit").textContent = copied ? "Save the correction" : ev ? "Save changes" : "Add the event";
+  $("#ef-title").textContent = copied ? t("Correct the place and time") : ev ? t("Edit the event") : t("Add an event");
+  $("#ef-submit").textContent = copied ? t("Save the correction") : ev ? t("Save changes") : t("Add the event");
   $("#ef-note").hidden = !copied;
   [EF.title, EF.description, EF.link].forEach((sel) => { $(sel).readOnly = copied; });
   showPoster(copied ? ev : null);
@@ -273,7 +275,7 @@ function loadTesseract() {
     const s = document.createElement("script");
     s.src = TESSERACT;
     s.onload = resolve;
-    s.onerror = () => reject(new Error("the text reader couldn't be loaded"));
+    s.onerror = () => reject(new Error(t("the text reader couldn't be loaded")));
     document.head.append(s);
   });
 }
@@ -286,8 +288,8 @@ function showPoster(ev) {
   if (fig.hidden) return;
   const img = $("#ef-poster-img");
   const say = (text) => { if (run === posterRun) $("#ef-ocr").textContent = text; };
-  say("Loading the poster…");
-  img.onerror = () => say("SDU Life's poster couldn't be loaded. Type the place and the times from it.");
+  say(t("Loading the poster…"));
+  img.onerror = () => say(t("SDU Life's poster couldn't be loaded. Type the place and the times from it."));
   img.onload = () => readPoster(img, ev, run, say);
   img.src = ev.poster;
 }
@@ -308,7 +310,7 @@ function versions(img) {
 async function readPoster(img, ev, run, say) {
   let worker = null;
   try {
-    say("Reading the poster (the reader loads once, about 4 MB)…");
+    say(t("Reading the poster (the reader loads once, about 4 MB)…"));
     await loadTesseract();
     worker = await Tesseract.createWorker("eng");
     await worker.setParameters({ tessedit_pageseg_mode: "11" });
@@ -317,7 +319,7 @@ async function readPoster(img, ev, run, say) {
     if (run !== posterRun) return;
     fillFromPoster(PosterOCR.readPoster(text), ev, say);
   } catch (err) {
-    say(`The poster couldn't be read (${err.message}). Type the place and the times from it.`);
+    say(t("The poster couldn't be read ({error}). Type the place and the times from it.", { error: err.message }));
   } finally {
     worker?.terminate();
   }
@@ -349,8 +351,8 @@ function fillFromPoster(found, ev, say) {
     filled.push(found.places.join(", "));
   }
   say(filled.length
-    ? `Read off the poster: ${filled.join(", ")}. The reader mistakes 3 for 5 and drops digits, so check them against the picture before saving.`
-    : "Nothing could be read off this poster. Type the place and the times from it.");
+    ? t("Read off the poster: {list}. The reader mistakes 3 for 5 and drops digits, so check them against the picture before saving.", { list: filled.join(", ") })
+    : t("Nothing could be read off this poster. Type the place and the times from it."));
 }
 
 function efClear() {
@@ -370,11 +372,11 @@ $("#ev-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   efClear();
   const body = Object.fromEntries(Object.entries(EF).map(([k, sel]) => [k, $(sel).value.trim()]));
-  if (!body.title) return efError("Give the event a title.", "title");
-  if (!body.starts) return efError("Give the day and time it starts.", "starts");
-  if (!body.ends) return efError("Give the day and time it ends.", "ends");
-  if (body.ends <= body.starts) return efError("An event has to end after it starts.", "ends");
-  if (!body.room && !body.place) return efError("Say where it is, or choose a room.", "place");
+  if (!body.title) return efError(t("Give the event a title."), "title");
+  if (!body.starts) return efError(t("Give the day and time it starts."), "starts");
+  if (!body.ends) return efError(t("Give the day and time it ends."), "ends");
+  if (body.ends <= body.starts) return efError(t("An event has to end after it starts."), "ends");
+  if (!body.room && !body.place) return efError(t("Say where it is, or choose a room."), "place");
   const button = $("#ef-submit");
   button.disabled = true;
   try {
@@ -388,32 +390,32 @@ $("#ev-form").addEventListener("submit", async (e) => {
     } else {
       const d = data.detail;
       if (d && typeof d === "object") efError(d.message, d.field);
-      else efError(typeof d === "string" ? d : "Something went wrong. Try again.");
+      else efError(typeof d === "string" ? d : t("Something went wrong. Try again."));
     }
   } catch (err) {
-    efError(`Couldn't reach the server (${err.message}).`);
+    efError(t("Couldn't reach the server ({error}).", { error: err.message }));
   }
   button.disabled = false;
 });
 
 async function uncorrectEvent(button) {
   button.disabled = true;
-  button.textContent = "Bringing SDU Life's back…";
+  button.textContent = t("Bringing SDU Life's back…");
   const res = await fetch(`/api/events/${encodeURIComponent(button.dataset.evUncorrect)}/correction`, { method: "DELETE" }).catch(() => null);
   if (res && (res.ok || res.status === 404)) loadEvents();
-  else { button.disabled = false; button.textContent = "Couldn't undo. Try again"; }
+  else { button.disabled = false; button.textContent = t("Couldn't undo. Try again"); }
 }
 
 async function deleteEvent(button) {
   if (!button.dataset.sure) {            // a second press deletes
     button.dataset.sure = "1";
-    button.textContent = "Press again to delete";
+    button.textContent = t("Press again to delete");
     return;
   }
   button.disabled = true;
   const res = await fetch(`/api/events/${encodeURIComponent(button.dataset.evDelete)}`, { method: "DELETE" }).catch(() => null);
   if (res && (res.ok || res.status === 404)) loadEvents();
-  else { button.disabled = false; button.textContent = "Couldn't delete"; }
+  else { button.disabled = false; button.textContent = t("Couldn't delete"); }
 }
 
 document.querySelectorAll("dialog").forEach((d) => d.addEventListener("click", (e) => {

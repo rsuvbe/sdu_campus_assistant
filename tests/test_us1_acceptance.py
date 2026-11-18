@@ -73,6 +73,14 @@ def test_room_queries_are_understood(query, expected):
     assert index.search(query)["title"] == expected
 
 
+
+def said(text: str, query: str, **values) -> str:
+    """`text` in the language the question is asked in: since Sprint 6 (US22) a
+    Russian question is answered in Russian."""
+    from app import i18n
+    with i18n.use(i18n.detect(query) or "en"):
+        return i18n.t(text, **{k: v for k, v in values.items()})
+
 @pytest.mark.parametrize("query, block", [
     ("Where is the Business School?", "G"),
     ("Where is the Faculty of Law?", "D"),
@@ -100,7 +108,7 @@ def test_department_and_building_names_are_understood(query, block):
 ])
 def test_facility_types_are_understood(query, service):
     answer = index.search(query)
-    assert answer["kind"] == "service" and answer["title"] == service
+    assert answer["kind"] == "service" and answer["title"] == said(service, query)
 
 
 @pytest.mark.parametrize("query, block, floor", [
@@ -166,7 +174,7 @@ def test_every_restroom_is_listed(query, blocks):
 def test_the_named_block_wins(query, block):
     answer = index.search(query)
     assert answer["kind"] == "room" and answer["room"]["building_id"] == block
-    assert answer["title"] == f"Restroom, Block {block}"
+    assert answer["title"] == said("{name}, Block {block}", query, name=said("Restroom", query), block=block)
 
 
 @pytest.mark.parametrize("query, title", [
@@ -178,7 +186,7 @@ def test_the_named_block_wins(query, block):
 ])
 def test_places_from_the_colour_map_are_found(query, title):
     answer = index.search(query)
-    assert answer["kind"] == "service" and answer["title"] == title
+    assert answer["kind"] == "service" and answer["title"] == said(title, query)
     assert answer["map"], f"{title} should have a place on the plan"
 
 
@@ -399,8 +407,8 @@ def test_a_dean_question_without_a_school_offers_all_three(query):
 ])
 def test_naming_the_school_or_its_block_picks_its_dean_office(query, office):
     answer = index.search(query)
-    assert answer["kind"] == "service" and answer["title"] == office
-    assert answer["service"]["category_label"] == "Dean's office"
+    assert answer["kind"] == "service" and answer["title"] == said(office, query)
+    assert answer["service"]["category_label"] == said("Dean's office", query)
 
 
 def test_places_that_share_a_name_are_told_apart_everywhere():

@@ -6,13 +6,16 @@
    before the first paint, so the page never flashes the wrong theme. */
 
 (() => {
+  // the interface language's texts (static/i18n.js), when that script is on the page
+  const tr = (text, values) => (window.t ? window.t(text, values)
+    : text.replace(/\{(\w+)\}/g, (m, k) => (values && k in values ? values[k] : m)));
   const KEY = "sdu-theme";
   const THEMES = [
-    { id: "", label: "Match device", icon: "device", note: "Light or dark, as your device is set" },
-    { id: "light", label: "Light", icon: "sun", note: "SDU navy on white card stock" },
-    { id: "dark", label: "Dark", icon: "moon", note: "The same card at night" },
-    { id: "steppe", label: "Teal", icon: "steppe", note: "Teal with gold and terracotta" },
-    { id: "violet", label: "Violet", icon: "violet", note: "Violet with lemon and magenta" },
+    { id: "", label: tr("Match device"), icon: "device", note: tr("Light or dark, as your device is set") },
+    { id: "light", label: tr("Light"), icon: "sun", note: tr("SDU navy on white card stock") },
+    { id: "dark", label: tr("Dark"), icon: "moon", note: tr("The same card at night") },
+    { id: "steppe", label: tr("Teal"), icon: "steppe", note: tr("Teal with gold and terracotta") },
+    { id: "violet", label: tr("Violet"), icon: "violet", note: tr("Violet with lemon and magenta") },
   ];
   // the browser's own chrome follows the band colour of the theme
   const BAR = { light: "#2F345C", dark: "#2F345C", steppe: "#0D4A5C", violet: "#3B2462" };
@@ -32,7 +35,7 @@
   function mount(host) {
     host.innerHTML = `
       <button type="button" class="theme-btn" aria-haspopup="true" aria-expanded="false" aria-controls="theme-menu"></button>
-      <div class="theme-menu" id="theme-menu" role="radiogroup" aria-label="Theme" hidden>
+      <div class="theme-menu" id="theme-menu" role="radiogroup" aria-label="${tr("Theme")}" hidden>
         ${THEMES.map((t) => `
           <button type="button" role="radio" class="theme-opt" data-theme-id="${t.id}" aria-checked="false">
             <span class="swatch ${t.id ? `sw-${t.id}` : "sw-auto"}" aria-hidden="true"></span>
@@ -47,8 +50,8 @@
       const current = read();
       const t = THEMES.find((x) => x.id === current) || THEMES[0];
       btn.innerHTML = `${icon(t.icon)}<span class="theme-label">${t.label}</span>`;
-      btn.setAttribute("aria-label", `Theme: ${t.label}. Change theme`);
-      btn.title = `Theme: ${t.label}`;
+      btn.setAttribute("aria-label", tr("Theme: {name}. Change theme", { name: t.label }));
+      btn.title = tr("Theme: {name}", { name: t.label });
       opts.forEach((o) => o.setAttribute("aria-checked", String(o.dataset.themeId === current)));
     };
     const open = (yes) => {

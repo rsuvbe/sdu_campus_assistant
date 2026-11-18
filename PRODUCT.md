@@ -33,5 +33,5 @@ what is opposite, the nearest exit or stairwell. Nothing is invented.
 - Exit/stairs are signal green, as on the evacuation plans.
 
 ## Platform
-web (FastAPI + static HTML/CSS/JS, no build step). Interface language: English; questions
-understood in English and Russian.
+web (FastAPI + static HTML/CSS/JS, no build step). Interface languages: Kazakh, Russian and English (switch on every page); questions
+understood and answered in all three.

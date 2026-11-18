@@ -30,6 +30,14 @@ from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
 
+from contextvars import ContextVar
+
+from .i18n import current as current_lang, human_list, t, tn
+
+# the question as it was asked, before it was put into the parser's words (US22):
+# a list's title quotes it, not "laboratory" for "зертханалар"
+ASKED: ContextVar[str | None] = ContextVar("asked", default=None)
+
 def _campus_zone() -> ZoneInfo:
     """Campus time. Kazakhstan moved to UTC+5 in March 2024, and a server's own
     time-zone files can be older than that, so the copy bundled with the tzdata
@@ -221,7 +229,7 @@ def base_name(name: str) -> str:
 
 
 def ordinal(n: int) -> str:
-    return ORDINALS.get(n, f"{n}th")
+    return t(ORDINALS[n]) if n in ORDINALS else t("{n}th", n=n)
 
 
 def is_named(room: dict) -> bool:
@@ -231,9 +239,15 @@ def is_named(room: dict) -> bool:
 
 
 def display_code(room: dict) -> str:
+    """A room's name or code in English, as the plans and the directory have it."""
     if room["room_number"].startswith("MEDCENTER"):
         return "the Medcenter"
     return room["name"] if is_named(room) else room["room_number"]
+
+
+def shown_code(room: dict) -> str:
+    """display_code in the language of the answer: "Кітапхана", "D103"."""
+    return t(display_code(room))
 
 
 # Places whose name says what they are rather than what they are called: in a
@@ -248,8 +262,20 @@ SPOKEN = {
 
 def distinct_name(room: dict) -> str:
     """A room's name, told apart from the others that share it: "Study Space 2",
-    "Restroom, Block D". Any other room keeps its own name."""
+    "Restroom, Block D". Any other room keeps its own name. In English: what the
+    directory and the pickers know it by."""
     return room.get("distinct") or display_code(room)
+
+
+def shown_name(room: dict) -> str:
+    """distinct_name in the language of the answer."""
+    twin = room.get("distinct")
+    if not twin:
+        return shown_code(room)
+    number = re.fullmatch(r"(.+) (\d+)", twin)
+    if number:
+        return f"{t(number.group(1))} {number.group(2)}"
+    return t("{name}, Block {block}", name=t(room["name"]), block=room["building_id"])
 
 
 def spoken(room: dict, start: bool = False) -> str:
@@ -257,7 +283,12 @@ def spoken(room: dict, start: bool = False) -> str:
     "Study Space 2"."""
     name = display_code(room)
     twin = room.get("distinct")
-    name = twin if twin and ", Block " not in twin else SPOKEN.get(name, name)
+    if twin and ", Block " not in twin:
+        name = shown_name(room)
+    elif twin:
+        name = t(SPOKEN.get(name, name)) if current_lang() == "en" else shown_name(room)
+    else:
+        name = t(SPOKEN.get(name, name))
     return name[0].upper() + name[1:] if start else name
 
 
@@ -280,12 +311,6 @@ def barrel_name(room: dict) -> str | None:
     return None
 
 
-def human_list(items: list[str]) -> str:
-    if len(items) <= 1:
-        return "".join(items)
-    return ", ".join(items[:-1]) + " and " + items[-1]
-
-
 def campus_now(now: datetime | None = None) -> datetime:
     """Opening hours and timetables are campus time: a moment given in any other
     zone (a UTC server clock) is turned into Almaty time first; a naive one already is."""
@@ -306,11 +331,22 @@ def next_class(classes: list[dict], now: datetime) -> tuple[dict | None, dict, i
     return on_now, upcoming, days_until(upcoming)
 
 
+def day_name(day: int) -> str:
+    return t(DAY_NAMES[day])
+
+
 def class_day(entry: dict, days: int) -> str:
     """The day of a class, the way you'd say it from today."""
     if days == 7:
-        return f"next {DAY_NAMES[entry['day']]}"
-    return {0: "today", 1: "tomorrow"}.get(days, f"on {DAY_NAMES[entry['day']]}")
+        return t("next {day}", day=day_name(entry["day"]))
+    if days in (0, 1):
+        return t("today") if days == 0 else t("tomorrow")
+    return t("on {day}", day=day_name(entry["day"]))
+
+
+def where_line(room: dict) -> str:
+    """"Floor 2 · Block D"."""
+    return t("Floor {floor} · Block {block}", floor=room["floor_number"], block=room["building_id"])
 
 
 def capitalise(text: str) -> str:
@@ -319,7 +355,8 @@ def capitalise(text: str) -> str:
 
 def event_day(day: date) -> str:
     """A date the way a notice board has it: "Thu 12 Nov"."""
-    return f"{DAY_NAMES[day.weekday()][:3]} {day.day} {MONTH_NAMES[day.month - 1]}"
+    return t("{weekday} {day} {month}", weekday=t(DAY_NAMES[day.weekday()][:3]), day=day.day,
+             month=t(MONTH_NAMES[day.month - 1]))
 
 
 def event_times(starts_at: str, ends_at: str) -> str:
@@ -570,10 +607,10 @@ class CampusIndex:
     def blocks_label(blocks: list[str]) -> str:
         """"Block G", "Blocks G and H", "Blocks D–F"."""
         if len(blocks) == 1:
-            return f"Block {blocks[0]}"
+            return t("Block {block}", block=blocks[0])
         if len(blocks) == 2:
-            return f"Blocks {blocks[0]} and {blocks[1]}"
-        return f"Blocks {blocks[0]}–{blocks[-1]}"
+            return t("Blocks {a} and {b}", a=blocks[0], b=blocks[1])
+        return t("Blocks {a}–{b}", a=blocks[0], b=blocks[-1])
 
     def resolve_room(self, text: str | None) -> dict | None:
         """A room as an OCR read it off the portal's timetable, put right: "I 301"
@@ -603,8 +640,16 @@ class CampusIndex:
         return {"on_campus": room is not None,
                 "room_value": self._picker_value(room) if room else written,
                 "room_label": self._class_room(room) if room else written,
-                "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
-                         else "Not in the room directory"}
+                "where": where_line(room) if room else t("Not in the room directory")}
+
+    def favourite_payload(self, code: str) -> dict | None:
+        """A starred room (US23) as the assistant page lists it: its name, where it
+        is, and what to ask to open it again. None when it has left the directory."""
+        room = self.by_code.get(normalize(code or ""))
+        if not room:
+            return None
+        return {"code": room["room_number"], "label": shown_name(room), "ask": ask_text(room),
+                "where": where_line(room)}
 
     def _picker_value(self, room: dict) -> str:
         """What to type for a room: its name, or its number where the name alone
@@ -616,25 +661,29 @@ class CampusIndex:
         """The directory for a room picker: what to type, and what it is. Places
         nobody holds a class in stay out of the list."""
         return [{"value": self._picker_value(r),
-                 "label": f"{self._class_room(r) if barrel_name(r) else r.get('purpose') or 'Room'}"
-                          f" · Floor {r['floor_number']}, Block {r['building_id']}"}
+                 "label": t("{what} · Floor {floor}, Block {block}",
+                            what=self._class_room(r, shown=True) if barrel_name(r) else t(r.get("purpose") or "Room"),
+                            floor=r["floor_number"], block=r["building_id"])}
                 for r in sorted(self.rooms, key=self._walk_order) if r["type"] not in NOT_FOR_CLASSES]
 
     @staticmethod
-    def _class_room(room: dict) -> str:
-        """A class's room as a timetable says it: a round hall by the name people use."""
+    def _class_room(room: dict, shown: bool = False) -> str:
+        """A class's room as a timetable says it: a round hall by the name people use.
+        `shown`: in the language of the answer, not as the directory knows it."""
         hall = barrel_name(room)
-        return f"Hall {hall} ({room['room_number']})" if hall else distinct_name(room)
+        if hall:
+            return t("Hall {hall} ({code})", hall=hall, code=room["room_number"]) if shown \
+                else f"Hall {hall} ({room['room_number']})"
+        return shown_name(room) if shown else distinct_name(room)
 
     def class_payload(self, entry: dict) -> dict:
         """A class of a timetable as the pages show it. A room that has left the
         directory since the class was saved says so instead of breaking the week."""
         room = self.directory_room(entry["room"])
-        return {**entry, "day_name": DAY_NAMES[entry["day"]],
-                "room_label": self._class_room(room) if room else entry["room"],
+        return {**entry, "day_name": day_name(entry["day"]),
+                "room_label": self._class_room(room, shown=True) if room else entry["room"],
                 "room_value": self._picker_value(room) if room else entry["room"],
-                "where": f"Floor {room['floor_number']} · Block {room['building_id']}" if room
-                         else "No longer in the room directory",
+                "where": where_line(room) if room else t("No longer in the room directory"),
                 "on_campus": room is not None}
 
     def service_list(self, now: datetime | None = None) -> list[dict]:
@@ -647,10 +696,11 @@ class CampusIndex:
                 continue
             key, group_label, order = next((k, l, n) for n, (k, l, _) in enumerate(SERVICE_GROUPS) if k == group)
             out.append({
-                "kind": "rooms", "service_id": f"ROOMS_{rtype}", "name": label, "short_name": None,
-                "category": rtype.lower(), "category_label": label,
-                "group": key, "group_label": group_label, "group_order": order,
-                "open_now": None, "status": f"{len(rooms)} rooms, booked for classes", "hours": [],
+                "kind": "rooms", "service_id": f"ROOMS_{rtype}", "name": t(label), "short_name": None,
+                "category": rtype.lower(), "category_label": t(label),
+                "group": key, "group_label": t(group_label), "group_order": order,
+                "open_now": None, "status": tn(len(rooms), "{n} room, booked for classes",
+                                               "{n} rooms, booked for classes"), "hours": [],
                 "notes": None, "ask": ask,
                 "location": self._spread(rooms),
             })
@@ -662,12 +712,12 @@ class CampusIndex:
         """Where a set of rooms is, in one line: the blocks and floors they cover."""
         blocks = sorted({r["building_id"] for r in rooms}, key=BLOCK_ORDER.find)
         floors = sorted({r["floor_number"] for r in rooms})
-        blk = (f"Block {blocks[0]}" if len(blocks) == 1 else
-               f"Blocks {blocks[0]}–{blocks[-1]}" if len(blocks) > 2 and
-               "".join(blocks) in BLOCK_ORDER else f"Blocks {human_list(blocks)}")
-        flr = (f"Floor {floors[0]}" if len(floors) == 1 else
-               f"Floors {floors[0]}–{floors[-1]}" if floors == list(range(floors[0], floors[-1] + 1))
-               else f"Floors {human_list([str(f) for f in floors])}")
+        blk = (t("Block {block}", block=blocks[0]) if len(blocks) == 1 else
+               t("Blocks {a}–{b}", a=blocks[0], b=blocks[-1]) if len(blocks) > 2 and
+               "".join(blocks) in BLOCK_ORDER else t("Blocks {list}", list=human_list(blocks)))
+        flr = (t("Floor {n}", n=floors[0]) if len(floors) == 1 else
+               t("Floors {a}–{b}", a=floors[0], b=floors[-1]) if floors == list(range(floors[0], floors[-1] + 1))
+               else t("Floors {list}", list=human_list([str(f) for f in floors])))
         return {"count": len(rooms), "blocks": blocks, "floors": floors, "text": f"{blk} · {flr}"}
 
     def _service_location(self, svc: dict) -> dict | None:
@@ -675,9 +725,9 @@ class CampusIndex:
         (the restrooms), the blocks and floors it covers."""
         room = next((r for r in self.rooms if r["room_id"] == svc.get("room_id")), None)
         if room:
-            return {"room": display_code(room), "code": room["room_number"],
+            return {"room": shown_code(room), "code": room["room_number"],
                     "building_id": room["building_id"], "floor_number": room["floor_number"],
-                    "text": f"Block {room['building_id']} · Floor {room['floor_number']}"
+                    "text": t("Block {block} · Floor {floor}", block=room["building_id"], floor=room["floor_number"])
                             + (f" · {room['room_number']}" if not is_named(room)
                                and not room["room_number"].startswith("MEDCENTER") else "")}
         rooms = self.named.get(normalize(svc["name"]), [])
@@ -685,11 +735,30 @@ class CampusIndex:
 
     def search(self, query: str, now: datetime | None = None, context: str | None = None,
                timetable: Callable[[], list[dict] | None] | None = None,
-               events: Callable[[], list[dict]] | None = None) -> dict:
+               events: Callable[[], list[dict]] | None = None, lang: str | None = None) -> dict:
         """Answer a question. `context` is the room number a previous answer
         asked the user to pick a block for, so "204" then "Engineering" works.
         `timetable` fetches the asker's classes, None for a visitor; only a
-        question about the next class calls it."""
+        question about the next class calls it. US22: the answer is written in
+        the question's own language (`lang` when it has none, else the
+        interface's), and a Kazakh or Russian question is first put into the
+        words the parser knows (app/questions/)."""
+        from .i18n import detect, use
+        from .questions import rewrite
+        asked = detect(query) or lang or current_lang()
+        token = ASKED.set(query.strip(" ?.!") if asked != "en" else None)
+        try:
+            with use(asked):
+                result = self._answer(rewrite(query, asked), now, context, timetable, events)
+        finally:
+            ASKED.reset(token)
+        result["query"] = query
+        result["lang"] = asked
+        return result
+
+    def _answer(self, query: str, now: datetime | None, context: str | None,
+                timetable: Callable[[], list[dict] | None] | None,
+                events: Callable[[], list[dict]] | None) -> dict:
         t0 = time.perf_counter()
         if NEXT_CLASS_RE.search(query.lower()):
             result = self._next_class_answer(timetable() if timetable else None, now)
@@ -794,7 +863,8 @@ class CampusIndex:
                 "poster": f"/api/events/{row['event_id']}/poster" if row.get("image") else None,
                 "room_value": row.get("room_number") or (room["room_number"] if room else None),
                 "starts_input": row["starts_at"].replace(" ", "T"), "ends_input": row["ends_at"].replace(" ", "T"),
-                "place": row["place"], "room": room["room_number"] if room else None,
+                "place": t(row["place"]) if row["place"] == "Place not announced" else row["place"],
+                "room": room["room_number"] if room else None,
                 "date": event_day(date.fromisoformat(row["starts_at"][:10])),
                 "time": event_times(row["starts_at"], row["ends_at"]),
                 "starts_at": row["starts_at"], "ends_at": row["ends_at"],
@@ -805,15 +875,16 @@ class CampusIndex:
     def _event_where(self, room: dict | None, spot: dict) -> str | None:
         """Where on campus an event is, beside the place as SDU Life gives it."""
         if room:
-            return f"Floor {room['floor_number']} · Block {room['building_id']}"
+            return where_line(room)
         if spot.get("blocks"):
             return self.blocks_label(spot["blocks"])
         if spot.get("spot"):
-            return "Wi-Fi Zone" + (f" to {self.blocks_label(spot['to_blocks'])}" if spot.get("to_blocks") else "")
+            return (t("Wi-Fi Zone to {blocks}", blocks=self.blocks_label(spot["to_blocks"]))
+                    if spot.get("to_blocks") else t("Wi-Fi Zone"))
         if spot.get("hall"):
-            return spot["building"]
+            return t(spot["building"])
         if spot.get("building"):
-            return "a separate building"
+            return t("a separate building")
         return None
 
     def _event_answer(self, query: str, now: datetime | None,
@@ -832,44 +903,46 @@ class CampusIndex:
             return None
         day = event_day(date.fromisoformat(event["starts_at"][:10]))
         when = f"{day}, {event_times(event['starts_at'], event['ends_at'])}"
-        occasion = {"label": "Event", "title": event["title"], "when": when, "aside": event["description"]}
+        occasion = {"label": t("Event"), "title": event["title"], "when": when, "aside": event["description"]}
         room = next((r for r in self.rooms if r["room_id"] == event["room_id"]), None)
         spot = self.event_place(event["place"]) if not room else {}
+        title = event["title"]
         if spot.get("blocks"):
             answer = self._block_answer(spot["block"])
-            answer["summary"] = (f"{event['title']} is on {when}, at {event['place']}. "
-                                 f"SDU Life names no room, so the plan shows "
-                                 f"{self.blocks_label(spot['blocks'])}.")
+            answer["summary"] = t("{title} is on {when}, at {place}. SDU Life names no room, so the plan "
+                                  "shows {blocks}.", title=title, when=when, place=event["place"],
+                                  blocks=self.blocks_label(spot["blocks"]))
             answer["occasion"] = occasion
             answer["map"] = self._blocks_area(spot["blocks"], answer["map"])
             return answer
         if spot.get("spot"):
             answer = self._site_answer(spot["spot"])
-            stretch = f", from the Wi-Fi Zone to {self.blocks_label(spot['to_blocks'])}" \
-                if spot.get("to_blocks") else ""
+            summary = (t("{title} is on {when}, from the Wi-Fi Zone to {blocks}.", title=title, when=when,
+                         blocks=self.blocks_label(spot["to_blocks"])) if spot.get("to_blocks")
+                       else t("{title} is on {when}.", title=title, when=when))
             answer.update({"kind": "event", "title": event["title"], "occasion": occasion,
-                           "place": event["place"],
-                           "summary": f"{event['title']} is on {when}{stretch}. {answer['summary']}"})
+                           "place": event["place"], "summary": f"{summary} {answer['summary']}"})
             return answer
         if not room:
             if spot.get("building"):
                 answer = self._site_answer(spot["building"])
                 answer.update({"kind": "event", "title": event["title"], "occasion": occasion,
                                "place": event["place"],
-                               "summary": f"{event['title']} is on {when}, "
-                                          + (f"in {spot['hall']}, in {spot['building']}. " if spot.get("hall")
-                                             else f"at {spot['building']}. ")
-                                          + answer["summary"]})
+                               "summary": (t("{title} is on {when}, in {hall}, in {building}.", title=title,
+                                             when=when, hall=t(spot["hall"]), building=t(spot["building"]))
+                                           if spot.get("hall") else
+                                           t("{title} is on {when}, at {building}.", title=title, when=when,
+                                             building=t(spot["building"]))) + " " + answer["summary"]})
                 return answer
             elif event["place"] == "Place not announced":
-                summary = f"{event['title']} is on {when}. SDU Life doesn't say where yet."
+                summary = t("{title} is on {when}. SDU Life doesn't say where yet.", title=title, when=when)
             else:
-                summary = (f"{event['title']} is on {when}, at {event['place']}. That isn't on the "
-                           "plans, so there's no room to show and no route to it.")
+                summary = t("{title} is on {when}, at {place}. That isn't on the plans, so there's no room "
+                            "to show and no route to it.", title=title, when=when, place=event["place"])
             return {"kind": "event", "title": event["title"], "summary": summary,
                     "occasion": occasion, "place": event["place"], "suggestions": []}
         answer = self._room_answer(room)
-        answer["summary"] = f"{event['title']} is on {when}, in {answer['title']}."
+        answer["summary"] = t("{title} is on {when}, in {room}.", title=title, when=when, room=answer["title"])
         answer["occasion"] = occasion
         return answer
 
@@ -882,20 +955,23 @@ class CampusIndex:
         if not found:
             return None
         b, hall = found
-        about = b["about"] if not hall else f"{hall} is in {b['label']}. {b['about']}"
-        return {"kind": "site", "title": hall or b["label"], "summary": about, "map": self._place_map(b),
-                "building": {"code": b["code"], "label": b["label"], "sub": b["sub"], "hall": hall},
+        about = t(b["about"]) if not hall else t("{hall} is in {building}.", hall=t(hall),
+                                                 building=t(b["label"])) + " " + t(b["about"])
+        return {"kind": "site", "title": t(hall or b["label"]), "summary": about, "map": self._place_map(b),
+                "building": {"code": b["code"], "label": t(b["label"]), "sub": t(b["sub"]),
+                             "hall": t(hall) if hall else hall},
                 "suggestions": []}
 
     def _place_map(self, b: dict) -> dict:
         from .site import outline_map
         if "outline" in b:
-            return outline_map(b["code"])
+            drawn = outline_map(b["code"])
+            return {**drawn, "room_number": t(drawn["room_number"]), "label": t(drawn["label"])}
         # a spot: where the plan draws it, its whole round lit
         drawn = next((f for f in (self.map.floors[1]["features"] if self.map else [])
                       if f["kind"] == b["feature"]), None)
         x, y, r = (drawn["cx"], drawn["cy"], drawn["r"]) if drawn else (0, 0, None)
-        return {"floor": 1, "site": True, "code": b["code"], "room_number": b["label"], "label": b["label"],
+        return {"floor": 1, "site": True, "code": b["code"], "room_number": t(b["label"]), "label": t(b["label"]),
                 "x": x, "y": y, "radius": r, "highlights": [], "landmark": None, "walk": None}
 
     def place_route(self, b: dict, origin: dict, via: str | None = None) -> dict:
@@ -920,8 +996,8 @@ class CampusIndex:
                 ((a[0] - c[0]) ** 2 + (a[1] - c[1]) ** 2) ** 0.5 for a, c in zip(outside, outside[1:]))
             tried.append((length, way, door, outside))
         if not tried:
-            return {"kind": "route_error", "title": f"I couldn't find a way to {b['label']}",
-                    "summary": "None of its doors is on the plans.", "suggestions": []}
+            return {"kind": "route_error", "title": t("I couldn't find a way to {place}", place=t(b["label"])),
+                    "summary": t("None of its doors is on the plans."), "suggestions": []}
         tried.sort(key=lambda t: t[0])
         chosen = next((t for t in tried if via and t[1]["exit"] == via), tried[0])
         length, way, door, outside = chosen
@@ -931,10 +1007,10 @@ class CampusIndex:
         floors_of = [] if at_door else list(inner["step_floors"])
         if way.get("inside"):
             if at_door:
-                steps.append("Come in through the main entrance into the main lobby.")
+                steps.append(t("Come in through the main entrance into the main lobby."))
         else:
-            steps.append(f"Go out by {door['label']}.")
-        steps += way["say"]
+            steps.append(t("Go out by {door}.", door=door["label"]))
+        steps += [t(step) for step in way["say"]]
         floors_of += [1] * (len(steps) - len(floors_of))
         legs = [] if at_door else list(inner["legs"])
         legs.append({"floor": 1, "points": outside, "outside": not way.get("inside")})
@@ -942,20 +1018,22 @@ class CampusIndex:
         if floors[-1] != 1:
             floors.append(1)
         signs = ([] if at_door else list(inner["signs"])) + [
-            {"icon": "exit" if not way.get("inside") else "entrance", "text": capitalise(door["label"].removeprefix("the "))},
-            {"icon": "door", "text": b["label"]}]
-        how = "" if way.get("inside") else f", out by {door['label']}"
-        spoken = b.get("spoken", b["label"])
+            {"icon": "exit" if not way.get("inside") else "entrance", "text": capitalise(door["sign"])},
+            {"icon": "door", "text": t(b["label"])}]
+        spoken = t(b.get("spoken", b["label"]))
+        summary = (t("From {start} to {place}.", start=inner["from"]["label"], place=spoken) if way.get("inside")
+                   else t("From {start} to {place}, out by {door}.", start=inner["from"]["label"], place=spoken,
+                          door=door["label"]))
         return {"kind": "route", "from": inner["from"],
-                "to": {"kind": "place", "label": b["label"], "floor": 1, "x": target["x"], "y": target["y"],
+                "to": {"kind": "place", "label": t(b["label"]), "floor": 1, "x": target["x"], "y": target["y"],
                        "code": b["code"]},
                 "steps": steps, "step_floors": floors_of, "signs": signs, "legs": legs,
                 "stairs": [] if at_door else inner["stairs"], "floors": floors, "note": inner.get("note"),
-                "summary": f"From {inner['from']['label']} to {spoken}{how}.",
+                "summary": summary,
                 "via": way["exit"],
-                "alternatives": [{"via": t[1]["exit"], "label": capitalise(f"out by {t[2]['label']}"),
-                                  "longer": round((t[0] - length) / max(length, 1) * 100)}
-                                 for t in tried if t is not chosen and not t[1].get("inside")]}
+                "alternatives": [{"via": w[1]["exit"], "label": capitalise(t("out by {door}", door=w[2]["label"])),
+                                  "longer": round((w[0] - length) / max(length, 1) * 100)}
+                                 for w in tried if w is not chosen and not w[1].get("inside")]}
 
     # ------------------------------------------------------------ next class
     def _next_class_answer(self, classes: list[dict] | None, now: datetime | None) -> dict:
@@ -963,31 +1041,35 @@ class CampusIndex:
         class that has begun is not the next one: it is named as the one on now,
         and the way to the next one starts from its room."""
         if classes is None:
-            return {"kind": "needs_account", "title": "This needs an account",
-                    "summary": "Your next class comes from your own timetable, and a visitor pass "
-                               "doesn't have one. Sign in with your SDU account and add your classes "
-                               "to your profile.",
-                    "link": {"href": "/login", "label": "Sign in"}, "suggestions": []}
+            return {"kind": "needs_account", "title": t("This needs an account"),
+                    "summary": t("Your next class comes from your own timetable, and a visitor pass "
+                                 "doesn't have one. Sign in with your SDU account and add your classes "
+                                 "to your profile."),
+                    "link": {"href": "/login", "label": t("Sign in")}, "suggestions": []}
         if not classes:
-            return {"kind": "needs_account", "title": "Your timetable is empty",
-                    "summary": "Add your classes to your timetable, or import a screenshot of it, "
-                               "and I'll tell you where the next one is.",
-                    "link": {"href": "/schedule", "label": "Add your classes"}, "suggestions": []}
+            return {"kind": "needs_account", "title": t("Your timetable is empty"),
+                    "summary": t("Add your classes to your timetable, or import a screenshot of it, "
+                                 "and I'll tell you where the next one is."),
+                    "link": {"href": "/schedule", "label": t("Add your classes")}, "suggestions": []}
         now = campus_now(now)
         on_now, upcoming, days = next_class(classes, now)
         room = self.directory_room(upcoming["room"])
         when = class_day(upcoming, days)
         if not room:
-            return {"kind": "needs_account", "title": f"{upcoming['subject']}, {when} at {upcoming['start']}",
-                    "summary": f"Its room, {upcoming['room']}, is no longer in the room directory. "
-                               "Choose the new one in your timetable.",
-                    "link": {"href": "/schedule", "label": "Open your timetable"}, "suggestions": []}
+            return {"kind": "needs_account",
+                    "title": t("{subject}, {when} at {start}", subject=upcoming["subject"], when=when,
+                               start=upcoming["start"]),
+                    "summary": t("Its room, {room}, is no longer in the room directory. "
+                                 "Choose the new one in your timetable.", room=upcoming["room"]),
+                    "link": {"href": "/schedule", "label": t("Open your timetable")}, "suggestions": []}
         answer = self._room_answer(room)
-        answer["summary"] = (f"Your next class is {upcoming['subject']}, {when} at {upcoming['start']}, "
-                             f"in {self._class_room(room)}.")
-        answer["occasion"] = {"label": "Your next class", "title": upcoming["subject"],
+        answer["summary"] = t("Your next class is {subject}, {when} at {start}, in {room}.",
+                              subject=upcoming["subject"], when=when, start=upcoming["start"],
+                              room=self._class_room(room, shown=True))
+        answer["occasion"] = {"label": t("Your next class"), "title": upcoming["subject"],
                               "when": f"{capitalise(when)}, {upcoming['start']}–{upcoming['end']}",
-                              "aside": f"On now: {on_now['subject']} until {on_now['end']}" if on_now else None}
+                              "aside": t("On now: {subject} until {end}", subject=on_now["subject"],
+                                         end=on_now["end"]) if on_now else None}
         answer["start"] = self._class_start(classes, upcoming, days, now)
         return answer
 
@@ -1054,8 +1136,9 @@ class CampusIndex:
         chosen = next(r for r in same if r["room_number"] == best["key"])
         answer = self._room_or_service(chosen, now)
         answer["note"] = " ".join(filter(None, [
-            answer.get("note"), f"The plans mark {len(same)} places called {base_name(room['name'])}; "
-                                f"this is the nearest one to {origin['label']}."]))
+            answer.get("note"), tn(len(same), "The plans mark {n} place called {name}; this is the nearest one to {start}.",
+                                   "The plans mark {n} places called {name}; this is the nearest one to {start}.",
+                                   name=t(base_name(room["name"])), start=origin["label"])]))
         answer["suggestions"] = [ask_text(r) for r in same]
         return best, answer
 
@@ -1077,8 +1160,8 @@ class CampusIndex:
         note = None
         if origin is None:
             origin = self.entrance()
-            note = (f"I couldn't tell where \u201c{frm.strip(' ,.?')}\u201d is, so the route starts at "
-                    f"the main entrance. Pick your start under the route to change it.")
+            note = t("I couldn't tell where \u201c{start}\u201d is, so the route starts at the main entrance. "
+                     "Pick your start under the route to change it.", start=frm.strip(" ,.?"))
         elif answer.get("several"):
             dest, answer = self._nearest_of_several(origin, answer["several"], now)
         else:
@@ -1102,29 +1185,30 @@ class CampusIndex:
         if found:
             origin, failed = self.resolve_place(frm)
             if origin is None:
-                return {"kind": "route_error", "title": f"I couldn't tell where \u201c{frm}\u201d is",
-                        "summary": "Start from a room code like D103, a named place like the Library, "
-                                   "or the main entrance.",
-                        "suggestions": (failed or {}).get("suggestions", [])}
+                return self._bad_start(frm, failed)
             return self.place_route(found[0], origin, via)
         dest_answer = self._search(PLACE_FILLER_RE.sub("", (to or "").strip()), None)
         dest = self._place_of(dest_answer)
         if not dest:
-            return {"kind": "route_error", "title": f"I couldn't find \u201c{to}\u201d",
-                    "summary": "Name the place you're going to the way you'd search for it: a room code "
-                               "like D103, a hall like A1, or a service like the library.",
+            return {"kind": "route_error", "title": t("I couldn't find \u201c{place}\u201d", place=to),
+                    "summary": t("Name the place you're going to the way you'd search for it: a room code "
+                                 "like D103, a hall like A1, or a service like the library."),
                     "suggestions": dest_answer.get("suggestions", [])}
         origin, failed = self.resolve_place(frm)
         if origin is None:
-            return {"kind": "route_error", "title": f"I couldn't tell where \u201c{frm}\u201d is",
-                    "summary": "Start from a room code like D103, a named place like the Library, "
-                               "or the main entrance.",
-                    "suggestions": (failed or {}).get("suggestions", [])}
+            return self._bad_start(frm, failed)
         if dest_answer.get("several"):
             dest, _ = self._nearest_of_several(origin, dest_answer["several"], None)
         else:
             dest, _ = self._nearest_of_name(origin, dest, None, PLACE_FILLER_RE.sub("", (to or "").strip()))
         return self.router.route(origin, dest)
+
+    @staticmethod
+    def _bad_start(frm: str | None, failed: dict | None) -> dict:
+        return {"kind": "route_error", "title": t("I couldn't tell where \u201c{place}\u201d is", place=frm),
+                "summary": t("Start from a room code like D103, a named place like the Library, "
+                             "or the main entrance."),
+                "suggestions": (failed or {}).get("suggestions", [])}
 
     def _nearest_of_several(self, origin: dict, codes: list[str], now: datetime | None) -> tuple[dict, dict]:
         """Of several places that answer a question, the one nearest the start, and
@@ -1135,8 +1219,9 @@ class CampusIndex:
         answer = self._room_or_service(room, now)
         others = [ask_text(r) for r in self.rooms if r["room_number"] in codes]
         answer["note"] = " ".join(filter(None, [
-            answer.get("note"), f"The plans mark {len(codes)} places like this; "
-                                f"this is the nearest one to {origin['label']}."]))
+            answer.get("note"), tn(len(codes), "The plans mark {n} place like this; this is the nearest one to {start}.",
+                                   "The plans mark {n} places like this; this is the nearest one to {start}.",
+                                   start=origin["label"])]))
         answer["suggestions"] = others
         return best, answer
 
@@ -1223,7 +1308,9 @@ class CampusIndex:
                 alike = [] if best_alias == normalize(base_name(home["name"])) else [
                     r for key, rooms in self.named.items() if best_alias in key for r in rooms if r not in twins]
                 if alike:
-                    return self._several(twins + alike, now, f"{len(twins + alike)} places for \u201c{query.strip(' ?.!')}\u201d")
+                    return self._several(twins + alike, now, tn(len(twins + alike), "{n} place for \u201c{query}\u201d",
+                                                                "{n} places for \u201c{query}\u201d",
+                                                                query=ASKED.get() or query.strip(" ?.!")))
                 if len(twins) > 1:
                     # "Red Canteen": one on floor 1, one on floor 3
                     return self._named_answer(twins, now, blocks, self._floors_in(query), query)
@@ -1250,10 +1337,10 @@ class CampusIndex:
                 return self._room_or_service(halls[0], now)
 
         if EVENTS_RE.search(query.lower()):
-            return {"kind": "needs_account", "title": "Campus events",
-                    "summary": "What is on at SDU, soonest first, with where and when. "
-                               "Search by a word or pick a period, and tap one to see its place on the plan.",
-                    "link": {"href": "/events", "label": "See upcoming events"}, "suggestions": []}
+            return {"kind": "needs_account", "title": t("Campus events"),
+                    "summary": t("What is on at SDU, soonest first, with where and when. "
+                                 "Search by a word or pick a period, and tap one to see its place on the plan."),
+                    "link": {"href": "/events", "label": t("See upcoming events")}, "suggestions": []}
 
         listing = self._purpose_answer(lowered, blocks)
         if listing:
@@ -1270,9 +1357,9 @@ class CampusIndex:
 
         return {
             "kind": "no_match",
-            "title": "I couldn't tell which place you mean",
-            "summary": "Try a room code like D103 or H304, a faculty such as the Business School, "
-                       "or a service like library, cafeteria, dean's office or medcenter.",
+            "title": t("I couldn't tell which place you mean"),
+            "summary": t("Try a room code like D103 or H304, a faculty such as the Business School, "
+                         "or a service like library, cafeteria, dean's office or medcenter."),
             "suggestions": ["D103", "G215", "Red Hall", "Library"],
         }
 
@@ -1284,12 +1371,13 @@ class CampusIndex:
         mine = [s for s in offices if by_id[s["room_id"]]["building_id"] in blocks]
         if len(mine) == 1:
             return self._service_answer(mine[0], now)
-        where = [f"{s['name']} ({display_code(by_id[s['room_id']])}, floor "
-                 f"{by_id[s['room_id']]['floor_number']})" for s in offices]
+        where = [t("{name} ({room}, floor {floor})", name=t(s["name"]), room=shown_code(by_id[s["room_id"]]),
+                   floor=by_id[s["room_id"]]["floor_number"]) for s in offices]
         return {
             "kind": "ambiguous",
-            "title": "Each school has its own dean's office",
-            "summary": f"There are {len(offices)}: {human_list(where)}. Which school are you in?",
+            "title": t("Each school has its own dean's office"),
+            "summary": tn(len(offices), "There is {n}: {list}. Which school are you in?",
+                          "There are {n}: {list}. Which school are you in?", list=human_list(where)),
             "suggestions": [s["name"] for s in offices],
         }
 
@@ -1331,13 +1419,16 @@ class CampusIndex:
     def _ambiguous(self, digits: str, matches: list[dict]) -> dict:
         codes = sorted(r["room_number"] for r in matches)
         floors = sorted({r["floor_number"] for r in matches})
-        on = (f"all on floor {floors[0]}" if len(floors) == 1
-              else f"on floors {human_list([str(f) for f in floors])}")
+        on = (t("all on floor {floor}", floor=floors[0]) if len(floors) == 1
+              else t("on floors {list}", list=human_list([str(f) for f in floors])))
         return {
             "kind": "ambiguous",
-            "title": f"Several blocks have a room {digits}",
-            "summary": f"There's a {digits} in {len(codes)} blocks: {human_list(codes)}, {on}. "
-                       f"Which one did you mean? Naming the block or the faculty is enough.",
+            "title": t("Several blocks have a room {digits}", digits=digits),
+            "summary": tn(len(codes), "There's a {digits} in {n} block: {list}, {on}. Which one did you mean? "
+                                      "Naming the block or the faculty is enough.",
+                          "There's a {digits} in {n} blocks: {list}, {on}. Which one did you mean? "
+                          "Naming the block or the faculty is enough.",
+                          digits=digits, list=human_list(codes), on=on),
             "suggestions": codes,
             "context": digits,
         }
@@ -1374,24 +1465,31 @@ class CampusIndex:
         rooms = [r for s, r in sorted(scored, key=lambda sr: (-sr[0], self._walk_order(sr[1])))
                  if s >= top - 1]                     # keep the close matches, drop the stragglers
         first = rooms[0]
-        what = first.get("purpose") or "room"
-        where = f" in Block {human_list(blocks)}" if blocks else ""
+        what = t(first.get("purpose") or "Room")
         answer = self._room_answer(first)
+        quoted = ASKED.get()            # the whole question: it already names the block
+        phrase = quoted or phrase
         if answer.get("map"):
             for r in rooms[1:]:
                 point = self.map.room_point(r["room_number"])
                 if point and point["floor"] == first["floor_number"]:
                     answer["map"]["highlights"].append({"room_number": r["room_number"], "role": "neighbour",
                                                         "x": point["x"], "y": point["y"]})
+        title = (tn(len(rooms), "{n} match for \u201c{phrase}\u201d in Block {blocks}",
+                    "{n} matches for \u201c{phrase}\u201d in Block {blocks}", phrase=phrase,
+                    blocks=human_list(blocks)) if blocks and not quoted else
+                 tn(len(rooms), "{n} match for \u201c{phrase}\u201d", "{n} matches for \u201c{phrase}\u201d",
+                    phrase=phrase))
         return {
             "kind": "list",
-            "title": f"{len(rooms)} {'match' if len(rooms) == 1 else 'matches'} for \u201c{phrase}\u201d{where}",
-            "summary": f"Every room whose purpose or name matches, closest first. The first is "
-                       f"{display_code(first)}, a {what.lower()} on floor {first['floor_number']} of Block "
-                       f"{first['building_id']}; tap any other to see its way.",
-            "results": [{"room_number": display_code(r).removeprefix("the ").capitalize()
-                         if r["room_number"].startswith("MEDCENTER") else display_code(r),
-                         "code": r["room_number"], "ask": ask_text(r), "purpose": r.get("purpose"),
+            "title": title,
+            "summary": t("Every room whose purpose or name matches, closest first. The first is {room}, "
+                         "a {what} on floor {floor} of Block {block}; tap any other to see its way.",
+                         room=shown_code(first), what=what.lower(),
+                         floor=first["floor_number"], block=first["building_id"]),
+            "results": [{"room_number": capitalise(shown_code(r).removeprefix("the "))
+                         if r["room_number"].startswith("MEDCENTER") else shown_code(r),
+                         "code": r["room_number"], "ask": ask_text(r), "purpose": t(r.get("purpose") or "Room"),
                          "building_id": r["building_id"], "floor_number": r["floor_number"]} for r in rooms],
             "map": answer.get("map"), "route": answer.get("route"), "room": answer.get("room"),
             "suggestions": [],
@@ -1400,19 +1498,20 @@ class CampusIndex:
     def _block_answer(self, building_id: str) -> dict:
         """Where a whole block or faculty is, when the question names no room."""
         rooms = [r for r in self.rooms if r["building_id"] == building_id]
-        name = self.buildings.get(building_id, f"Block {building_id}")
+        name = self.building_name(building_id)
         floors = sorted({r["floor_number"] for r in rooms})
         entry = min((r for r in rooms if r["zone"] in ("wing", "north")),
                     key=lambda r: (r["floor_number"], r["x"]), default=rooms[0])
         directions = self._room_answer(entry)
-        floor_text = ("floor " + str(floors[0]) if len(floors) == 1
-                      else f"floors {floors[0]} to {floors[-1]}")
-        start = "you reach it through the foyer, at" if entry["zone"] == "north" else "its wings start at"
+        floor_text = (t("floor {n}", n=floors[0]) if len(floors) == 1
+                      else t("floors {a} to {b}", a=floors[0], b=floors[-1]))
+        start = (t("you reach it through the foyer, at {room}", room=shown_code(entry)) if entry["zone"] == "north"
+                 else t("its wings start at {room}", room=shown_code(entry)))
         return {
             "kind": "block",
-            "title": f"Block {building_id}",
-            "summary": f"{name}. {len(rooms)} room{'s' if len(rooms) != 1 else ''} on {floor_text}; "
-                       f"{start} {display_code(entry)}.",
+            "title": t("Block {block}", block=building_id),
+            "summary": tn(len(rooms), "{name}. {n} room on {floors}; {start}.", "{name}. {n} rooms on {floors}; {start}.",
+                          name=name, floors=floor_text, start=start),
             "block": {"building_id": building_id, "name": name,
                       "floors": floors, "rooms": len(rooms)},
             "steps": directions["steps"][:3],
@@ -1434,39 +1533,49 @@ class CampusIndex:
                 seen.add(rn)
                 suggestions.append(rn)
         suggestions = suggestions[:3]
-        summary = f"There's no room {code} on the evacuation plans I've digitised. {CODE_FORMAT_HINT}"
+        summary = t("There's no room {code} on the evacuation plans I've digitised.", code=code) + " " + t(CODE_FORMAT_HINT)
         if suggestions:
-            summary += f" The closest real rooms are {human_list(suggestions)} — one of those might be the one you need."
-        return {"kind": "not_found", "title": f"No room {code} on file", "summary": summary, "suggestions": suggestions}
+            summary += " " + t("The closest real rooms are {list} — one of those might be the one you need.",
+                               list=human_list(suggestions))
+        return {"kind": "not_found", "title": t("No room {code} on file", code=code), "summary": summary,
+                "suggestions": suggestions}
 
     # ------------------------------------------------------------ directions
+    def building_name(self, bid: str) -> str:
+        """"Block D — Faculty of Law & Social Sciences", in the language of the answer."""
+        return t(self.buildings.get(bid) or "Block {block}", block=bid)
+
     def _room_answer(self, room: dict) -> dict:
         bid, floor = room["building_id"], room["floor_number"]
-        building_name = self.buildings.get(bid, f"Block {bid}")
-        code = display_code(room)
+        english_building = self.buildings.get(bid, f"Block {bid}")
+        building_name = self.building_name(bid)
+        code = shown_code(room)
         steps: list[str] = []
         highlights: list[dict] = []
 
-        steps.append("Come in through the main entrance into the Block C lobby (Wi-Fi Zone and wardrobe) "
-                     "— the central corridor starts here and runs past every block.")
+        steps.append(t("Come in through the main entrance into the Block C lobby (Wi-Fi Zone and wardrobe) "
+                       "— the central corridor starts here and runs past every block."))
         if floor == 1:
-            steps.append("Stay on the ground floor (floor 1).")
+            steps.append(t("Stay on the ground floor (floor 1)."))
+        elif floor == 3:
+            steps.append(t("Go up to floor {floor}. There are stairs along the central corridor and at the far "
+                           "end of every wing, and from floor 2 also at the start of every wing, by the corridor.",
+                           floor=floor))
         else:
-            steps.append(f"Go up to floor {floor}. There are stairs along the central corridor "
-                         f"and at the far end of every wing"
-                         + (", and from floor 2 also at the start of every wing, by the corridor." if floor == 3
-                            else "."))
+            steps.append(t("Go up to floor {floor}. There are stairs along the central corridor "
+                           "and at the far end of every wing.", floor=floor))
 
-        block_label = f"Block {bid}"
+        block_label = t("Block {block}", block=bid)
         if bid == "I":
-            steps.append("Keep going down the central corridor past Block H — Block I carries on from there "
-                         "and its classroom wings repeat the Block H layout.")
+            steps.append(t("Keep going down the central corridor past Block H — Block I carries on from there "
+                           "and its classroom wings repeat the Block H layout."))
 
         zone = room["zone"]
         door: dict = {}
         if zone == "wing":
             if bid != "I":
-                steps.append(f"Follow the central corridor to {block_label} and turn into the {block_label} wing.")
+                steps.append(t("Follow the central corridor to Block {block} and turn into the Block {block} wing.",
+                               block=bid))
             steps.append(self._wing_step(room, highlights, door))
         elif zone == "corridor":
             steps.append(self._corridor_step(room, block_label, highlights))
@@ -1475,39 +1584,42 @@ class CampusIndex:
         elif zone == "north":
             steps.append(self._north_step(room, highlights, door))
         else:
-            steps.append(f"Find {code} in {block_label}.")
+            steps.append(t("Find {room} in Block {block}.", room=code, block=bid))
         route = self._route(room, door)
 
         landmark = self._nearest_landmark(room)
         if landmark:
+            mark = t(landmark["name"])
             if zone == "wing" and landmark["x"] > room["x"] + 15:
-                where = "a little further along the wing"
+                steps.append(t("Landmark: the {landmark} is a little further along the wing — handy if you get "
+                               "turned around.", landmark=mark))
             elif zone == "wing" and landmark["x"] < room["x"] - 15:
-                where = "just back towards the central corridor"
+                steps.append(t("Landmark: the {landmark} is just back towards the central corridor — handy if you "
+                               "get turned around.", landmark=mark))
             else:
-                where = "close by"
-            steps.append(f"Landmark: the {landmark['name']} is {where} — handy if you get turned around.")
+                steps.append(t("Landmark: the {landmark} is close by — handy if you get turned around.", landmark=mark))
         else:
-            steps.append(f"Landmark: {self._fallback_landmark(room)} — handy if you get turned around.")
+            steps.append(t("Landmark: {landmark} — handy if you get turned around.",
+                           landmark=self._fallback_landmark(room)))
 
         dept = DEPARTMENTS.get(room.get("department") or "")
         rtype = ROOM_TYPES.get(room.get("type") or "")
         hall = barrel_name(room)
-        facts = [f"{rtype} {hall} — one of the round \u201cbarrels\u201d"] if hall and rtype else \
-                ([rtype] if rtype else [])
-        if dept and dept.split(" ")[-1] not in building_name:  # only when it differs from the block's own faculty
-            facts.append(dept)
+        facts = [t("{type} {hall} — one of the round \u201cbarrels\u201d", type=t(rtype), hall=hall)] \
+            if hall and rtype else ([t(rtype)] if rtype else [])
+        if dept and dept.split(" ")[-1] not in english_building:  # only when it differs from the block's own faculty
+            facts.append(t(dept))
         svc = self.service_of(room)
         if svc and svc["name"] != display_code(room):
-            facts.append(svc["name"])
+            facts.append(t(svc["name"]))
 
         note = None
         if room["source"] == "approximated_from_H":
-            note = ("Block I isn't digitised yet — this position is copied from the matching Block H room, "
-                    "so treat the door order as a best guess.")
+            note = t("Block I isn't digitised yet — this position is copied from the matching Block H room, "
+                     "so treat the door order as a best guess.")
         elif room["source"] == "sketch":
-            note = ("Block I isn't digitised yet — this room is placed from a sketch of the floor, "
-                    "so treat the door order as a best guess.")
+            note = t("Block I isn't digitised yet — this room is placed from a sketch of the floor, "
+                     "so treat the door order as a best guess.")
 
         plan = None
         sheet = self.sheets.get(room["sheet_id"])
@@ -1520,15 +1632,17 @@ class CampusIndex:
                              "x": landmark["x"], "y": landmark["y"]} if landmark else None,
             }
 
-        name = distinct_name(room)
+        name = shown_name(room)
         return {
             "kind": "room",
             "map": self._map_payload(room, highlights, landmark),
             "title": name,
-            "summary": (f"{name}{f' (hall {hall})' if hall else ''} is on floor {floor} "
-                        f"of {building_name}."),
+            "summary": (t("{room} (hall {hall}) is on floor {floor} of {building}.", room=name, hall=hall,
+                          floor=floor, building=building_name) if hall else
+                        t("{room} is on floor {floor} of {building}.", room=name, floor=floor,
+                          building=building_name)),
             "room": {"room_number": name, "building_id": bid, "building_name": building_name,
-                     "purpose": room.get("purpose"),
+                     "purpose": t(room.get("purpose") or "Room"),
                      "floor_number": floor, "zone": zone, "facts": facts, "source": room["source"]},
             "steps": steps, "route": route, "note": note, "plan": plan, "suggestions": [],
         }
@@ -1540,7 +1654,7 @@ class CampusIndex:
         here = self.map.room_point(room["room_number"])
         if here is None:
             return None
-        payload = {"floor": room["floor_number"], "room_number": distinct_name(room),
+        payload = {"floor": room["floor_number"], "room_number": shown_name(room),
                    "code": room["room_number"],
                    "x": here["x"], "y": here["y"], "radius": here["r"],
                    "highlights": [], "landmark": None}
@@ -1552,7 +1666,7 @@ class CampusIndex:
         if landmark:
             point = self.map.to_map(room["sheet_id"], landmark["x"], landmark["y"])
             if point:
-                payload["landmark"] = {"name": landmark["name"], "type": landmark["type"],
+                payload["landmark"] = {"name": t(landmark["name"]), "type": landmark["type"],
                                        "x": point[0], "y": point[1]}
         return payload
 
@@ -1580,16 +1694,17 @@ class CampusIndex:
         if door is not None:
             door.update(pos=pos, side=side, last=pos == len(row) and pos > 1)
         before = [r["room_number"] for r in row[:pos - 1]][-2:]
-        code = display_code(room)
-        side_txt = f" on your {side}" if side else ""
+        code = shown_code(room)
+        side_txt = (t(" on your left") if side == "left" else t(" on your right")) if side else ""
+        values = {"room": code, "side": side_txt, "nth": ordinal(pos), "pos": pos, "list": human_list(before)}
 
         if pos == 1:
-            sentence = f"{code} is the first door{side_txt}, right as you enter the wing."
+            sentence = t("{room} is the first door{side}, right as you enter the wing.", **values)
         elif pos == len(row):
-            sentence = (f"{code} is the last door{side_txt}, at the far end of the wing — "
-                        f"you'll pass {human_list(before)} on the way.")
+            sentence = t("{room} is the last door{side}, at the far end of the wing — "
+                         "you'll pass {list} on the way.", **values)
         else:
-            sentence = f"{code} is the {ordinal(pos)} door{side_txt}, just after {human_list(before)}."
+            sentence = t("{room} is the {nth} door{side}, just after {list}.", **values)
 
         for rn in before:
             r = next(x for x in row if x["room_number"] == rn)
@@ -1598,7 +1713,7 @@ class CampusIndex:
         if other:
             opp = min(other, key=lambda r: abs(r["x"] - room["x"]))
             if abs(opp["x"] - room["x"]) <= 45:
-                sentence += f" Directly across the corridor is {opp['room_number']}."
+                sentence += " " + t("Directly across the corridor is {room}.", room=opp["room_number"])
                 highlights.append({"room_number": opp["room_number"], "x": opp["x"], "y": opp["y"], "role": "opposite"})
         return sentence
 
@@ -1607,28 +1722,30 @@ class CampusIndex:
         arrow and a few words, read left to right like the signs in the corridor.
         The sentences in `steps` say the same thing in full."""
         bid, floor, zone = room["building_id"], room["floor_number"], room["zone"]
-        route = [{"icon": "entrance", "text": "Main lobby"}]
+        route = [{"icon": "entrance", "text": t("Main lobby")}]
         if floor > 1:
-            route.append({"icon": "stairs", "text": f"Floor {floor}"})
+            route.append({"icon": "stairs", "text": t("Floor {n}", n=floor)})
         if zone == "north":
-            route.append({"icon": "ahead", "text": "Block B foyer"})
+            route.append({"icon": "ahead", "text": t("Block B foyer")})
         elif zone == "wing":
-            route.append({"icon": "ahead", "text": f"Block {bid} wing"})
+            route.append({"icon": "ahead", "text": t("Block {block} wing", block=bid)})
         else:
-            route.append({"icon": "ahead", "text": f"Block {bid}"})
+            route.append({"icon": "ahead", "text": t("Block {block}", block=bid)})
 
         if door.get("last"):
-            route.append({"icon": "ahead", "text": "Far end" if zone == "north" else "Last door"})
+            route.append({"icon": "ahead", "text": t("Far end") if zone == "north" else t("Last door")})
         elif door.get("pos"):
             side = door.get("side")
-            text = f"{ordinal(door['pos']).capitalize()} door" + (f", {side}" if side else "")
+            values = {"nth": capitalise(ordinal(door["pos"])), "pos": door["pos"]}
+            text = (t("{nth} door, left", **values) if side == "left" else t("{nth} door, right", **values)) \
+                if side else t("{nth} door", **values)
             route.append({"icon": side or "ahead", "text": text})
         elif zone == "corridor":
-            route.append({"icon": "door", "text": "On the corridor"})
+            route.append({"icon": "door", "text": t("On the corridor")})
         elif zone == "west" and door.get("opposite"):
-            route.append({"icon": "door", "text": f"Opposite {door['opposite']}"})
+            route.append({"icon": "door", "text": t("Opposite {room}", room=door["opposite"])})
         elif zone == "west":
-            route.append({"icon": "door", "text": "Across the corridor"})
+            route.append({"icon": "door", "text": t("Across the corridor")})
         return route
 
     def _peers(self, room: dict) -> list[dict]:
@@ -1644,12 +1761,12 @@ class CampusIndex:
         for r in above + below:
             highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
         code = spoken(room)
-        base = (f"When you reach {block_label}, look along the central corridor itself — "
-                f"{code} opens straight onto it rather than into a wing.")
+        base = t("When you reach {block}, look along the central corridor itself — "
+                 "{room} opens straight onto it rather than into a wing.", block=block_label, room=code)
         if above and below:
-            return base + f" It's between {spoken(above[0])} and {spoken(below[0])}."
+            return base + " " + t("It's between {a} and {b}.", a=spoken(above[0]), b=spoken(below[0]))
         if above or below:
-            return base + f" It's right next to {spoken((above or below)[0])}."
+            return base + " " + t("It's right next to {room}.", room=spoken((above or below)[0]))
         return base
 
     def _across(self, room: dict) -> dict | None:
@@ -1670,24 +1787,27 @@ class CampusIndex:
             highlights.append({"room_number": opposite["room_number"], "x": opposite["x"],
                                "y": opposite["y"], "role": "opposite"})
             if door is not None:
-                door["opposite"] = display_code(opposite)
-            return (f"When you reach {block_label}, keep to the left-hand wall of the central corridor — "
-                    f"{code} is right there, directly across from {spoken(opposite)}.")
+                door["opposite"] = shown_code(opposite)
+            return t("When you reach {block}, keep to the left-hand wall of the central corridor — "
+                     "{room} is right there, directly across from {other}.", block=block_label, room=code,
+                     other=spoken(opposite))
         if room["building_id"] == "C" and room["floor_number"] == 1:
             near = sorted((r for r in self._peers(room) if r["zone"] == "west" and r["building_id"] == "C"),
                           key=lambda r: (r["x"] - room["x"]) ** 2 + (r["y"] - room["y"]) ** 2)[:1]
             for r in near:
                 highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
-            return (f"{spoken(room, start=True)} is in the main lobby itself, on the entrance side"
-                    + (f", next to {spoken(near[0])}." if near else "."))
+            if near:
+                return t("{room} is in the main lobby itself, on the entrance side, next to {other}.",
+                         room=spoken(room, start=True), other=spoken(near[0]))
+            return t("{room} is in the main lobby itself, on the entrance side.", room=spoken(room, start=True))
         if room["building_id"] in ("D", "E") and room["floor_number"] in (1, 2):
-            place = "the round lecture halls (the \"barrels\")"
+            place = t("the round lecture halls (the \"barrels\")")
         elif room["building_id"] in ("D", "E") and room["floor_number"] == 3:
-            place = "the round study spaces"
+            place = t("the round study spaces")
         else:
-            place = "the rooms on that side"
-        sentence = (f"At {block_label}, cross to the opposite side of the central corridor from the classroom wings — "
-                    f"{code} is among {place}.")
+            place = t("the rooms on that side")
+        sentence = t("At {block}, cross to the opposite side of the central corridor from the classroom wings — "
+                     "{room} is among {place}.", block=block_label, room=code, place=place)
 
         twins = self._twins(room)
         if twins:
@@ -1695,8 +1815,9 @@ class CampusIndex:
             pos = twins.index(room)
             for r in twins[max(pos - 1, 0):pos] + twins[pos + 1:pos + 2]:
                 highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
-            return sentence + (f" There are {len(twins)} of them on this floor; this is the "
-                               f"{ordinal(pos + 1)} from the lobby end.")
+            return sentence + " " + tn(len(twins), "There is {n} of them on this floor; this is the {nth} from the lobby end.",
+                                       "There are {n} of them on this floor; this is the {nth} from the lobby end.",
+                                       nth=ordinal(pos + 1), pos=pos + 1)
 
         peers = [r for r in self._peers(room) if r["zone"] == "west"
                  and math.hypot(r["x"] - room["x"], r["y"] - room["y"]) <= WEST_NEIGHBOUR_REACH]
@@ -1706,7 +1827,7 @@ class CampusIndex:
         for r in near:
             highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "neighbour"})
         if near:
-            sentence += f" Look for it next to {human_list([spoken(r) for r in near])}."
+            sentence += " " + t("Look for it next to {list}.", list=human_list([spoken(r) for r in near]))
         return sentence
 
     def _twins(self, room: dict) -> list[dict]:
@@ -1723,16 +1844,16 @@ class CampusIndex:
         row = sorted((r for r in self.rooms if r["zone"] == "north"
                       and r["floor_number"] == room["floor_number"]), key=lambda r: r["x"])
         code = spoken(room, start=True)       # it starts the sentence after the intro
-        intro = ("From the lobby, go through to the Block B foyer — the wide hall that runs east "
-                 "from the lobby's north-east side.")
+        intro = t("From the lobby, go through to the Block B foyer — the wide hall that runs east "
+                  "from the lobby's north-east side.")
         if room is row[-1] and len(row) > 1:
             if door is not None:
                 door.update(pos=len(row), side=None, last=True)
             before = [r for r in row[:-1] if r["y"] < NORTH_FOYER_Y][-2:] or row[-3:-1]
             for r in before:
                 highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "passed"})
-            return (f"{intro} {code} is at the far end of it; you'll pass "
-                    f"{human_list([spoken(r) for r in before])} on the way.")
+            return intro + " " + t("{room} is at the far end of it; you'll pass {list} on the way.",
+                                   room=code, list=human_list([spoken(r) for r in before]))
         north = room["y"] < NORTH_FOYER_Y
         side = "left" if north else "right"
         same = [r for r in row[:-1] if (r["y"] < NORTH_FOYER_Y) == north]
@@ -1742,29 +1863,30 @@ class CampusIndex:
         before = same[:pos - 1][-2:]
         for r in before:
             highlights.append({"room_number": r["room_number"], "x": r["x"], "y": r["y"], "role": "passed"})
+        side_txt = t(" on your left") if side == "left" else t(" on your right")
         if pos == 1:
-            return f"{intro} {code} is the first door on your {side}."
-        return (f"{intro} {code} is the {ordinal(pos)} door on your {side}, just after "
-                f"{human_list([spoken(r) for r in before])}.")
+            return intro + " " + t("{room} is the first door{side}.", room=code, side=side_txt)
+        return intro + " " + t("{room} is the {nth} door{side}, just after {list}.", room=code, side=side_txt,
+                               nth=ordinal(pos), pos=pos, list=human_list([spoken(r) for r in before]))
 
     def _fallback_landmark(self, room: dict) -> str:
         """US1 wants a recognisable landmark with every answer. Where no exit or
         stairwell is close enough, the room's own surroundings are the landmark."""
-        block = f"Block {room['building_id']}"
+        block = room["building_id"]
         if room["zone"] == "north":
-            return "the main lobby with the Wi-Fi Zone, at the west end of the foyer"
+            return t("the main lobby with the Wi-Fi Zone, at the west end of the foyer")
         if room["zone"] == "west":
             halls = [r for r in self.rooms if r["floor_id"] == room["floor_id"]
                      and r is not room and barrel_name(r)]
             if halls:
                 near = min(halls, key=lambda r: (r["x"] - room["x"]) ** 2 + (r["y"] - room["y"]) ** 2)
-                return (f"the round lecture halls on that side of the corridor — the nearest is "
-                        f"{near['room_number']}, the one everyone calls {barrel_name(near)}")
+                return t("the round lecture halls on that side of the corridor — the nearest is "
+                         "{room}, the one everyone calls {hall}", room=near["room_number"], hall=barrel_name(near))
         if room["zone"] == "corridor":
-            return f"the central corridor itself, along the {block} stretch of it"
+            return t("the central corridor itself, along the Block {block} stretch of it", block=block)
         if room["building_id"] == "I":
-            return "the far end of the central corridor, past Block H"
-        return f"the mouth of the {block} wing, where it opens off the central corridor"
+            return t("the far end of the central corridor, past Block H")
+        return t("the mouth of the Block {block} wing, where it opens off the central corridor", block=block)
 
     def _nearest_landmark(self, room: dict) -> dict | None:
         candidates = self.landmarks.get(room["floor_id"], [])
@@ -1788,7 +1910,7 @@ class CampusIndex:
     def _service_payload(self, svc: dict, now: datetime | None) -> dict:
         now = campus_now(now)
         hours = svc["hours"]
-        status, open_now = "Opening hours aren't on file yet", None
+        status, open_now = t("Opening hours aren't on file yet"), None
         if hours:
             dow, hhmm = now.weekday(), now.strftime("%H:%M")
             today = hours.get(dow, [])
@@ -1798,19 +1920,19 @@ class CampusIndex:
                 open_now = True
                 # "until 12:30" before lunch would read as closing for the day
                 gap = next((o for o, _ in today if o >= current[1]), None)
-                status = (f"Open until {current[1]}, back at {gap} after lunch" if gap
-                          else f"Open until {current[1]}")
+                status = (t("Open until {time}, back at {back} after lunch", time=current[1], back=gap) if gap
+                          else t("Open until {time}", time=current[1]))
             elif later and today and today[0][0] <= hhmm:
-                open_now, status = False, f"Lunch break, back at {later[0]}"
+                open_now, status = False, t("Lunch break, back at {time}", time=later[0])
             elif later:
-                open_now, status = False, f"Closed, opens today at {later[0]}"
+                open_now, status = False, t("Closed, opens today at {time}", time=later[0])
             else:
                 open_now = False
                 for i in range(1, 8):
                     d = (dow + i) % 7
                     if hours.get(d):
-                        when = "tomorrow" if i == 1 else DAY_NAMES[d]
-                        status = f"Closed, opens {when} at {hours[d][0][0]}"
+                        status = (t("Closed, opens tomorrow at {time}", time=hours[d][0][0]) if i == 1 else
+                                  t("Closed, opens {day} at {time}", day=day_name(d), time=hours[d][0][0]))
                         break
         table = []
         for d, intervals in sorted(hours.items()):
@@ -1818,12 +1940,13 @@ class CampusIndex:
             table.append({"day": DAY_NAMES[d], "open": intervals[0][0], "close": intervals[-1][1],
                           "break": breaks[0] if breaks else None})
         group, group_label, order = GROUP_OF.get(svc["category"], ("other", "Other", len(SERVICE_GROUPS)))
-        return {"kind": "service", "service_id": svc["service_id"], "name": svc["name"],
-                "short_name": svc.get("short_name"),
-                "category": svc["category"], "category_label": CATEGORY_LABELS.get(svc["category"]),
-                "group": group, "group_label": group_label, "group_order": order,
+        category = CATEGORY_LABELS.get(svc["category"])
+        return {"kind": "service", "service_id": svc["service_id"], "name": t(svc["name"]),
+                "short_name": t(svc["short_name"]) if svc.get("short_name") else None,
+                "category": svc["category"], "category_label": t(category) if category else None,
+                "group": group, "group_label": t(group_label), "group_order": order,
                 "open_now": open_now, "status": status, "hours": table,
-                "notes": svc.get("notes"), "ask": svc["name"],
+                "notes": t(svc["notes"]) if svc.get("notes") else None, "ask": svc["name"],
                 "location": self._service_location(svc)}
 
     def _service_answer(self, svc: dict, now: datetime | None) -> dict:
@@ -1832,19 +1955,21 @@ class CampusIndex:
         room = next((r for r in self.rooms if r["room_id"] == svc.get("room_id")), None)
         more = [r for r in self.rooms if r["room_id"] in svc["more_rooms"]]
         if room and more:
-            notes.append(f"It takes {human_list([display_code(room)] + [display_code(r) for r in more])}; "
-                         f"the route goes to {display_code(room)}, the next door is the same office.")
+            notes.append(t("It takes {list}; the route goes to {room}, the next door is the same office.",
+                           list=human_list([shown_code(room)] + [shown_code(r) for r in more]),
+                           room=shown_code(room)))
         others = [r for r in self.named.get(normalize(base_name(room["name"])), [])
                   if r["floor_number"] != room["floor_number"]] if room else []
         if others:
-            notes.append(f"The plans also mark {base_name(svc['name'])} on floor "
-                         f"{human_list(sorted({str(r['floor_number']) for r in others}))}.")
-        result = {"kind": "service", "title": svc["name"], "service": payload,
+            notes.append(t("The plans also mark {name} on floor {list}.", name=t(base_name(svc["name"])),
+                           list=human_list(sorted({str(r["floor_number"]) for r in others}))))
+        result = {"kind": "service", "title": t(svc["name"]), "service": payload,
                   "suggestions": [ask_text(r) for r in others], "note": " ".join(notes) or None}
         if room:
             directions = self._room_answer(room)
-            result.update({"summary": f"{svc['name']} is on floor {room['floor_number']} of "
-                                      f"{self.buildings.get(room['building_id'])}. {payload['status']}.",
+            result.update({"summary": t("{name} is on floor {floor} of {building}.", name=t(svc["name"]),
+                                        floor=room["floor_number"], building=self.building_name(room["building_id"]))
+                                      + f" {payload['status']}.",
                            "steps": directions["steps"], "route": directions["route"],
                            "plan": directions["plan"],
                            "map": directions["map"], "room": directions["room"]})
@@ -1856,7 +1981,7 @@ class CampusIndex:
                     result["map"]["highlights"].append({"room_number": r["room_number"], "role": "neighbour",
                                                         "x": point["x"], "y": point["y"]})
         else:
-            result.update({"summary": f"{payload['status']}. Its exact room isn't on the digitised plans yet.",
+            result.update({"summary": f"{payload['status']}. " + t("Its exact room isn't on the digitised plans yet."),
                            "steps": [], "plan": None, "map": None})
         return result
 
@@ -1916,9 +2041,11 @@ class CampusIndex:
         rooms = [r for r in rooms if r["floor_number"] in (floors or [])] or rooms
         if len(rooms) == 1:
             return self._room_or_service(rooms[0], now)
-        name = base_name(rooms[0]["name"])
-        where = f" in Block {human_list(blocks)}" if inside else ""
-        return self._several(rooms, now, f"{len(rooms)} places called {name}{where}")
+        name = t(base_name(rooms[0]["name"]))
+        title = (tn(len(rooms), "{n} place called {name} in Block {blocks}", "{n} places called {name} in Block {blocks}",
+                    name=name, blocks=human_list(blocks)) if inside else
+                 tn(len(rooms), "{n} place called {name}", "{n} places called {name}", name=name))
+        return self._several(rooms, now, title)
 
     def _several(self, rooms: list[dict], now: datetime | None, title: str) -> dict:
         """Several places that answer one question, all of them: a short list, each
@@ -1927,9 +2054,10 @@ class CampusIndex:
         first = rooms[0]
         floors = sorted({r["floor_number"] for r in rooms})
         blocks = sorted({r["building_id"] for r in rooms})
-        where = ("All on floor " + str(floors[0]) if len(floors) == 1
-                 else "On floors " + human_list([str(f) for f in floors]))
-        where += f", in Block{'s' if len(blocks) > 1 else ''} {human_list(blocks)}"
+        on = (t("All on floor {floor}", floor=floors[0]) if len(floors) == 1
+              else t("On floors {list}", list=human_list([str(f) for f in floors])))
+        where = (t("{on}, in Blocks {list}", on=on, list=human_list(blocks)) if len(blocks) > 1
+                 else t("{on}, in Block {list}", on=on, list=human_list(blocks)))
         answer = self._room_or_service(first, now)
         if answer.get("map"):
             shown = {h["room_number"] for h in answer["map"]["highlights"]}
@@ -1942,17 +2070,17 @@ class CampusIndex:
         for r in rooms:
             svc = self.service_of(r)
             status = self._service_payload(svc, now) if svc else None
-            results.append({"room_number": distinct_name(r).removeprefix("the ").capitalize()
-                            if r["room_number"].startswith("MEDCENTER") else distinct_name(r),
-                            "code": r["room_number"], "ask": ask_text(r), "purpose": r.get("purpose"),
+            results.append({"room_number": capitalise(shown_name(r).removeprefix("the "))
+                            if r["room_number"].startswith("MEDCENTER") else shown_name(r),
+                            "code": r["room_number"], "ask": ask_text(r), "purpose": t(r.get("purpose") or "Room"),
                             "status": status["status"] if status and status["hours"] else None,
                             "open": status["open_now"] if status and status["hours"] else None,
                             "building_id": r["building_id"], "floor_number": r["floor_number"]})
-        shown_floor = (f" The plan shows the ones on floor {first['floor_number']}."
+        shown_floor = (" " + t("The plan shows the ones on floor {floor}.", floor=first["floor_number"])
                        if len(floors) > 1 and answer.get("map") else "")
         return {
             "kind": "list", "title": title,
-            "summary": f"{where}. Tap one to see it on the plan and the way there.{shown_floor}",
+            "summary": f"{where}. " + t("Tap one to see it on the plan and the way there.") + shown_floor,
             "results": results, "several": [r["room_number"] for r in rooms],
             "map": answer.get("map"), "route": answer.get("route"), "room": answer.get("room"),
             "suggestions": [],

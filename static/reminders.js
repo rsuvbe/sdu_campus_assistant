@@ -18,6 +18,8 @@
   const OFFSET = 5 * 3600e3;
   const DAY = 864e5;
   const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const tr = (text, values) => (window.t ? window.t(text, values)
+    : text.replace(/\{(\w+)\}/g, (m, k) => (values && k in values ? values[k] : m)));
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   const store = {
@@ -73,15 +75,15 @@
   /* "today", "tomorrow", "on Thursday", "next Monday", from campus time. */
   function whenSaid(at, now = Date.now()) {
     const days = Math.round((campus(at).midnight - campus(now).midnight) / DAY);
-    if (days === 0) return "today";
-    if (days === 1) return "tomorrow";
-    const name = DAY_NAMES[campus(at).day];
-    return days >= 7 ? `next ${name}` : `on ${name}`;
+    if (days === 0) return tr("today");
+    if (days === 1) return tr("tomorrow");
+    const name = tr(DAY_NAMES[campus(at).day]);
+    return days >= 7 ? tr("next {day}", { day: name }) : tr("on {day}", { day: name });
   }
 
   // the way to the next class: the assistant starts it from the class before
-  const NEXT_ROUTE = `/?ask=${encodeURIComponent("How do I get to my next class?")}`;
-  const routeTo = (entry) => `/?ask=${encodeURIComponent(`How do I get to ${entry.room_value}?`)}`;
+  const NEXT_ROUTE = `/?ask=${encodeURIComponent(tr("How do I get to my next class?"))}`;
+  const routeTo = (entry) => `/?ask=${encodeURIComponent(tr("How do I get to {room}?", { room: entry.room_value }))}`;
 
   /* ------------------------------------------------------------ the watch */
   let classes = null;
@@ -133,11 +135,11 @@
     store.set(key, "1");
     forgetOld();
     const mins = Math.max(1, Math.round((at - Date.now()) / 6e4));
-    const title = `${entry.subject} in ${mins} min`;
+    const title = tr("{subject} in {n} min", { subject: entry.subject, n: mins });
     const place = entry.on_campus === false ? entry.room_label : `${entry.room_label}, ${entry.where}`;
     const url = entry.on_campus === false ? "/schedule" : NEXT_ROUTE;
     banner(entry, mins, url);
-    notify(title, `${entry.start}–${entry.end} · ${place}${entry.on_campus === false ? "" : ". Tap for the way there."}`, key, url);
+    notify(title, `${entry.start}–${entry.end} · ${place}${entry.on_campus === false ? "" : `. ${tr("Tap for the way there.")}`}`, key, url);
   }
 
   function forgetOld() {
@@ -173,15 +175,15 @@
     const box = document.createElement("aside");
     box.className = "reminder-toast";
     box.setAttribute("role", "status");
-    const where = entry.on_campus === false ? `${esc(entry.room_label)} · no longer in the room directory`
+    const where = entry.on_campus === false ? `${esc(entry.room_label)} · ${esc(tr("no longer in the room directory"))}`
       : `${esc(entry.room_label)} · ${esc(entry.where)}`;
     box.innerHTML = `
-      <p class="reminder-kicker">In ${mins} min · ${esc(entry.start)}–${esc(entry.end)}</p>
+      <p class="reminder-kicker">${esc(tr("In {n} min", { n: mins }))} · ${esc(entry.start)}–${esc(entry.end)}</p>
       <p class="reminder-title">${esc(entry.subject)}</p>
       <p class="reminder-where">${where}</p>
       <div class="reminder-actions">
-        ${entry.on_campus === false ? "" : `<a class="btn-go" href="${url}">How do I get there</a>`}
-        <button type="button" class="btn-text" data-dismiss>Dismiss</button>
+        ${entry.on_campus === false ? "" : `<a class="btn-go" href="${url}">${esc(tr("How do I get there"))}</a>`}
+        <button type="button" class="btn-text" data-dismiss>${esc(tr("Dismiss"))}</button>
       </div>`;
     box.querySelector("[data-dismiss]").addEventListener("click", () => box.remove());
     document.body.append(box);

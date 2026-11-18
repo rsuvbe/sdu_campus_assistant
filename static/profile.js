@@ -55,8 +55,8 @@ async function load() {
   const staff = user.role === "staff";
   if (staff) nameParts = user.email.split("@")[0].split(/[.-]/).filter((part) => part.length >= 3);
   // a member of staff signs in with their name, and has no student number
-  $("#p-band-role").textContent = staff ? "Staff" : "Student";
-  $("#p-name").textContent = user.full_name || "Not given";
+  $("#p-band-role").textContent = staff ? t("Staff") : t("Student");
+  $("#p-name").textContent = user.full_name || t("Not given");
   // the card is headed by the name; without one on file, by the student ID.
   // The photo slot holds the initials, or the SDU mark when there is no name.
   const headline = $("#p-headline");
@@ -85,7 +85,7 @@ async function loadTimetable() {
     if (!res.ok) return;
     const classes = (await res.json()).classes;
     const n = classes.length;
-    $("#tt-count").textContent = n ? `${n} class${n === 1 ? "" : "es"} a week` : "Empty so far";
+    $("#tt-count").textContent = n ? tn(n, "{n} class a week", "{n} classes a week") : t("Empty so far");
     const R = window.SDUReminders;
     if (!n || !R) return;
     const text = (s) => document.createTextNode(s);
@@ -95,7 +95,7 @@ async function loadTimetable() {
     nextBox.replaceChildren();
     const label = document.createElement("p");
     label.className = "field-label";
-    label.textContent = "Your next class";
+    label.textContent = t("Your next class");
     const title = document.createElement("p");
     title.className = "tt-next-title";
     title.textContent = next.subject;
@@ -107,7 +107,7 @@ async function loadTimetable() {
     const go = document.createElement("a");
     go.className = "btn-line";
     go.href = R.NEXT_ROUTE;
-    go.textContent = "How do I get there";
+    go.textContent = t("How do I get there");
     nextBox.append(label, title, line, go);
 
     const today = R.campus().day;
@@ -125,7 +125,7 @@ async function loadTimetable() {
       what.append(b, text(` · ${c.room_label}`));
       li.append(time, what);
       return li;
-    }) : [Object.assign(document.createElement("li"), { className: "tt-today-none", textContent: "No classes today." })]));
+    }) : [Object.assign(document.createElement("li"), { className: "tt-today-none", textContent: t("No classes today.") })]));
     $("#tt-glance").hidden = false;
   } catch { /* the link still works */ }
 }
@@ -135,14 +135,14 @@ async function submit(event) {
   clearMessages();
   const current = $("#current_password").value;
   const next = $("#new_password").value;
-  if (!current) return showError("Enter your current password.", "current_password");
-  if (!checkRules()) return showError("Your new password still misses one of the rules below it.", "new_password");
-  if (next !== $("#confirm").value) return showError("The two new passwords don't match.", "confirm");
-  if (next === current) return showError("Choose a password different from the current one.", "new_password");
+  if (!current) return showError(t("Enter your current password."), "current_password");
+  if (!checkRules()) return showError(t("Your new password still misses one of the rules below it."), "new_password");
+  if (next !== $("#confirm").value) return showError(t("The two new passwords don't match."), "confirm");
+  if (next === current) return showError(t("Choose a password different from the current one."), "new_password");
 
   const button = $("#pw-submit");
   button.disabled = true;
-  button.textContent = "Changing…";
+  button.textContent = t("Changing…");
   try {
     const res = await fetch("/api/profile/password", {
       method: "POST",
@@ -154,20 +154,20 @@ async function submit(event) {
       $("#pw-form").reset();
       checkRules();
       const ok = $("#form-ok");
-      ok.textContent = data.message || "Your password is changed.";
+      ok.textContent = data.message || t("Your password is changed.");
       ok.hidden = false;
     } else if (res.status === 401) {
       window.location.replace("/login");
     } else {
       const d = data.detail;
       if (d && typeof d === "object") showError(d.message, d.field);
-      else showError(typeof d === "string" ? d : "Something went wrong. Try again.");
+      else showError(typeof d === "string" ? d : t("Something went wrong. Try again."));
     }
   } catch (err) {
-    showError(`Couldn't reach the server (${err.message}).`);
+    showError(t("Couldn't reach the server ({error}).", { error: err.message }));
   }
   button.disabled = false;
-  button.textContent = "Change password";
+  button.textContent = t("Change password");
 }
 
 $("#pw-form").addEventListener("submit", submit);
@@ -176,8 +176,8 @@ document.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("cl
   const input = $(`#${b.dataset.toggle}`);
   const shown = input.type === "text";
   input.type = shown ? "password" : "text";
-  b.textContent = shown ? "Show" : "Hide";
-  b.setAttribute("aria-label", shown ? "Show password" : "Hide password");
+  b.textContent = shown ? t("Show") : t("Hide");
+  b.setAttribute("aria-label", shown ? t("Show password") : t("Hide password"));
 }));
 $("#signout").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
