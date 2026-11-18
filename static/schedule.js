@@ -314,7 +314,7 @@ function setupReminders() {
   const paint = () => {
     const { on, lead: mins } = R.settings();
     toggle.setAttribute("aria-pressed", String(on));
-    toggle.querySelector("span").textContent = on ? "Turn off reminders" : "Turn on reminders";
+    toggle.querySelector("span").textContent = on ? t("Turn off reminders") : t("Turn on reminders");
     $("#rm-ics").href = `/api/schedule.ics?lead=${mins}`;
     const perm = "Notification" in window ? Notification.permission : "unsupported";
     $("#rm-state").textContent = !on ? t("Reminders are off.")

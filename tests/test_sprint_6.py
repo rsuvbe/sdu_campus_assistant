@@ -268,6 +268,54 @@ def test_us22_a_question_with_no_language_of_its_own_takes_the_interface_s(me):
     assert me.get("/api/search", params={"q": "Д217"}).json()["lang"] == "en"
 
 
+def test_us22_a_word_both_languages_share_is_answered_in_the_kazakh_interface_s_language(me):
+    # "кофе", "спортзал" are as much Kazakh as Russian: not a Russian question
+    in_lang(me, "kk")
+    for word in ["кофе", "спортзал", "банкомат", "медпункт"]:
+        answer = me.get("/api/search", params={"q": word}).json()
+        assert answer["lang"] == "kk", word
+        assert not re.search(r"\b(?:находится|этаже|здании)\b", answer.get("summary", "")), word
+    # a Russian question stays Russian whatever the interface
+    assert me.get("/api/search", params={"q": "где кофе?"}).json()["lang"] == "ru"
+    assert me.get("/api/search", params={"q": "столовая"}).json()["lang"] == "ru"
+    in_lang(me, "ru")
+    assert me.get("/api/search", params={"q": "спортзал"}).json()["lang"] == "ru"
+
+
+@pytest.mark.parametrize("lang, question, name", [
+    ("kk", "Қызыл асхана қайда?", "Қызыл асхана"), ("kk", "Студенттер үйі қайда", "Студенттер үйі"),
+    ("kk", "Оқу кеңістігі", "Оқу кеңістігі"), ("kk", "Эдвайзинг орталығы қайда", "Эдвайзинг орталығы"),
+    ("ru", "Где красная столовая?", "Красная столовая"), ("ru", "Где студенческий дом?", "Студенческий дом"),
+    ("ru", "Где учебное пространство?", "Учебное пространство"), ("ru", "эдвайзинг-центр", "Эдвайзинг-центр"),
+])
+def test_us21_places_are_named_in_the_language_and_found_by_that_name(lang, question, name):
+    with i18n.use(lang):
+        answer = index.search(question, lang=lang)
+    assert answer["kind"] != "no_match", question
+    assert name in json.dumps(answer, ensure_ascii=False), question
+
+
+def test_us21_the_fallback_suggestions_are_in_the_language(me):
+    answer = in_lang(me, "kk").get("/api/search", params={"q": "Z999"}).json()
+    assert "Кітапхана" in answer["suggestions"] and "Library" not in answer["suggestions"]
+
+
+def test_us21_the_news_comes_from_the_site_in_the_interface_language(monkeypatch):
+    from app import main
+    from app.news import FEEDS
+    assert FEEDS == {"en": "https://sdu.edu.kz/en/feed/", "ru": "https://sdu.edu.kz/ru/feed/",
+                     "kk": "https://sdu.edu.kz/feed/"}
+    asked = []
+    for lang, feed in main.news_feeds.items():
+        monkeypatch.setattr(feed, "_fetch", lambda lang=lang: asked.append(lang) or b"<rss><channel/></rss>")
+    c = someone(8999)
+    assert in_lang(c, "kk").get("/api/news").json()["source"] == "https://sdu.edu.kz/"
+    assert in_lang(c, "ru").get("/api/news").json()["source"] == "https://sdu.edu.kz/ru/"
+    assert asked == ["kk", "ru"]
+    # the date of a story is written by the page, in its language
+    assert "toLocaleDateString(LOCALE" in (STATIC / "events.js").read_text()
+
+
 def test_us22_the_way_there_is_in_the_language_of_the_question(me):
     in_lang(me, "en")
     route = me.get("/api/route", params={"to": "F204", "lang": "kk"}).json()

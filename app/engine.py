@@ -743,13 +743,14 @@ class CampusIndex:
         the question's own language (`lang` when it has none, else the
         interface's), and a Kazakh or Russian question is first put into the
         words the parser knows (app/questions/)."""
-        from .i18n import detect, use
+        from .i18n import answer_lang, detect, use
         from .questions import rewrite
-        asked = detect(query) or lang or current_lang()
+        written = detect(query)     # the patterns to read it with
+        asked = answer_lang(query, lang or current_lang())
         token = ASKED.set(query.strip(" ?.!") if asked != "en" else None)
         try:
             with use(asked):
-                result = self._answer(rewrite(query, asked), now, context, timetable, events)
+                result = self._answer(rewrite(query, written or asked), now, context, timetable, events)
         finally:
             ASKED.reset(token)
         result["query"] = query
@@ -1360,7 +1361,7 @@ class CampusIndex:
             "title": t("I couldn't tell which place you mean"),
             "summary": t("Try a room code like D103 or H304, a faculty such as the Business School, "
                          "or a service like library, cafeteria, dean's office or medcenter."),
-            "suggestions": ["D103", "G215", "Red Hall", "Library"],
+            "suggestions": ["D103", "G215", t("Red Hall"), t("Library")],
         }
 
     def _deanery_answer(self, blocks: list[str], now: datetime | None) -> dict:

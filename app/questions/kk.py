@@ -43,6 +43,13 @@ PLACES = [
     (rf"қызметкерлер(?:дің)?\s+дәретхана[{L}]*", "staff restroom"),
     (rf"(?:дәретхана|әжетхана|жуынатын\s+бөлме)[{L}]*", "restroom"),
     (rf"кітапхана[{L}]*", "library"),
+    # the names the plans give in English, as the Kazakh pages say them
+    (rf"қызыл\s+асхана[{L}]*", "red canteen"),
+    (rf"қызыл\s+зал[{L}]*", "red hall"),
+    (rf"көк\s+зал[{L}]*", "blue hall"),
+    (rf"студенттер\s+үй[{L}]*", "student house"),
+    (rf"қосымша\s+білім(?:\s+беру)?\s+орталы[{L}]*", "extension center"),
+    (rf"эдвайзинг[{L}]*(?:\s+орталы[{L}]*)?", "advising desk"),
     (rf"асхана[{L}]*", "cafeteria"),
     (rf"(?:медпункт|медициналық\s+орталы[{L}]*|дәрігер)[{L}]*", "medcenter"),
     (rf"(?:гардероб|киім\s+іл(?:етін|гіш)[{L}]*)[{L}]*", "wardrobe"),

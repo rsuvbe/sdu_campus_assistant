@@ -187,6 +187,26 @@ NAME_WORDS = {"red", "hall", "canteen", "coffee", "doner", "house", "ay", "marke
               "shanyraq", "medcenter", "no"}
 
 
+# What makes Cyrillic Russian rather than a word both languages share ("кофе",
+# "спортзал", "банкомат"): a Russian question word or preposition, or a Russian
+# ending ("столовая", "находится", "пройти").
+RU_MARKERS = re.compile(
+    r"(?<![^\W\d_])(?:где|как|куда|когда|откуда|что|это|есть|ли|мне|мой|моя|мои|в|во|на|до|из|от|к|ко|"
+    r"с|у|и|или|по|для|сегодня|завтра|сейчас|открыт\w*|закрыт\w*|можно|нужно|хочу)(?![^\W\d_])"
+    r"|[а-яё]{2,}(?:ая|яя|ый|ий|ое|ее|ые|ие|ого|его|ому|ему|ть|ться|тся|ешь|ишь|ете|ите)(?![^\W\d_])",
+    re.I)
+
+
+def answer_lang(question: str, interface: str | None) -> str:
+    """The language to answer a question in (US22): its own, or the interface's
+    when it has none. Cyrillic with nothing Russian about it ("кофе", "спортзал")
+    is as much Kazakh as Russian, so a Kazakh interface answers it in Kazakh."""
+    asked = detect(question)
+    if asked == "ru" and interface == "kk" and not RU_MARKERS.search(question or ""):
+        return "kk"
+    return asked or clean(interface)
+
+
 def detect(question: str) -> str | None:
     """The language a question is written in, or None when it has none of its
     own: a code ("D103", "Д217"), a hall's name ("Red Hall")."""

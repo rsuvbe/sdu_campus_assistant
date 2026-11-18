@@ -33,7 +33,7 @@ from .engine import CampusIndex, campus_now
 from .floorplan import CampusMap
 from .routing import Router
 from .mailer import mail_configured, send_reset_link
-from .news import NewsFeed, fetch_picture
+from .news import FEEDS, PAGES, NewsFeed, fetch_feed, fetch_picture
 from .pages import render as render_page
 from .sdulife import SduLifeSync, fetch_poster
 
@@ -127,6 +127,9 @@ def _events_changed() -> None:
 
 
 news_feed = NewsFeed()
+# the same news in the site's other languages (the English one above)
+news_feeds = {lang: NewsFeed(fetch=functools.partial(fetch_feed, FEEDS[lang]), page=PAGES[lang])
+              for lang in FEEDS if lang != "en"}
 
 
 def _room_of(place: str) -> str | None:
@@ -319,7 +322,7 @@ def search(request: Request, q: str = Query(..., min_length=1, max_length=200,
     visitor = user["role"] == ROLE_VISITOR
     timetable = None if visitor else (lambda: users.classes(user["user_id"]))
     result = index.search(q, context=context, timetable=timetable, events=added_events,
-                          lang=i18n.detect(q) or i18n.current())
+                          lang=i18n.current())
     if not visitor and record:
         # US23: an account's questions are kept; a visitor's never are
         users.record_search(user["user_id"], q)
@@ -712,7 +715,7 @@ def news_picture(src: str = Query(..., max_length=400)):
 def news(user: dict = Depends(current_user)):
     """The latest news from sdu.edu.kz, read from its RSS feed and kept for half
     an hour. News carries the day it was published, not the day of an event."""
-    return news_feed.latest()
+    return news_feeds.get(i18n.current(), news_feed).latest()
 
 
 # ---------------------------------------------------------------------- site

@@ -210,12 +210,18 @@ async function loadNews() {
   }
 }
 
+/* the day a story was published, in the page's language ("18 қараша 2026") */
+function newsDate(item) {
+  const d = new Date(String(item.published || "").replace(" ", "T"));
+  return isNaN(d) ? item.date : d.toLocaleDateString(LOCALE, { day: "numeric", month: "long", year: "numeric" });
+}
+
 function newsItem(item, i) {
   return `<li class="news-item">
     <a class="news-link" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
       ${item.image ? `<img class="news-pic" src="${esc(item.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="news-pic none" aria-hidden="true"></span>`}
       <span class="news-text">
-        <span class="news-date">${esc(item.date)}</span>
+        <span class="news-date">${esc(newsDate(item))}</span>
         <b>${esc(item.title)}</b>
         ${item.excerpt ? `<span class="news-excerpt">${esc(item.excerpt)}</span>` : ""}
       </span>

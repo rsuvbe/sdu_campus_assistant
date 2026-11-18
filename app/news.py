@@ -1,5 +1,6 @@
 """
-News from SDU University's own site, sdu.edu.kz, read from its English RSS feed.
+News from SDU University's own site, sdu.edu.kz, read from its RSS feed in the
+interface's language: the site writes each story in Kazakh, Russian and English.
 
 The university publishes no events in a form a program can read (its events
 page is empty, and the "upcoming events" on its home page are pictures), but
@@ -27,6 +28,9 @@ from .engine import CAMPUS_TZ
 
 FEED_URL = "https://sdu.edu.kz/en/feed/"
 NEWS_PAGE = "https://sdu.edu.kz/en/"
+# the site's own languages: Kazakh is its default, without a prefix
+FEEDS = {"en": FEED_URL, "ru": "https://sdu.edu.kz/ru/feed/", "kk": "https://sdu.edu.kz/feed/"}
+PAGES = {"en": NEWS_PAGE, "ru": "https://sdu.edu.kz/ru/", "kk": "https://sdu.edu.kz/"}
 SITE = re.compile(r"^https://(?:www\.)?sdu\.edu\.kz/[^\s\"'<>]*$")
 FRESH = 30 * 60              # seconds a fetched feed is used before asking again
 RETRY = 5 * 60               # after a failure, seconds before trying again
@@ -139,8 +143,8 @@ def parse_feed(body: bytes) -> list[dict]:
 class NewsFeed:
     """The feed, kept in memory and asked again when it has gone stale."""
 
-    def __init__(self, fetch=fetch_feed, clock=time.monotonic) -> None:
-        self._fetch, self._clock = fetch, clock
+    def __init__(self, fetch=fetch_feed, clock=time.monotonic, page: str = NEWS_PAGE) -> None:
+        self._fetch, self._clock, self._page = fetch, clock, page
         self._lock = threading.Lock()
         self._items: list[dict] = []
         self._fetched_at: datetime | None = None
@@ -161,6 +165,6 @@ class NewsFeed:
             finally:
                 self._lock.release()
         items = [{**item, "image": picture_path(item.get("image"))} for item in self._items]
-        return {"items": items, "source": NEWS_PAGE,
+        return {"items": items, "source": self._page,
                 "fetched_at": self._fetched_at.strftime("%Y-%m-%d %H:%M") if self._fetched_at else None,
                 "stale": not self._ok}

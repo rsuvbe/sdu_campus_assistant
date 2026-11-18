@@ -108,6 +108,17 @@ every responsibility, QA scenario and (Pass)/(Fail) test script of US21 to US24.
 | US23 Search History and Favourites | Tables `search_history` and `favourites`, keyed by account. The last 10 questions are kept (asked again, one moves up; a press on the plan is not kept), listed on the main page under **Recent searches**, one tap repeats one, **Clear** empties it. **Star** on a room's or service's card; starred rooms are chips at the top of the page, a cross unstars. `/api/history`, `/api/favourites/{room}` (PUT/DELETE). A visitor gets 403 and nothing is written |
 | US24 Mobile Layout | Plain CSS. Every page was walked at 375 px in all three languages with a headless Chromium: no page scrolls sideways; controls are at least 44 px on a phone; long Russian and Kazakh words wrap inside their card (the route card used to push past the screen in Russian). The plan already filled the width with pinch and drag (Sprint 3) |
 
+**Names and outside texts.** Places named in English on the plans are said in
+the language when the name says what the place is (Study Space → Оқу кеңістігі,
+Red Canteen → Қызыл асхана / Красная столовая, Student House, Advising Desk,
+Sport Hall, Red and Blue Hall), and the question patterns find them by those
+words too; brands keep their name (Doner House, Red Coffee, Ay Market, SDU Life
+Centre, Moodle). Cyrillic with nothing Russian about it ("кофе", "спортзал") is
+answered in Kazakh when the interface is Kazakh (`i18n.answer_lang`). The news
+is read from sdu.edu.kz's feed in the interface language (`/feed/` is Kazakh,
+`/ru/feed/`, `/en/feed/`). Events' titles and descriptions are SDU Life's, which
+has one text per event whatever its language.
+
 **Translations still to read by a person:** the Russian and Kazakh files were
 written for this sprint; the team should read the Kazakh one before it is
 called final, the route steps above all.
