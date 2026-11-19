@@ -177,8 +177,14 @@ def human_list(items: list[str]) -> str:
 KK_LETTERS = re.compile(r"[әіңғүұқөһ]", re.I)
 KK_WORDS = re.compile(r"(?<![^\W\d_])(?:қайда|қай\s+жерде|қалай|барамын|барам|баруға|бару|жетемін|жету|"
                       r"бөлме\w*|аудиториясы\w*|кабинеті\w*|кітапхана\w*|асхана\w*|сабағ\w*|сабақ\w*|"
-                      r"келесі|дәріс\w*|қабат\w*|блогы\w*|ғимарат\w*|ашық\w*|жабық\w*|кіреберіс\w*|залы\w*|"
+                      r"келесі|дәріс\w*|қабат\w*|блогы\w*|корпусы\w*|ғимарат\w*|ашық\w*|жабық\w*|кіреберіс\w*|"
+                      r"залы\w*|іс-?\s?шара\w*|шаралар\w*|дәретхана\w*|әжетхана\w*|жатақхана\w*|медбике\w*|деканаты\w*|"
                       r"мен|менің|маған|ма|ме|ба|бе|па|пе)(?![^\W\d_])", re.I)
+# the same words as Kazakh is typed on a Russian keyboard: "кайда", "калай", "китапхана"
+KK_WORDS_PLAIN = re.compile(KK_WORDS.pattern.translate(str.maketrans("әғқңөұүһі", "агкноуухи")), re.I)
+# a room code with a Kazakh ending: "F204-ке", "D103 тен", "G215ге" (no Russian ending looks like these)
+KK_CODE_ENDING = re.compile(r"(?<![^\W\d_])[a-iа-я]\s?\d{3}\s?-?\s?(?:тен|тан|ден|дан|нен|нан|ке|ка|ге|га|ға|қа|"
+                            r"ның|нің|дың|дің|тың|тің)(?![^\W\d_])", re.I)
 CYRILLIC = re.compile(r"[а-яё]", re.I)
 LATIN_WORD = re.compile(r"(?<![^\W\d_])[a-z]{2,}(?![^\W\d_])", re.I)
 # words that are a place's name or a code's letter, not a language: "Red Hall", "Block"
@@ -212,6 +218,11 @@ def detect(question: str) -> str | None:
     own: a code ("D103", "Д217"), a hall's name ("Red Hall")."""
     text = question or ""
     if KK_LETTERS.search(text) or KK_WORDS.search(text):
+        return "kk"
+    # Kazakh typed without its letters ("китапхана кайда", "кiтапхана") or in
+    # Latin ones ("kitaphana qaida"): the same words, in one spelling
+    from .questions.kk import is_latin_kazakh, plain
+    if is_latin_kazakh(text) or KK_CODE_ENDING.search(text) or KK_WORDS_PLAIN.search(plain(text)):
         return "kk"
     # Cyrillic words, not a lone block letter typed in Cyrillic ("Д217")
     words = re.findall(r"[^\W\d_]+", text)
