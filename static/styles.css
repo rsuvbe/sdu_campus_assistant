@@ -20,6 +20,7 @@
   --exit: #0B7A47;            /* evacuation-plan green: exits, stairs, open */
   --exit-soft: #DEF0E6;
   --alarm: #B93A2C;           /* errors only */
+  --me: #1F6FEB;              /* "you are here": the GPS dot, apart from every place colour */
   --alarm-soft: #FBE6E2;
 
   /* stock and ink */
@@ -83,6 +84,7 @@
    and the main button becomes the lit peach. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
+    --me: #5B9DFF;
     --navy: #2F345C; --navy-deep: #22264A; --navy-hi: #3E4475;
     --on-navy-2: #C3C7E2; --on-navy-3: #9CA2C8;
     --dest: #F29D66; --dest-soft: #3A2418;
@@ -101,6 +103,7 @@
   }
 }
 :root[data-theme="dark"] {
+  --me: #5B9DFF;
   --navy: #2F345C; --navy-deep: #22264A; --navy-hi: #3E4475;
   --on-navy-2: #C3C7E2; --on-navy-3: #9CA2C8;
   --dest: #F29D66; --dest-soft: #3A2418;
@@ -900,6 +903,23 @@ a.dir-row { color: inherit; text-decoration: none; }
 .tool + .tool { border-top: 1px solid var(--line); }
 .tool:hover { background: var(--stock-2); color: var(--dest); }
 .tool:active { background: var(--line); }
+.tool.is-on { color: var(--me); }
+.tool.is-follow { background: var(--me); color: #fff; }
+.tool.is-follow:hover { background: var(--me); color: #fff; }
+.tool.is-waiting .i { animation: me-wait 1.2s var(--ease) infinite; }
+@keyframes me-wait { 50% { opacity: .35; } }
+
+/* where I am: the GPS dot, the circle it may be off by, the way the phone faces */
+.lay-me { pointer-events: none; }
+.me-acc { fill: var(--me); fill-opacity: .12; stroke: var(--me); stroke-opacity: .45; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.me-ring { fill: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+.me-core { fill: var(--me); }
+.me-cone path { fill: var(--me); fill-opacity: .28; }
+.me.is-weak .me-core { fill: var(--ink-3); }
+.me.is-weak .me-acc { fill: var(--ink-3); stroke: var(--ink-3); }
+.me:not(.is-weak) .me-core { animation: me-breathe 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes me-breathe { 50% { scale: .82; } }
+@media (prefers-reduced-motion: reduce) { .me-core, .tool.is-waiting .i { animation: none; } }
 
 .stage-msg {
   position: absolute; left: 50%; top: var(--s4); translate: -50% 0;   /* the rise animation owns transform */

@@ -181,7 +181,9 @@
   "optional": "необязательно",
   "or": "или",
   "sdu.edu.kz": "sdu.edu.kz",
-  "see what's on": "узнайте, что происходит"
+  "see what's on": "узнайте, что происходит",
+  "Show where I am": "Показать, где я",
+  "Where I am": "Где я"
  },
  "script": {
   " · it couldn't be reached just now": " · сейчас недоступен",
@@ -601,7 +603,13 @@
   "{room} · Floor {floor}, Block {block}": "{room} · Этаж {floor}, блок {block}",
   "{subject} in {n} min": "{subject} через {n} мин",
   "{subject}, {day} {start} to {end}, {room}": "{subject}, {day} с {start} до {end}, {room}",
-  "{subject}: choose its room from the list, or untick it.": "{subject}: выберите аудиторию из списка или снимите отметку."
+  "{subject}: choose its room from the list, or untick it.": "{subject}: выберите аудиторию из списка или снимите отметку.",
+  "You're {n} km from the campus: the dot shows up once you're here.": "Вы в {n} км от кампуса: точка появится, когда будете здесь.",
+  "GPS is weak here, give or take {n} m. Indoors it can be off by a block, and it never knows the floor.": "GPS здесь слабый, погрешность ±{n} м. В здании может ошибаться на целый блок, а этаж не определяет вовсе.",
+  "Allow location for this site to see where you are on the map.": "Разрешите сайту доступ к геолокации, чтобы видеть себя на карте.",
+  "No GPS fix yet. It comes faster outdoors or by a window.": "GPS пока не поймал сигнал. На улице или у окна это быстрее.",
+  "This browser can't tell where you are.": "Этот браузер не умеет определять местоположение.",
+  "Location only works on the secure (https) address of the site.": "Геолокация работает только по защищённому адресу сайта (https)."
  },
  "answers": {
   " along Block {block}": " вдоль блока {block}",

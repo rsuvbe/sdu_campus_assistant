@@ -181,7 +181,9 @@
   "optional": "optional",
   "or": "or",
   "sdu.edu.kz": "sdu.edu.kz",
-  "see what's on": "see what's on"
+  "see what's on": "see what's on",
+  "Show where I am": "Show where I am",
+  "Where I am": "Where I am"
  },
  "script": {
   " · it couldn't be reached just now": " · it couldn't be reached just now",
@@ -592,7 +594,13 @@
   "{room} · Floor {floor}, Block {block}": "{room} · Floor {floor}, Block {block}",
   "{subject} in {n} min": "{subject} in {n} min",
   "{subject}, {day} {start} to {end}, {room}": "{subject}, {day} {start} to {end}, {room}",
-  "{subject}: choose its room from the list, or untick it.": "{subject}: choose its room from the list, or untick it."
+  "{subject}: choose its room from the list, or untick it.": "{subject}: choose its room from the list, or untick it.",
+  "You're {n} km from the campus: the dot shows up once you're here.": "You're {n} km from the campus: the dot shows up once you're here.",
+  "GPS is weak here, give or take {n} m. Indoors it can be off by a block, and it never knows the floor.": "GPS is weak here, give or take {n} m. Indoors it can be off by a block, and it never knows the floor.",
+  "Allow location for this site to see where you are on the map.": "Allow location for this site to see where you are on the map.",
+  "No GPS fix yet. It comes faster outdoors or by a window.": "No GPS fix yet. It comes faster outdoors or by a window.",
+  "This browser can't tell where you are.": "This browser can't tell where you are.",
+  "Location only works on the secure (https) address of the site.": "Location only works on the secure (https) address of the site."
  },
  "answers": {
   " along Block {block}": " along Block {block}",

@@ -104,6 +104,40 @@ ROADS = [
     {"kind": "edge", "points": [(565, 670), (662, 670), (662, 200)]},
 ]
 
+# Where the map is on the Earth, so a phone's GPS fix can be shown on it.
+# The plan is not quite north up, and the evacuation sheets are a touch longer
+# than they are wide, so the map from the plan to the ground is affine: fitted by
+# laying floor 1 and the Student House over their OpenStreetMap outlines (way
+# 244454250, the main building, and way 384190773) until they covered each other
+# best (intersection over union 0.75 and 0.68: the plans are drawn from the
+# sheets, not surveyed). The wings, the round halls and SDU Life Centre then land
+# on their own outlines too, within about 5 m.
+#   east  = a*x + b*y + c   (metres east of LAT0/LON0)
+#   south = d*x + e*y + f   (metres south of it)
+GEO = {
+    "lat0": 43.2075, "lon0": 76.6695,
+    "m_per_lon": 81138.812,   # metres in a degree of longitude at that latitude
+    "m_per_lat": 110574.0,    # and in a degree of latitude
+    "affine": [[0.1035756, 0.0172697, -186.6569], [-0.0103951, 0.1091235, -197.0395]],
+}
+
+
+def to_ground(x: float, y: float) -> tuple[float, float]:
+    """A point of the map, as (latitude, longitude)."""
+    (a, b, c), (d, e, f) = GEO["affine"]
+    east, south = a * x + b * y + c, d * x + e * y + f
+    return GEO["lat0"] - south / GEO["m_per_lat"], GEO["lon0"] + east / GEO["m_per_lon"]
+
+
+def from_ground(lat: float, lon: float) -> tuple[float, float]:
+    """A (latitude, longitude), as a point of the map (the inverse of to_ground)."""
+    (a, b, c), (d, e, f) = GEO["affine"]
+    east = (lon - GEO["lon0"]) * GEO["m_per_lon"] - c
+    south = (GEO["lat0"] - lat) * GEO["m_per_lat"] - f
+    det = a * e - b * d
+    return (e * east - b * south) / det, (a * south - d * east) / det
+
+
 def to_site(x: float, y: float) -> list[float]:
     """A pixel of the traced map, in the Campus view's units."""
     return [round(PLAN_ORIGIN[0] + (x - PHOTO_ORIGIN[0]) * SCALE + SHIFT[0], 1),
@@ -182,4 +216,6 @@ def build_grounds() -> dict:
         "roads": [{"kind": r["kind"], "points": [to_site(*p) for p in r["points"]]} for r in ROADS],
         # seen only when the whole campus is in view, where the rooms can't be read
         "labels": [{"text": "Main building", "sub": "Blocks A–I", "x": main_x, "y": main_y}],
+        # for the "where am I" dot: the phone's GPS fix, put on the map
+        "geo": GEO,
     }

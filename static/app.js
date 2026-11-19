@@ -178,6 +178,7 @@ function renderExamples() {
 async function ask(text, record = true) {
   const query = text.trim();
   if (!query) return;
+  stopFollowing();   // the answer takes the plan; the dot stays where you are
   const log = $("#log");
   $("#thread").classList.add("asked");
   if (handset()) {
@@ -772,6 +773,8 @@ function drawFloor(floor) {
   state.svg = built.svg;
   state.overSvg = built.over;
   state.focusLayer = built.focus;
+  state.meLayer = built.me;
+  paintMe();
   if (state.shown) renderView();
 }
 
@@ -849,6 +852,7 @@ function buildFloor(floor, host) {
     width: "100%", height: "100%", preserveAspectRatio: "xMinYMin meet", "aria-hidden": "true",
   }, host);
   const focus = el("g", { class: "lay-focus" }, over);
+  const me = el("g", { class: "lay-me" }, over);
 
   // The envelope is drawn twice: once with a fat wall stroke, then again with
   // fill only, which hides the seams where the parts overlap and leaves one
@@ -964,7 +968,7 @@ function buildFloor(floor, host) {
     else sub.remove();
   });
 
-  const built = { svg, over, focus };
+  const built = { svg, over, focus, me };
   drawnFloors.set(floor, built);
   // the Main building's name, for when the whole campus is in view: over the plan
   (state.grounds?.labels || []).forEach((l) => {
@@ -1335,6 +1339,201 @@ function showStageMsg(text) {
 }
 function hideStageMsg() { $("#stage-msg").hidden = true; }
 
+/* ------------------------------------------------------------ map: where I am */
+/* The phone's own GPS fix as a dot on the plan, with the circle it may be off
+   by and, where the phone has a compass, the way it faces. The map knows where
+   it is on the Earth (grounds.geo, from app/site.py), so a latitude and
+   longitude become a point of the plan. Outdoors a fix is good to a few metres;
+   under the roof it drifts, and GPS never knows the floor, so the circle grows
+   and the dot is shown on whichever floor is open. */
+const me = { watch: false, id: 0, fix: null, follow: false, first: true, heading: null, compass: false,
+             asked: false, dot: null, cone: null, warned: {} };
+const ME_DOT = 8;          // the dot's radius, in screen pixels at any zoom
+const ME_WEAK = 25;        // metres: a fix worse than this is drawn as unsure
+const ME_OFF_MAP = 400;    // plan units past the edge of the map: not on campus
+
+function geoMatrix() {
+  const g = state.grounds?.geo;
+  if (!g) return null;
+  const [[a, b, c], [d, e, f]] = g.affine;
+  return { g, a, b, c, d, e, f, det: a * e - b * d };
+}
+
+/** A latitude and longitude, as a point of the plan. */
+function groundToPlan(lat, lon) {
+  const m = geoMatrix();
+  const east = (lon - m.g.lon0) * m.g.m_per_lon - m.c;
+  const south = (m.g.lat0 - lat) * m.g.m_per_lat - m.f;
+  return [(m.e * east - m.b * south) / m.det, (m.a * south - m.d * east) / m.det];
+}
+
+/** How many metres one plan unit is on the ground. */
+const metresPerUnit = () => Math.sqrt(Math.abs(geoMatrix().det));
+
+/** A compass bearing (0 = north, clockwise), as a turn on the plan (0 = up). */
+function planBearing(deg) {
+  const m = geoMatrix();
+  const r = (deg * Math.PI) / 180;
+  const east = Math.sin(r), south = -Math.cos(r);
+  const x = (m.e * east - m.b * south) / m.det, y = (m.a * south - m.d * east) / m.det;
+  return (Math.atan2(x, -y) * 180) / Math.PI;
+}
+
+function paintMe() {
+  const layer = state.meLayer;
+  if (!layer) return;
+  layer.replaceChildren();
+  me.dot = me.cone = null;
+  const fix = me.fix;
+  if (!fix || fix.off) return;
+  const weak = fix.acc > ME_WEAK;
+  const g = el("g", { class: `me${weak ? " is-weak" : ""}` }, layer);
+  el("circle", { class: "me-acc", cx: fix.x, cy: fix.y, r: fix.acc / metresPerUnit() }, g);
+  me.dot = el("g", { class: "me-dot" }, g);
+  me.cone = el("g", { class: "me-cone" }, me.dot);
+  el("path", { d: "M0 0 L-13 -30 A32 32 0 0 1 13 -30 Z" }, me.cone);
+  el("circle", { class: "me-ring", r: ME_DOT + 3 }, me.dot);
+  el("circle", { class: "me-core", r: ME_DOT }, me.dot);
+  turnMe();
+  scaleMe(state.shown?.s || 1);
+}
+
+function scaleMe(s) {
+  if (me.dot && me.fix) me.dot.setAttribute("transform", `translate(${me.fix.x} ${me.fix.y}) scale(${1 / s})`);
+}
+
+function turnMe() {
+  if (!me.cone) return;
+  me.cone.style.display = me.heading == null ? "none" : "";
+  if (me.heading != null) me.cone.setAttribute("transform", `rotate(${planBearing(me.heading).toFixed(1)})`);
+}
+
+function locateButton() {
+  const b = $("#locate");
+  b.setAttribute("aria-pressed", me.watch ? "true" : "false");
+  b.classList.toggle("is-on", !!me.watch);
+  b.classList.toggle("is-follow", !!me.watch && me.follow);
+  b.classList.toggle("is-waiting", !!me.watch && !me.fix);
+}
+
+function warnOnce(key, text) {
+  if (me.warned[key]) return;
+  me.warned[key] = true;
+  showStageMsg(text);
+}
+
+function centreOnMe(first) {
+  const fix = me.fix;
+  if (!fix || fix.off) return;
+  if (first) {
+    // close enough to read the rooms round you, far enough out to see the whole circle
+    const r = stageRect();
+    const across = (2 * fix.acc) / metresPerUnit() + 1;
+    const s = Math.min(ROOM_ZOOM, Math.max((Math.min(r.width, r.height) - 96) / across, state.view.fit));
+    focusOn(fix.x, fix.y, s, true);
+  } else {
+    focusOn(fix.x, fix.y, state.view.s, true);
+  }
+}
+
+function onFix(pos) {
+  const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+  const [x, y] = groundToPlan(latitude, longitude);
+  const f = state.floor;
+  const off = !f || x < -ME_OFF_MAP || y < -ME_OFF_MAP || x > f.width + ME_OFF_MAP || y > f.height + ME_OFF_MAP;
+  me.fix = { x, y, acc: Math.max(accuracy || 0, 3), off };
+  // walking, the direction of travel stands in for a compass the phone doesn't have
+  if (!me.compass && speed > 0.6 && Number.isFinite(heading)) me.heading = heading;
+  if (off) {
+    const m = metresPerUnit();
+    const cx = (f?.width || 0) / 2, cy = (f?.height || 0) / 2;
+    const km = (Math.hypot(x - cx, y - cy) * m) / 1000;
+    warnOnce("far", t("You're {n} km from the campus: the dot shows up once you're here.", { n: km.toFixed(km < 10 ? 1 : 0) }));
+  } else {
+    me.warned.far = false;
+    if (accuracy > ME_WEAK) {
+      warnOnce("weak", t("GPS is weak here, give or take {n} m. Indoors it can be off by a block, and it never knows the floor.", { n: Math.round(accuracy) }));
+    }
+  }
+  paintMe();
+  if (me.follow) { centreOnMe(me.first); me.first = false; }
+  locateButton();
+}
+
+function onFixError(err) {
+  if (err.code === err.PERMISSION_DENIED) {
+    stopLocating();
+    showStageMsg(t("Allow location for this site to see where you are on the map."));
+  } else if (!me.fix) {
+    warnOnce("nofix", t("No GPS fix yet. It comes faster outdoors or by a window."));
+  }
+}
+
+// The compass: Safari asks for it, and only from a tap; Chrome gives the
+// bearing from north as deviceorientationabsolute.
+function askCompass() {
+  if (me.asked) return;
+  me.asked = true;
+  const D = window.DeviceOrientationEvent;
+  if (!D) return;
+  const listen = () => window.addEventListener(
+    "ondeviceorientationabsolute" in window ? "deviceorientationabsolute" : "deviceorientation", onTurn);
+  if (typeof D.requestPermission === "function") {
+    D.requestPermission().then((r) => { if (r === "granted") listen(); }).catch(() => {});
+  } else listen();
+}
+
+let turnFrame = 0;
+function onTurn(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === "number") h = e.webkitCompassHeading;
+  else if (e.absolute && e.alpha != null) h = 360 - e.alpha;
+  if (h == null || !me.watch) return;
+  me.compass = true;
+  me.heading = (h + (screen.orientation?.angle || 0) + 360) % 360;
+  if (!turnFrame) turnFrame = requestAnimationFrame(() => { turnFrame = 0; turnMe(); });
+}
+
+function stopLocating() {
+  if (me.watch) navigator.geolocation.clearWatch(me.id);
+  me.watch = false;
+  me.fix = null;
+  me.follow = false;
+  me.heading = null;
+  me.warned = {};
+  paintMe();
+  locateButton();
+}
+
+function stopFollowing() {
+  if (!me.follow) return;
+  me.follow = false;
+  locateButton();
+}
+
+/** The button: the first press finds you and keeps the plan on you; once you've
+    moved the plan away, a press brings it back; pressed while it follows, it stops. */
+function pressLocate() {
+  if (!("geolocation" in navigator)) { showStageMsg(t("This browser can't tell where you are.")); return; }
+  if (!window.isSecureContext) { showStageMsg(t("Location only works on the secure (https) address of the site.")); return; }
+  askCompass();
+  if (me.watch && me.follow) { stopLocating(); return; }
+  if (me.watch) {
+    me.follow = true;
+    if (me.fix?.off) { me.warned.far = false; if (onFix.last) onFix(onFix.last); }
+    centreOnMe(false);
+    locateButton();
+    return;
+  }
+  me.follow = true;
+  me.first = true;
+  me.watch = true;
+  me.id = navigator.geolocation.watchPosition(
+    (pos) => { onFix.last = pos; onFix(pos); }, onFixError,
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+  locateButton();
+}
+
 /* ------------------------------------------------------------ map: pan & zoom */
 // The plan can be dragged and zoomed, but never lost: at least this much of it
 // (in screen pixels, or a third of the stage on a small screen) stays in view.
@@ -1407,6 +1606,7 @@ function renderView() {
   const c = $("#canvas").style;
   c.setProperty("--zs", v.s.toFixed(4));
   c.setProperty("--label-a", Math.min(Math.max((v.s - LABEL_SCALE * 0.7) / (LABEL_SCALE * 0.5), 0), 1).toFixed(3));
+  scaleMe(v.s);
 }
 
 // A drag or a pinch moves the plan once a frame, however often the finger reports.
@@ -1518,6 +1718,7 @@ function setupPanZoom() {
   stage.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button, a")) return;   // the zoom buttons are pressed, not dragged
     settleView();
+    stopFollowing();   // the reader moves the plan: it stops keeping up with the dot
     pointers.set(e.pointerId, local(e));
     if (pointers.size === 2) {
       pointers.forEach((_, id) => capture(id));
@@ -1581,7 +1782,8 @@ function setupPanZoom() {
 
   $("#zoom-in").addEventListener("click", () => zoomBy(1.4));
   $("#zoom-out").addEventListener("click", () => zoomBy(1 / 1.4));
-  $("#zoom-fit").addEventListener("click", () => fitView(true));
+  $("#zoom-fit").addEventListener("click", () => { stopFollowing(); fitView(true); });
+  $("#locate").addEventListener("click", pressLocate);
 
   let resizeT;
   new ResizeObserver(([entry]) => {

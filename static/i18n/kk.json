@@ -181,7 +181,9 @@
   "optional": "міндетті емес",
   "or": "немесе",
   "sdu.edu.kz": "sdu.edu.kz",
-  "see what's on": "не болып жатқанын біліңіз"
+  "see what's on": "не болып жатқанын біліңіз",
+  "Show where I am": "Мен қайдамын, көрсету",
+  "Where I am": "Мен қайдамын"
  },
  "script": {
   " · it couldn't be reached just now": " · қазір қолжетімсіз",
@@ -565,7 +567,13 @@
   "{room} · Floor {floor}, Block {block}": "{room} · {floor}-қабат, {block} блогы",
   "{subject} in {n} min": "{subject} — {n} минуттан кейін",
   "{subject}, {day} {start} to {end}, {room}": "{subject}, {day} {start}–{end}, {room}",
-  "{subject}: choose its room from the list, or untick it.": "{subject}: тізімнен аудиторияны таңдаңыз немесе белгіні алыңыз."
+  "{subject}: choose its room from the list, or untick it.": "{subject}: тізімнен аудиторияны таңдаңыз немесе белгіні алыңыз.",
+  "You're {n} km from the campus: the dot shows up once you're here.": "Сіз кампустан {n} км қашықтасыз: осында келгенде нүкте шығады.",
+  "GPS is weak here, give or take {n} m. Indoors it can be off by a block, and it never knows the floor.": "Мұнда GPS әлсіз, қателігі ±{n} м. Ғимарат ішінде бір блокқа қателесуі мүмкін, ал қабатты мүлде анықтамайды.",
+  "Allow location for this site to see where you are on the map.": "Картада өзіңізді көру үшін сайтқа геолокацияға рұқсат беріңіз.",
+  "No GPS fix yet. It comes faster outdoors or by a window.": "GPS әлі сигнал ұстаған жоқ. Далада не терезе жанында тезірек болады.",
+  "This browser can't tell where you are.": "Бұл браузер орныңызды анықтай алмайды.",
+  "Location only works on the secure (https) address of the site.": "Геолокация тек сайттың қорғалған (https) мекенжайында жұмыс істейді."
  },
  "answers": {
   " along Block {block}": ", {block} блогының бойымен",

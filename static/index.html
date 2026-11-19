@@ -40,6 +40,7 @@
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.7" r="2.3"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></symbol>
   <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12h15M12.5 5.5 19 12l-6.5 6.5"/></symbol>
   <symbol id="i-out" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M3 12h11M7.5 7.5 3 12l4.5 4.5"/></symbol>
@@ -168,6 +169,7 @@
       <div class="stage" id="stage">
         <div class="canvas" id="canvas"></div>
         <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" class="tool" id="locate" aria-label="Show where I am" title="Where I am" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-locate"/></svg></button>
           <button type="button" class="tool" id="zoom-in" aria-label="Zoom in"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
           <button type="button" class="tool" id="zoom-out" aria-label="Zoom out"><svg class="i" aria-hidden="true"><use href="#i-minus"/></svg></button>
           <button type="button" class="tool" id="zoom-fit" aria-label="Show the whole floor" title="Whole floor"><svg class="i" aria-hidden="true"><use href="#i-fit"/></svg></button>
