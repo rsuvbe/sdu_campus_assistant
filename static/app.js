@@ -795,11 +795,16 @@ function predrawFloors() {
 
 /** The campus round the main building, the same under every floor: drives,
     sports grounds and the buildings that stand apart. Their names keep one size
-    on screen at any zoom, so they read even with the whole campus in view. */
+    on screen at any zoom, so they read even with the whole campus in view.
+    The buildings and the grounds' names come back in a layer of their own, put
+    over the plan once it is drawn: a name is wider on screen than its building
+    when the whole campus is in view, and under the main building's walls or a
+    neighbour's roof it was cut off. */
 function drawGrounds(svg) {
   const g0 = state.grounds;
-  if (!g0) return;
+  if (!g0) return null;
   const ground = el("g", { class: "lay-grounds" }, svg);
+  const named = el("g", { class: "lay-campus" }, svg);
   g0.roads.forEach((r) => el("polyline", { class: `road ${r.kind}`, points: path(r.points) }, ground));
   const centre = (pts) => {
     const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
@@ -809,13 +814,13 @@ function drawGrounds(svg) {
     el("polygon", { class: "ground", points: path(g.points) }, ground);
     if (g.label) {
       const [x, y] = centre(g.points);
-      el("text", { class: "campus-name ground-name", x, y }, ground).textContent = g.label;
+      el("text", { class: "campus-name ground-name", x, y }, named).textContent = g.label;
     }
   });
   g0.others.forEach((o) => el("polygon", { class: "other-building", points: path(o) }, ground));
   g0.buildings.forEach((b) => {
     const g = el("g", { class: "room t-building", "data-code": b.code, tabindex: "0", role: "button",
-                        "aria-label": t("Show {place}", { place: b.label }) }, ground);
+                        "aria-label": t("Show {place}", { place: b.label }) }, named);
     el("polygon", { points: path(b.points) }, g);
     el("text", { class: "campus-name", x: b.x, y: b.y }, g).textContent = b.label;
     el("text", { class: "campus-name sub", x: b.x, y: b.y }, g).textContent = b.sub;
@@ -823,6 +828,7 @@ function drawGrounds(svg) {
     g.addEventListener("click", open);
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
+  return named;
 }
 
 function buildFloor(floor, host) {
@@ -833,7 +839,7 @@ function buildFloor(floor, host) {
   }, host);
 
   const layer = (name) => el("g", { class: `lay-${name}` }, svg);
-  drawGrounds(svg);
+  const campus = drawGrounds(svg);
   const shell = layer("shell");
   const circulation = layer("circulation");
   const features = layer("features");
@@ -966,6 +972,7 @@ function buildFloor(floor, host) {
 
   const built = { svg, over, focus };
   drawnFloors.set(floor, built);
+  if (campus) svg.append(campus);   // the campus's buildings and names over the plan
   // the Main building's name, for when the whole campus is in view: over the plan
   (state.grounds?.labels || []).forEach((l) => {
     el("text", { class: "campus-name main-name", x: l.x, y: l.y }, svg).textContent = l.text;
@@ -1395,6 +1402,10 @@ function settleView() {
   state.view = { ...state.view, s: state.shown.s, tx: state.shown.tx, ty: state.shown.ty };
 }
 
+// the zoom and the plan the Main building's name was last fitted to (fitMainName)
+const campusFit = { s: 0, svg: null, timer: 0 };
+// fitted again once the web font is in: the names are wider in it than in the fallback
+document.fonts?.ready.then(() => fitMainName());
 function renderView() {
   const v = state.shown;
   if (!v || !state.svg) return;
@@ -1407,6 +1418,43 @@ function renderView() {
   const c = $("#canvas").style;
   c.setProperty("--zs", v.s.toFixed(4));
   c.setProperty("--label-a", Math.min(Math.max((v.s - LABEL_SCALE * 0.7) / (LABEL_SCALE * 0.5), 0), 1).toFixed(3));
+  if (v.s !== campusFit.s || state.svg !== campusFit.svg) {
+    clearTimeout(campusFit.timer);
+    const first = state.svg !== campusFit.svg;
+    campusFit.s = v.s;
+    campusFit.svg = state.svg;
+    if (first) fitMainName(); else campusFit.timer = setTimeout(fitMainName, 80);
+  }
+}
+
+// The campus's names keep one size on screen, so the further out the plan is,
+// the closer they come: on a narrow phone the Main building's name ran into the
+// Student House's. It moves right, clear of the names beside it, or, with no
+// room left before the edge of the map, steps aside (the blocks still name it).
+// Measured once the zoom has settled, not on every frame of a pinch.
+function fitMainName() {
+  const svg = state.svg;
+  const main = svg?.querySelector(".main-name");
+  if (!main) return;
+  main.removeAttribute("dx");
+  main.removeAttribute("visibility");
+  const m = main.getBoundingClientRect();
+  if (!m.width) return;
+  const GAP = 10;
+  let push = 0;
+  svg.querySelectorAll(".lay-campus text.campus-name").forEach((n) => {
+    const r = n.getBoundingClientRect();
+    if (r.width && r.bottom > m.top && r.top < m.bottom && r.left < m.right && r.right + GAP > m.left) {
+      push = Math.max(push, r.right + GAP - m.left);
+    }
+  });
+  // the zoom buttons stand over the map's right side: a name running under them is cut off too
+  let edge = $("#canvas").getBoundingClientRect().right - GAP;
+  const zoom = $(".zoom")?.getBoundingClientRect();
+  if (zoom?.width && zoom.top < m.bottom && zoom.bottom > m.top) edge = Math.min(edge, zoom.left - GAP);
+  if (m.right + push > edge) main.setAttribute("visibility", "hidden");
+  else if (!push) return;
+  else main.setAttribute("dx", (push / campusFit.s).toFixed(2));
 }
 
 // A drag or a pinch moves the plan once a frame, however often the finger reports.
