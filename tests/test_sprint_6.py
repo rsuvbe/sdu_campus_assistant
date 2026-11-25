@@ -446,6 +446,19 @@ def test_us24_task_controls_are_a_finger_s_size_on_a_phone():
     assert ".btn-line, .btn-text, .theme-opt { min-height: 44px; }" in phone
 
 
+def test_us24_task_the_bar_and_the_map_controls_are_a_finger_s_size_too():
+    # the header buttons, the floors, the blocks and the zoom were 36-42 px on a phone
+    narrow = STYLES[STYLES.index("@media (max-width: 767px)"):]
+    narrow = narrow[:narrow.index("\n}\n")]
+    assert ".bar .theme-btn, .bar #signout, .bar .icon-btn.square { width: 44px; min-width: 44px; min-height: 44px; height: 44px;" in narrow
+    assert ".levels button { width: 44px; height: 44px; }" in narrow
+    assert re.search(r"\.blocks button \{[^}]*min-width: 44px; min-height: 44px;", narrow)
+    assert ".tool { width: 44px; height: 44px; }" in narrow
+    auth = (STATIC / "auth.css").read_text()
+    assert ".on-photo .theme-btn { width: 44px; min-height: 44px;" in auth
+    assert ".profile-body .back { width: 44px; min-height: 44px;" in auth
+
+
 def test_us24_task_long_words_never_push_a_card_past_the_screen():
     assert ".route > *, .trip > *, .trip-from > *, .card > *, .listing > *, .prompt > * { min-width: 0; }" in STYLES
     assert "overflow-wrap: anywhere" in STYLES

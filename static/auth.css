@@ -557,13 +557,13 @@ a.btn-go { text-decoration: none; }
 }
 @media (max-width: 639px) {
   .on-photo .theme-label { display: none; }
-  .on-photo .theme-btn { width: 40px; padding: 0; }
+  .on-photo .theme-btn { width: 44px; min-height: 44px; padding: 0; }
   .issue-body { padding: var(--s4) var(--s4) var(--s5); }
   .pass-body { padding: var(--s4); }
   .rules { grid-template-columns: 1fr; }
   .profile { padding: var(--s5) var(--s4) var(--s8); }
   .profile-body .back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .profile-body .back { width: 40px; padding: 0; }
+  .profile-body .back { width: 44px; min-height: 44px; padding: 0; }
   .profile-body .brand-sub { display: none; }
   .pw-card, .tt-card { padding: var(--s5) var(--s4); }
   .tt-row { grid-template-columns: minmax(0, 1fr) auto; }
